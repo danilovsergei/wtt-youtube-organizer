@@ -1,0 +1,11 @@
+[Unit]
+Description=Run wtt-youtube-organizer script
+
+[Service]
+SyslogIdentifier=wtt-youtube-organizer
+Type=oneshot
+# TODO <bin_dir> must be replaced with real bin directory script installed
+ExecStart=<bin_dir>/wtt-youtube-organizer show --today
+
+[Install]
+WantedBy=graphical-session.target
