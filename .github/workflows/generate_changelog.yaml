@@ -1,0 +1,30 @@
+# https://habr.com/ru/companies/friflex/articles/812653/
+name: Generate Changelog
+on:
+  push:  
+    branches:
+      - main
+  workflow_dispatch:
+jobs: 
+  build: 
+    runs-on: ubuntu-latest  
+
+    steps:  
+    - uses: actions/checkout@v4 
+      with:
+        fetch-depth: 0
+    - name: Generate a changelog
+      uses: orhun/git-cliff-action@v3
+      with:
+        config: .github/workflows/cliff.toml
+        args: --verbose
+      env:
+        OUTPUT: CHANGELOG.md 
+     
+    - name: Commit Changelog 
+      run: |  
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git add CHANGELOG.md
+        git commit -m "Updating CHANGELOG.md"
+        git push https://github.com/${{ github.repository }}.git HEAD:main  
