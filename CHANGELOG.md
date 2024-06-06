@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Initial code commit
+- Added play command which plays a video by wrapping a yt-dlp and mpv into single binary
 
 ### Build
 
