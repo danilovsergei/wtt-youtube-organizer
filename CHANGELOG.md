@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Initial code commit
 - Added play command which plays a video by wrapping a yt-dlp and mpv into single binary
+- Updated folder command to generate sh script using new wtt-youtube-organizer play
 
 ### Build
 
