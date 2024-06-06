@@ -27,6 +27,8 @@ const WATCHED_FILE_NAME = "WATCHED_FILE_NAME"
 const WATCHED_SECONDS = "WATCHED_SECONDS"
 const WATCHED_DIR = "watched"
 
+var videoUrl string
+
 func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "play",
@@ -36,6 +38,9 @@ func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			if videoUrl == "" {
+				log.Fatalln("--videoUrl arg must be provided with valid youtube url")
+			}
 			play(filters)
 		},
 	}
@@ -43,17 +48,16 @@ func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 	return cmd
 }
 
-func initCmd(_ *pflag.FlagSet) {
+func initCmd(flagSet *pflag.FlagSet) {
+	flagSet.StringVar(&videoUrl, "videoUrl", "", "Youtube video URL")
 }
 
 func play(_ *youtubeparser.Filters) {
-	videoURL := "https://www.youtube.com/watch?v=_TP_R2GL16Y"
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	ytDlpCmd, ytDlpOut := runYtDlp(videoURL)
-	mpvCmd, mpvIn := runMpv(videoURL)
+	ytDlpCmd, ytDlpOut := runYtDlp(videoUrl)
+	mpvCmd, mpvIn := runMpv(videoUrl)
 
 	go pipeYtDlpToMpv(mpvIn, ytDlpOut, &wg)
 

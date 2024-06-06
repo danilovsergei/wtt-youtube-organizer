@@ -11,7 +11,8 @@ import (
 )
 
 const scriptTemplate = `#!/bin/sh
-yt-dlp -f "bestvideo[height<=1440]+bestaudio/best" -o - --buffer-size 60M "{{.VIDEO_URL}}" | mpv -`
+source ~/.profile
+wtt-youtube-organizer play --videoUrl "{{.VIDEO_URL}}"`
 
 type ReplaceTemplate struct {
 	VIDEO_URL string
