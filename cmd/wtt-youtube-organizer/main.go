@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/folder"
+	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/play"
 	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/show"
 	"wtt-youtube-organizer/utils"
 	youtubeparser "wtt-youtube-organizer/youtube_parser"
@@ -25,6 +26,7 @@ func NewCommand() *cobra.Command {
 	initCmd(cmd.PersistentFlags())
 	cmd.AddCommand(show.NewCommand(&filters))
 	cmd.AddCommand(folder.NewCommand(&filters))
+	cmd.AddCommand(play.NewCommand(&filters))
 	return cmd
 }
 
@@ -32,9 +34,10 @@ func initCmd(flagSet *pflag.FlagSet) {
 	flagSet.StringVar(&filters.Tournament, "tour", "", "Tournament name")
 	flagSet.StringVar(&filters.Gender, "gender", "MS", "Tournament name")
 	flagSet.StringVar(&filters.Filter, "filter", "", "Filter by anything")
-	flagSet.BoolVar(&filters.TodayOnly, "today", true, "filters only today matches")
+	flagSet.BoolVar(&filters.TodayOnly, "today", false, "filters only today matches")
 	flagSet.BoolVar(&filters.Full, "full", false, "filters only full matches")
 	flagSet.BoolVar(&filters.ShowWatched, "showWatched", true, "shows already watched videos")
+	flagSet.BoolVar(&filters.DisableAllFilters, "nofilters", false, "Disables all filters")
 }
 
 func main() {

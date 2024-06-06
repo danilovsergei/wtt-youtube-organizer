@@ -39,31 +39,37 @@ type NameParts struct {
 }
 
 type Filters struct {
-	ShowWatched bool
-	Tournament  string
-	Filter      string
-	Gender      string
-	Full        bool
-	TodayOnly   bool
+	ShowWatched       bool
+	Tournament        string
+	Filter            string
+	Gender            string
+	Full              bool
+	TodayOnly         bool
+	DisableAllFilters bool
 }
 
 type WatchHistory struct {
 	Urls map[string]*YoutubeVideo
 }
 
-func FilterWttVideos(filters *Filters) []YoutubeVideo {
+func FilterWttVideos(filters *Filters) []*YoutubeVideo {
 	out := shell.ExecuteScript("yt-dlp", "-j", "--flat-playlist", "--playlist-items", "1-200", "--extractor-args", "youtubetab:approximate_date", "https://www.youtube.com/@WTTGlobal/videos")
 	if out.Err != "" {
 		log.Fatalf("Error executing shell command: %s", out.Err)
 	}
 	videos := parseYtlpOutput(out.Out)
-	var finalVideos []YoutubeVideo
+	var finalVideos []*YoutubeVideo
 	var watchHistory *WatchHistory
 	if !filters.ShowWatched {
 		watchHistory = GetWatchHistory()
 	}
 	for i := len(videos) - 1; i >= 0; i-- {
 		video := videos[i]
+		// Just add videos when filters are disabled
+		if filters.DisableAllFilters {
+			finalVideos = append(finalVideos, video)
+			continue
+		}
 		isTodayDate, err := isToday(video.UploadDate)
 		if err != nil {
 			log.Default().Fatalln(err)
@@ -100,15 +106,15 @@ func GetWatchHistory() *WatchHistory {
 	videos := parseYtlpOutput(out.Out)
 	watchHistory := NewWatchHistory()
 	for _, video := range videos {
-		watchHistory.AddVideo(&video)
+		watchHistory.AddVideo(video)
 	}
 	return watchHistory
 }
 
-func parseYtlpOutput(ytDlpOutput string) []YoutubeVideo {
+func parseYtlpOutput(ytDlpOutput string) []*YoutubeVideo {
 	// Split the output into individual JSON objects
 	lines := strings.Split(ytDlpOutput, "\n")
-	var videos []YoutubeVideo
+	var videos []*YoutubeVideo
 	for _, line := range lines {
 		if line == "" { // Handle empty lines
 			continue
@@ -130,6 +136,8 @@ func parseYtlpOutput(ytDlpOutput string) []YoutubeVideo {
 		titleParts, err := NameParts{}.Parse(video.Title)
 		// Not interested in videos which are not parseable, eg. contain wrong title
 		if err != nil {
+			// Uncomment to print all errors that were failed to parse
+			// fmt.Printf("Error: %s\n", err.Error())
 			continue
 		}
 		duration, err := parseDuration(video.DurationString)
@@ -146,7 +154,7 @@ func parseYtlpOutput(ytDlpOutput string) []YoutubeVideo {
 			Tournament: titleParts.Tournament,
 			Duration:   duration,
 			Title:      video.Title}
-		videos = append(videos, videoFinal)
+		videos = append(videos, &videoFinal)
 	}
 	return videos
 }
@@ -222,7 +230,7 @@ func (n NameParts) Parse(name string) (*NameParts, error) {
 			partInd = partInd + 1
 			continue
 		}
-		if slices.Contains(strings.Fields(part), "vs") {
+		if slices.Contains(strings.Fields(strings.ToLower(part)), "vs") {
 			parsedName.Players = part
 			partInd = partInd + 1
 			continue
@@ -235,13 +243,16 @@ func (n NameParts) Parse(name string) (*NameParts, error) {
 		if partInd == 1 && parsedName.FullMatch && parsedName.Players == "" {
 			return &parsedName, fmt.Errorf("failed to parse player/match_duration for %s", name)
 		}
-		genderAndRoundParts := strings.Fields(part)
-		if slices.Contains([]string{"MS", "WS", "MD", "WD", "XD"}, genderAndRoundParts[0]) {
-			roundPart := strings.Split(part, " ")
-			parsedName.Gender = roundPart[0]
-			parsedName.Round = roundPart[1]
-			partInd = partInd + 1
-			continue
+		// parse gender and round
+		if len(strings.Fields(part)) > 0 && slices.Contains([]string{"MS", "WS", "MD", "WD", "XD"}, strings.Fields(part)[0]) {
+			genderAndRoundParts := strings.Fields(part)
+			if slices.Contains([]string{"MS", "WS", "MD", "WD", "XD"}, genderAndRoundParts[0]) {
+				roundPart := strings.Split(part, " ")
+				parsedName.Gender = roundPart[0]
+				parsedName.Round = roundPart[1]
+				partInd = partInd + 1
+				continue
+			}
 		}
 		// Unexpected format. There is round and gender part
 		if partInd == 1 && !parsedName.FullMatch && parsedName.Round == "" {
@@ -252,6 +263,9 @@ func (n NameParts) Parse(name string) (*NameParts, error) {
 		}
 
 		parsedName.Tournament = strings.ReplaceAll(part, "#", "")
+		if parsedName.Tournament == "" {
+			parsedName.Tournament = "Unknown"
+		}
 		return &parsedName, nil
 	}
 	return nil, errors.New("failed to parse name")

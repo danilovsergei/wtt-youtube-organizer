@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+	"wtt-youtube-organizer/utils"
 	youtubeparser "wtt-youtube-organizer/youtube_parser"
 )
 
@@ -16,34 +17,24 @@ type ReplaceTemplate struct {
 	VIDEO_URL string
 }
 
-func CreateFolders(videos []youtubeparser.YoutubeVideo) error {
+func CreateFolders(videos []*youtubeparser.YoutubeVideo) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("Failed to get home directory: %v", err)
 	}
 	rootFolder := filepath.Join(homeDir, "wtt")
-	createFolderIfNoExist(rootFolder)
+	utils.CreateFolderIfNoExist(rootFolder)
 
 	emptyFolder(rootFolder)
 	for _, video := range videos {
-		tourPath := createFolderIfNoExist(filepath.Join(rootFolder, video.Tournament))
-		roundPath := createFolderIfNoExist(filepath.Join(tourPath, video.Round))
-		err := createShLauncher(roundPath, &video)
+		tourPath := utils.CreateFolderIfNoExist(filepath.Join(rootFolder, video.Tournament))
+		roundPath := utils.CreateFolderIfNoExist(filepath.Join(tourPath, video.Round))
+		err := createShLauncher(roundPath, video)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func createFolderIfNoExist(folderPath string) string {
-	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
-		err := os.MkdirAll(folderPath, 0755)
-		if err != nil {
-			log.Fatalf("Error creating folder from tournament %v", err)
-		}
-	}
-	return folderPath
 }
 
 func createShLauncher(folder string, video *youtubeparser.YoutubeVideo) error {
