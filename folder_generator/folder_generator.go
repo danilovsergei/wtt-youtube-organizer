@@ -11,11 +11,11 @@ import (
 )
 
 const scriptTemplate = `#!/bin/sh
-source ~/.profile
-wtt-youtube-organizer play --videoUrl "{{.VIDEO_URL}}"`
+{{.EXECUTABLE}} play --videoUrl "{{.VIDEO_URL}}"`
 
 type ReplaceTemplate struct {
-	VIDEO_URL string
+	VIDEO_URL  string
+	EXECUTABLE string
 }
 
 func CreateFolders(videos []*youtubeparser.YoutubeVideo) error {
@@ -54,8 +54,13 @@ func createShLauncher(folder string, video *youtubeparser.YoutubeVideo) error {
 	}
 	defer file.Close()
 
+	exePath, err := getExecutablePath()
+	if err != nil {
+		log.Fatalf("Failed to create sh launcher : %v", err)
+	}
+
 	// Execute the template with the URL data
-	err = tmpl.Execute(file, ReplaceTemplate{VIDEO_URL: video.URL})
+	err = tmpl.Execute(file, ReplaceTemplate{VIDEO_URL: video.URL, EXECUTABLE: exePath})
 	if err != nil {
 		return fmt.Errorf("error executing template: %v", err)
 	}
@@ -90,4 +95,19 @@ func emptyFolder(dir string) error {
 	}
 
 	return nil
+}
+
+func getExecutablePath() (string, error) {
+	// Get the raw executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("Error retrieving executable path %v", err)
+	}
+
+	// Get the absolute path of the executable
+	absExePath, err := filepath.Abs(exePath)
+	if err != nil {
+		return "", fmt.Errorf("Error getting absolute executable path %v", err)
+	}
+	return absExePath, nil
 }
