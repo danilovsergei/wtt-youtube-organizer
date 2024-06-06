@@ -28,6 +28,7 @@ const WATCHED_SECONDS = "WATCHED_SECONDS"
 const WATCHED_DIR = "watched"
 
 var videoUrl string
+var saveWatchedTimeMpvScript string
 
 func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 	cmd := &cobra.Command{
@@ -50,6 +51,7 @@ func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 
 func initCmd(flagSet *pflag.FlagSet) {
 	flagSet.StringVar(&videoUrl, "videoUrl", "", "Youtube video URL")
+	flagSet.StringVar(&saveWatchedTimeMpvScript, "saveWatchedTimeMpvScript", "", "Lua script to save watched time of the youtube video")
 }
 
 func play(_ *youtubeparser.Filters) {
@@ -91,8 +93,13 @@ func runYtDlp(videoUrl string) (*exec.Cmd, io.ReadCloser) {
 }
 
 func runMpv(videoUrl string) (*exec.Cmd, io.WriteCloser) {
-	// mpv command
-	mpvCmd := exec.Command("mpv", "--no-resume-playback", "-")
+	args := []string{"--no-resume-playback"}
+	if saveWatchedTimeMpvScript != "" {
+		args = append(args, fmt.Sprintf("--script=%s", saveWatchedTimeMpvScript))
+	}
+	args = append(args, "-")
+	fmt.Printf("mpv args: %s\n", args)
+	mpvCmd := exec.Command("mpv", args...)
 	mpvIn, err := mpvCmd.StdinPipe()
 	if err != nil {
 		log.Fatal(err)

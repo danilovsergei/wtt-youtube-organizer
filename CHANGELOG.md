@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Added play command which plays a video by wrapping a yt-dlp and mpv into single binary
 - Updated folder command to generate sh script using new wtt-youtube-organizer play
 - Dynamically detect wtt-youtube-organizer path for sh launcher
+- Added option to play and folder commands to provide mpv lua script to save video watched time on exit
 
 ### Build
 

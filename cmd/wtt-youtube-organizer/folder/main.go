@@ -1,7 +1,6 @@
 package folder
 
 import (
-	"flag"
 	"fmt"
 	foldergenerator "wtt-youtube-organizer/folder_generator"
 	"wtt-youtube-organizer/utils"
@@ -14,6 +13,8 @@ import (
 const example = `
 		{cmd} folder
 `
+
+var saveWatchedTimeMpvScript string
 
 func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 	cmd := &cobra.Command{
@@ -31,13 +32,13 @@ func NewCommand(filters *youtubeparser.Filters) *cobra.Command {
 	return cmd
 }
 
-func initCmd(_ *pflag.FlagSet) {
-	flag.Parse()
+func initCmd(flagSet *pflag.FlagSet) {
+	flagSet.StringVar(&saveWatchedTimeMpvScript, "saveWatchedTimeMpvScript", "", "Lua script to save watched time of the youtube video")
 }
 
 func generateFolders(filters *youtubeparser.Filters) {
 	fmt.Println("Execute wtt-youtube-organizer folder generator")
-	err := foldergenerator.CreateFolders(youtubeparser.FilterWttVideos(filters))
+	err := foldergenerator.CreateFolders(youtubeparser.FilterWttVideos(filters), saveWatchedTimeMpvScript)
 	if err != nil {
 		fmt.Println(err)
 	}

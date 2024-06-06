@@ -4,8 +4,8 @@ Description=Run wtt-youtube-organizer script
 [Service]
 SyslogIdentifier=wtt-youtube-organizer
 Type=oneshot
-# TODO <bin_dir> must be replaced with real bin directory script installed
-ExecStart=<bin_dir>/wtt-youtube-organizer folder
+# TODO <bin_dir> and <lua_dir> must be replaced with real bin and lua directory when service installed
+ExecStart=<bin_dir>/wtt-youtube-organizer folder --saveWatchedTimeMpvScript=<lua_dir>/mpv-customstart.lua
 
 [Install]
 WantedBy=graphical-session.target

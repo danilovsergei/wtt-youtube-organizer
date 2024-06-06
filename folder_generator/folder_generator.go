@@ -11,14 +11,15 @@ import (
 )
 
 const scriptTemplate = `#!/bin/sh
-{{.EXECUTABLE}} play --videoUrl "{{.VIDEO_URL}}"`
+{{.EXECUTABLE}} play --videoUrl "{{.VIDEO_URL}}" {{.LUA_SCRIPT_ARG}}`
 
 type ReplaceTemplate struct {
-	VIDEO_URL  string
-	EXECUTABLE string
+	VIDEO_URL      string
+	EXECUTABLE     string
+	LUA_SCRIPT_ARG string
 }
 
-func CreateFolders(videos []*youtubeparser.YoutubeVideo) error {
+func CreateFolders(videos []*youtubeparser.YoutubeVideo, saveWatchedTimeMpvScript string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("Failed to get home directory: %v", err)
@@ -30,7 +31,7 @@ func CreateFolders(videos []*youtubeparser.YoutubeVideo) error {
 	for _, video := range videos {
 		tourPath := utils.CreateFolderIfNoExist(filepath.Join(rootFolder, video.Tournament))
 		roundPath := utils.CreateFolderIfNoExist(filepath.Join(tourPath, video.Round))
-		err := createShLauncher(roundPath, video)
+		err := createShLauncher(roundPath, saveWatchedTimeMpvScript, video)
 		if err != nil {
 			return err
 		}
@@ -38,7 +39,7 @@ func CreateFolders(videos []*youtubeparser.YoutubeVideo) error {
 	return nil
 }
 
-func createShLauncher(folder string, video *youtubeparser.YoutubeVideo) error {
+func createShLauncher(folder string, saveWatchedTimeMpvScript string, video *youtubeparser.YoutubeVideo) error {
 	filename := video.Players + ".sh"
 	if video.FullMatch {
 		filename = "FULL_" + filename
@@ -58,9 +59,12 @@ func createShLauncher(folder string, video *youtubeparser.YoutubeVideo) error {
 	if err != nil {
 		log.Fatalf("Failed to create sh launcher : %v", err)
 	}
-
+	var saveWatchedTimeArg string
+	if saveWatchedTimeMpvScript != "" {
+		saveWatchedTimeArg = fmt.Sprintf("--saveWatchedTimeMpvScript \"%s\"", saveWatchedTimeMpvScript)
+	}
 	// Execute the template with the URL data
-	err = tmpl.Execute(file, ReplaceTemplate{VIDEO_URL: video.URL, EXECUTABLE: exePath})
+	err = tmpl.Execute(file, ReplaceTemplate{VIDEO_URL: video.URL, EXECUTABLE: exePath, LUA_SCRIPT_ARG: saveWatchedTimeArg})
 	if err != nil {
 		return fmt.Errorf("error executing template: %v", err)
 	}
