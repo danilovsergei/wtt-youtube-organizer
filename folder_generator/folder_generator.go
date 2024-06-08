@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"wtt-youtube-organizer/utils"
 	youtubeparser "wtt-youtube-organizer/youtube_parser"
@@ -44,6 +45,7 @@ func createShLauncher(folder string, saveWatchedTimeMpvScript string, video *you
 	if video.FullMatch {
 		filename = "FULL_" + filename
 	}
+	filename = strings.ReplaceAll(filename, "/", " and ")
 	filename = filepath.Join(folder, filename)
 	tmpl, err := template.New("script").Parse(scriptTemplate)
 	if err != nil {
