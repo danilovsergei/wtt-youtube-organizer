@@ -12,6 +12,18 @@ All notable changes to this project will be documented in this file.
 - Dynamically detect wtt-youtube-organizer path for sh launcher
 - Added option to play and folder commands to provide mpv lua script to save video watched time on exit
 
+### 🐛 Bug Fixes
+
+- Replace / as unsupported for filenames with 'and' when generating sh scripts for pair games
+
+### 📚 Documentation
+
+- Video demo
+- Create README.md
+- Create README.md
+- Create README.md
+- Create README.md
+
 ### Build
 
 - Automated changelog generator
