@@ -18,11 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 
-- Video demo
-- Create README.md
-- Create README.md
-- Create README.md
-- Create README.md
+- Update README.md
 
 ### Build
 
