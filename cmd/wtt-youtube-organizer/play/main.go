@@ -71,7 +71,7 @@ func play(_ *youtubeparser.Filters) {
 }
 
 func runYtDlp(videoUrl string) (*exec.Cmd, io.ReadCloser) {
-	args := []string{"-f", "bestvideo[height<=1440]+bestaudio/best", "-o", "-", "--buffer-size", "60M"}
+	args := []string{"-f", "bestvideo[height<=2160]+bestaudio/best", "-o", "-", "--buffer-size", "60M"}
 	downloadSectionsArg := getYtDlpDownloadSectionsArg(videoUrl)
 	if downloadSectionsArg != nil {
 		args = append(args, downloadSectionsArg...)
@@ -81,6 +81,8 @@ func runYtDlp(videoUrl string) (*exec.Cmd, io.ReadCloser) {
 	fmt.Printf("yt-dlp args: %s\n", args)
 
 	ytCmd := exec.Command("yt-dlp", args...)
+	ytCmd.Env = os.Environ()
+
 	ytOut, err := ytCmd.StdoutPipe()
 	if err != nil {
 		log.Fatal(err)
@@ -93,7 +95,7 @@ func runYtDlp(videoUrl string) (*exec.Cmd, io.ReadCloser) {
 }
 
 func runMpv(videoUrl string) (*exec.Cmd, io.WriteCloser) {
-	args := []string{"--no-resume-playback"}
+	args := []string{"--no-resume-playback", "--player-operation-mode=pseudo-gui"}
 	if saveWatchedTimeMpvScript != "" {
 		args = append(args, fmt.Sprintf("--script=%s", saveWatchedTimeMpvScript))
 	}
