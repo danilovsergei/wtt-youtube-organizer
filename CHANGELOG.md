@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump default video quality to 2160p
+
 ## 2024-06-09
 
 ### 🚀 Features
