@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"wtt-youtube-organizer/config"
+	"wtt-youtube-organizer/shell"
 	"wtt-youtube-organizer/utils"
 	youtubeparser "wtt-youtube-organizer/youtube_parser"
 
@@ -26,6 +26,7 @@ const example = `
 const WATCHED_FILE_NAME = "WATCHED_FILE_NAME"
 const WATCHED_SECONDS = "WATCHED_SECONDS"
 const WATCHED_DIR = "watched"
+const FORMAT = "bestvideo[height<=2160]+bestaudio/best"
 
 var videoUrl string
 var saveWatchedTimeMpvScript string
@@ -54,60 +55,25 @@ func initCmd(flagSet *pflag.FlagSet) {
 	flagSet.StringVar(&saveWatchedTimeMpvScript, "saveWatchedTimeMpvScript", "", "Lua script to save watched time of the youtube video")
 }
 
+// plays video/audio links received from yt-dlp directly in mpv
+// mpv is responsible for mixing video and audio together
 func play(_ *youtubeparser.Filters) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	ytDlpCmd, ytDlpOut := runYtDlp(videoUrl)
-	mpvCmd, mpvIn := runMpv(videoUrl)
-
-	go pipeYtDlpToMpv(mpvIn, ytDlpOut, &wg)
-
-	// Stop waiting if either of the mpv or yt-dlp quits
-	go waitForCompletion(mpvCmd, &wg)
-	go waitForCompletion(ytDlpCmd, &wg)
-
-	wg.Wait()
-}
-
-func runYtDlp(videoUrl string) (*exec.Cmd, io.ReadCloser) {
-	args := []string{"-f", "bestvideo[height<=2160]+bestaudio/best", "-o", "-", "--buffer-size", "60M"}
-	downloadSectionsArg := getYtDlpDownloadSectionsArg(videoUrl)
-	if downloadSectionsArg != nil {
-		args = append(args, downloadSectionsArg...)
-	}
-	args = append(args, videoUrl)
-
-	fmt.Printf("yt-dlp args: %s\n", args)
-
-	ytCmd := exec.Command("yt-dlp", args...)
-	ytCmd.Env = os.Environ()
-
-	ytOut, err := ytCmd.StdoutPipe()
-	if err != nil {
+	videoLink, audioLink := getVideoUrlsFromYtDlp(videoUrl)
+	mpvCmd := runMpv(videoLink, audioLink, false)
+	if err := mpvCmd.Wait(); err != nil {
 		log.Fatal(err)
 	}
-	ytCmd.Stderr = os.Stderr
-	if err := ytCmd.Start(); err != nil {
-		log.Fatal(err)
-	}
-	return ytCmd, ytOut
 }
 
-func runMpv(videoUrl string) (*exec.Cmd, io.WriteCloser) {
+func runMpv(directVideoLink string, directAudioLink string, verbose bool) *exec.Cmd {
 	args := []string{"--no-resume-playback", "--player-operation-mode=pseudo-gui"}
 	if saveWatchedTimeMpvScript != "" {
 		args = append(args, fmt.Sprintf("--script=%s", saveWatchedTimeMpvScript))
 	}
-	args = append(args, "-")
-	fmt.Printf("mpv args: %s\n", args)
-	mpvCmd := exec.Command("mpv", args...)
-	mpvIn, err := mpvCmd.StdinPipe()
-	if err != nil {
-		log.Fatal(err)
+
+	if directAudioLink != "" {
+		args = append(args, fmt.Sprintf("--audio-file=%s", directAudioLink))
 	}
-	mpvCmd.Stdout = os.Stdout
-	mpvCmd.Stderr = os.Stderr
 	watchedFileName, err := getWatchedFileName(videoUrl)
 	if err != nil {
 		log.Fatalf("Failed to construct watched time variable for %s: %v\n", videoUrl, err)
@@ -116,34 +82,96 @@ func runMpv(videoUrl string) (*exec.Cmd, io.WriteCloser) {
 	if err != nil {
 		log.Fatalf("Failed to receive watched seconds for the %s: %v", videoUrl, err)
 	}
+	if watchedSeconds > 0 {
+		args = append(args, fmt.Sprintf("--start=%d", watchedSeconds))
+	}
+	if verbose {
+		args = append(args, "-v")
+	}
+	args = append(args, directVideoLink)
+
+	fmt.Printf("mpv args: %s\n", args)
+	mpvCmd := exec.Command("mpv", args...)
+
+	stdout, err := mpvCmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	stderr, err := mpvCmd.StderrPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
 	mpvCmd.Env = os.Environ()
+
 	mpvCmd.Env = append(mpvCmd.Env, fmt.Sprintf("%s=%s", WATCHED_FILE_NAME, watchedFileName))
 	mpvCmd.Env = append(mpvCmd.Env, fmt.Sprintf("%s=%d", WATCHED_SECONDS, watchedSeconds))
+
 	if err := mpvCmd.Start(); err != nil {
 		log.Fatal(err)
 	}
-	return mpvCmd, mpvIn
+	stdoutChan := make(chan string)
+	stderrChan := make(chan string)
+
+	go func() {
+		defer close(stdoutChan) // Close the channel when the goroutine exits
+		buf := make([]byte, 1024)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				stdoutChan <- string(buf[:n])
+			}
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				log.Printf("Error reading stdout: %v\n", err)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer close(stderrChan) // Close the channel when the goroutine exits
+		buf := make([]byte, 1024)
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				stderrChan <- string(buf[:n])
+			}
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				log.Printf("Error reading stderr: %v\n", err)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for line := range stdoutChan {
+			if verbose {
+				fmt.Println(line)
+			}
+		}
+	}()
+
+	go func() {
+		for line := range stderrChan {
+			if verbose {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
+	}()
+
+	return mpvCmd
 }
 
-func getYtDlpDownloadSectionsArg(videoUrl string) []string {
-	watchedFileName, err := getWatchedFileName(videoUrl)
-	if err != nil {
-		log.Fatalf("Failed to construct watched time variable for %s: %v\n", videoUrl, err)
-	}
-	watchedSeconds, err := getCurrentWatchedTime(watchedFileName)
-	if err != nil {
-		log.Fatalf("Failed to receive watched seconds for the %s: %v", videoUrl, err)
-	}
-	if watchedSeconds == 0 {
-		return nil
-	}
-	minutes := watchedSeconds / 60
-	remainingSeconds := watchedSeconds % 60
-	ytDlpTimeFormat := fmt.Sprintf("*%02d:%02d-", minutes, remainingSeconds)
-	return []string{"--download-sections", ytDlpTimeFormat}
-
-}
-
+// Gets the amount of watched seconds for the given watchedFileName
+// returns 0 if file was not watched yet
+//
+// watchedFileName named as last part of youtube video
+// https://www.youtube.com/watch?v=OdXQDJOQ27w -> becomes OdXQDJOQ27w
 func getCurrentWatchedTime(watchedFileName string) (uint32, error) {
 	// Read file contents
 	data, err := os.ReadFile(watchedFileName)
@@ -161,24 +189,6 @@ func getCurrentWatchedTime(watchedFileName string) (uint32, error) {
 		return 0, fmt.Errorf("error parsing watched seconds %s from %s: %v", numberStr, watchedFileName, err)
 	}
 	return uint32(number), nil
-}
-
-func pipeYtDlpToMpv(ytDlpOut io.WriteCloser, mpvIn io.ReadCloser, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer ytDlpOut.Close()
-	defer mpvIn.Close()
-
-	_, err := io.Copy(ytDlpOut, mpvIn)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func waitForCompletion(cmd *exec.Cmd, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if err := cmd.Wait(); err != nil {
-		log.Fatal(err)
-	}
 }
 
 func getWatchedFileName(videoUrl string) (string, error) {
@@ -200,4 +210,29 @@ func getYouTubeId(videoUrl string) (string, error) {
 		return "", fmt.Errorf("invalid YouTube URL")
 	}
 	return matches[1], nil
+}
+
+// Just get video and audio url from ytdlp without downloading or mixing them
+func getVideoUrlsFromYtDlp(youtubeUrl string) (videoLink string, audioLink string) {
+	args := []string{"-f", FORMAT, "--get-url"}
+	args = append(args, youtubeUrl)
+	out := shell.ExecuteScript("yt-dlp", args...)
+
+	if out.Err != "" {
+		log.Fatalf("Error executing shell command: %s", out.Err)
+	}
+	for _, link := range strings.Split(out.Out, "\n") {
+		if link == "" {
+			continue
+		}
+		link = strings.TrimSpace(link)
+		if videoLink == "" {
+			videoLink = link
+			continue
+		}
+		if audioLink == "" {
+			audioLink = link
+		}
+	}
+	return videoLink, audioLink
 }
