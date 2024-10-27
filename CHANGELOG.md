@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- Use mpv to play video and audio links directly instead of relying on yt-dlp/ffmpeg for mixing them to the single stream
+
 ### ⚙️ Miscellaneous Tasks
 
 - Bump default video quality to 2160p
