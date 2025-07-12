@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- POC of download stream fragments using yt-dlp
+
+## 2024-10-26
+
+### 🚀 Features
+
 - Use mpv to play video and audio links directly instead of relying on yt-dlp/ffmpeg for mixing them to the single stream
 
 ### ⚙️ Miscellaneous Tasks
