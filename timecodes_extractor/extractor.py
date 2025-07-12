@@ -87,9 +87,11 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
         print(f"Output directory: {os.path.abspath(output_dir)}")
     except OSError as e:
         print(f"Error creating output directory {output_dir}: {e}")
-        return
-
-    interval_seconds = 60 * 60
+        returnW
+    # TODO fix the issue that every 5 minutes does not work , but every hour works.
+    # yt-dlp seems to have a problem with too many segments
+    # check it with cli yt-dlp
+    interval_seconds = 50 * 60
     clip_duration_seconds = 1
 
     time_ranges = []
@@ -120,37 +122,32 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
     # Use section_start and section_end for unique filenames per downloaded range
     # The 'd' in %(section_start_time)d means integer.
     # yt-dlp uses section_start and section_end for download_ranges output template.
+
     output_template_path = os.path.join(
         output_dir, "clip_%(section_start)s-%(section_end)s.%(ext)s")
 
     ydl_opts_extract = {
-        'verbose': True,
-        'quiet': False,
-        'no_warnings': False,
-        'outtmpl': output_template_path,
+        'listformats_table': True,
+        # 'verbose': True,
+        'outtmpl': {
+            'default': 'clip-%(section_start)s-%(section_end)s.%(ext)s'
+        },
+        # 'ignoreerrors': 'only_download',
+        'format': 'bv*[height<=480]',
+        'download_ranges_as_images': True,
         'skip_unavailable_fragments': True,
+        'concurrent_fragment_downloads': 1,
         'updatetime': True,
-        'continuedl': True,
         'allow_playlist_files': True,
         'clean_infojson': True,
         'prefer_ffmpeg': True,
-        'dynamic_mpd': True,
         'youtube_include_dash_manifest': True,
         'youtube_include_hls_manifest': True,
-        'only_multi_video': True,
+        'extract_flat': 'discard_in_playlist',
+        'download_ranges': yt_dlp.utils.download_range_func([], time_ranges),
         'geo_bypass': True,
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'download_ranges': download_range_func(None, time_ranges),
-        # 'download_ranges': download_range_func([], [[20.0, 21.0], [60.0, 61.0]]),
-        # Set to True if precise cuts are more important than speed
-        'force_keyframes_at_cuts': False,
-        # and you are okay with potential re-encoding.
-        # When using download_ranges, ffmpeg is often invoked for cutting.
-        'postprocessors': [
-            # Example: If you wanted to ensure re-encoding to mp4 after cutting
-            # {'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'},
-            # Conditional postprocessor if needed, empty for now
-        ] if False else []
+        # prevents ffmpeg downloader to fail while using picture fragments
+        'nopart': True
     }
 
     print(
