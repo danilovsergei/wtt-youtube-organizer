@@ -87,11 +87,8 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
         print(f"Output directory: {os.path.abspath(output_dir)}")
     except OSError as e:
         print(f"Error creating output directory {output_dir}: {e}")
-        returnW
-    # TODO fix the issue that every 5 minutes does not work , but every hour works.
-    # yt-dlp seems to have a problem with too many segments
-    # check it with cli yt-dlp
-    interval_seconds = 50 * 60
+        return
+    interval_seconds = 5 * 60
     clip_duration_seconds = 1
 
     time_ranges = []
@@ -108,7 +105,9 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
             print(
                 f"Calculated segment from {start_time:.2f}s to {end_time:.2f}s would exceed video duration ({video_duration:.2f}s). Final full segment not included.")
             break
-        time_ranges.append([start_time, end_time])
+        # we can not pass 0 as end time because yt-dlp logic tread
+        # it specifically and download whole video in that case
+        time_ranges.append([start_time, 0.001])
         current_marker_time += interval_seconds
         segment_index += 1
 
@@ -130,7 +129,7 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
         'listformats_table': True,
         # 'verbose': True,
         'outtmpl': {
-            'default': 'clip-%(section_start)s-%(section_end)s.%(ext)s'
+            'default': 'videos/clip-%(section_start)s-%(section_end)s.%(ext)s'
         },
         # 'ignoreerrors': 'only_download',
         'format': 'bv*[height<=480]',
@@ -192,11 +191,11 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
     # This is a more accurate count.
     actual_files_created = 0
     if os.path.exists(output_dir):
-        for start, end in time_ranges:
+        for start in time_ranges:
             # Construct expected filename pattern (without extension initially)
             # Note: %(section_start)s is float, so cast to int for filename matching if needed
             # or use a glob pattern. Here we assume yt-dlp uses the float values.
-            expected_base = f"clip_{start}-{end}"
+            expected_base = f"clip_{start}"
             # Glob for files starting with this base, as extension can vary
             matching_files = [f for f in os.listdir(
                 output_dir) if f.startswith(expected_base)]
