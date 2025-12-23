@@ -3,3 +3,6 @@ cmd_test/
 TODO
 .vscode/
 venv/
+__pycache__/florence_extractor/florence2-tt-finetuned/
+florence_extractor/cropped_images/
+extracted_video_clips/
