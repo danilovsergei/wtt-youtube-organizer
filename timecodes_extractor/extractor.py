@@ -88,7 +88,7 @@ def extract_clips(video_url: str, video_duration: float, output_base_dir: str = 
     except OSError as e:
         print(f"Error creating output directory {output_dir}: {e}")
         return
-    interval_seconds = 5 * 60
+    interval_seconds = 60 * 60
     clip_duration_seconds = 1
 
     time_ranges = []

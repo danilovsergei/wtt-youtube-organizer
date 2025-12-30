@@ -1,0 +1,10 @@
+image path,row 1 expected player,row 2 expected player 2,row 1 set score,row 2 set score,row 1 game score,row 2 game score
+testdata/clip-3000.0-0.001.jpg,KUAI MAN,WANG MANYU,1,2,1,5
+testdata/clip-1800.0-0.001.jpg,KUAI MAN,WANG MANYU,0,1,3,6
+testdata/clip-3300.0-0.001.jpg,KUAI MAN,WANG MANYU,1,2,4,8
+testdata/clip-3900.0-0.001.jpg,KUAI MAN,WANG MANYU,1,3,7,6
+testdata/clip-4500.0-0.001.jpg,KUAI MAN,WANG MANYU,2,3,4,7
+testdata/clip-4800.0-0.001.jpg,KUAI MAN,WANG MANYU,2,3,9,10
+testdata/clip-7500.0-0.001.jpg,TRULS MOREGARD,TOMOKAZU HARIMOTO,1,2,7,8
+testdata/clip-8400.0-0.001.jpg,TRULS MOREGARD,TOMOKAZU HARIMOTO,2,2,12,11
+testdata/clip-8700.0-0.001.jpg,TRULS MOREGARD,TOMOKAZU HARIMOTO,2,3,0,5
