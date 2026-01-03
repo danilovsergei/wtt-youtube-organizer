@@ -161,7 +161,7 @@ def analyze_scoreboard_smart(image_path, debug=True, force_scale=None):
 
             number_crop = roi_processed[y_min:y_max, x_min:x_max]
             number_results = reader.readtext(
-                number_crop, allowlist='0123456789')
+                number_crop, allowlist='0123456789Il')
 
             if number_results:
                 new_text = number_results[0][1]
@@ -320,8 +320,8 @@ def analyze_scoreboard_smart(image_path, debug=True, force_scale=None):
             if max_count > 0:
                 best_digits = [
                     d for d in valid_digits if counts[d] == max_count]
-                # Priority: 3 > 0 > 1 > 2
-                for p in ['3', '0', '1', '2']:
+                # Priority: 3 > 1 > 0 > 2
+                for p in ['3', '1', '0', '2']:
                     if p in best_digits:
                         final_recovery = p
                         break
@@ -452,7 +452,13 @@ def analyze_scoreboard_smart(image_path, debug=True, force_scale=None):
             dist = digit_item['rect'][0] - name_x_max
             val_int = int(val_digit) if val_digit.isdigit() else 0
 
-            is_game = val_int > 3 or dist < 135
+            # Special case: if single digit is '0', treat as set score
+            # and let recovery find the game score
+            if val_digit == '0':
+                is_game = False
+            else:
+                is_game = val_int > 3 or dist < 135
+
             if debug:
                 print(
                     f"      Distance: {dist}, Value: {val_digit}, is_game: {is_game}")
@@ -480,14 +486,18 @@ def analyze_scoreboard_smart(image_path, debug=True, force_scale=None):
         recover_set = False
         recover_game = False
 
-        if not set_score and name_items and game_item:
-            recover_set = True
-        elif set_score == '4' and name_items and game_item:
-            recover_set = True
-        elif set_score and int(set_score) > 4 and name_items and game_item:
-            recover_set = True
+        # Set recovery conditions - skip if both scores are 0
+        if not (set_score == '0' and game_score == '0'):
+            if not set_score and name_items and game_item:
+                recover_set = True
+            elif set_score == '4' and name_items and game_item:
+                recover_set = True
+            elif set_score and int(set_score) > 4 and name_items and game_item:
+                recover_set = True
 
         if set_score and not game_score and set_item:
+            recover_game = True
+        elif set_score == '0' and game_score == '0' and set_item and game_item:
             recover_game = True
 
         if recover_set:

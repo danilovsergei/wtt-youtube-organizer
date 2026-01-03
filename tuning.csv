@@ -1,0 +1,8 @@
+Attempt,Change Description,clip-600 Result,Total Passed,Notes
+1,Added 'I' and 'l' to number_crop allowlist,Row1 game=0 (expected 1),10/11,No change - still detecting 0 instead of 1
+2,Trigger recovery for 0+0 pattern,Row1 game=0 (expected 1),10/11,Recovery triggered but still getting 0
+3,Change priority to prefer 1 over 0,Row1 set=1 game=0 (expected set=0 game=1),10/11,Values swapped - recovery finding 1 but assigning to wrong field
+4,Keep priority revert set conditions,Row1 set=1 game=0 (expected set=0 game=1),10/11,Still swapped - need different approach
+5,Skip set recovery when both 0 (using pass),Row1 set=1 game=0 (expected set=0 game=1),10/11,Still swapped - pass doesn't block elif
+6,Use proper nested if to skip set recovery,Row1 set=1 game=0 (expected set=0 game=1),10/11,Still swapped - maybe only 1 digit detected initially
+7,Force single '0' to always be treated as set score,Row1 set=0 game=1 PASSED!,11/11,SUCCESS! Single 0 forced to set + recovery finds game score correctly
