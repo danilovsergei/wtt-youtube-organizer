@@ -2,9 +2,47 @@
 
 Score extraction and match start finder for table tennis videos using Florence-2 OCR.
 
-## Setup
+## Usage
 
-### 1. Train the Model
+### Option A: Docker Container (Recommended)
+
+Pre-built Docker image with Intel GPU support via OpenVINO and pretrained model embedded.
+No local setup required!
+
+**Using wrapper script:**
+```bash
+cd florence_extractor/docker
+
+OUTPUT_DIR=/tmp ./wtt-stream-match-finder.sh \
+    --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w" \
+    --output_json_file /output/results.json
+```
+
+The script automatically:
+- Pulls the image from Docker Hub if not present
+- Detects video/render group IDs for GPU access
+- Mounts the output directory
+
+**Requirements:**
+- Intel GPU (integrated or discrete) with OpenVINO support
+- User must be in `video` and `render` groups: `sudo usermod -aG video,render $USER`
+
+**Output:**
+Results are saved to the mounted directory (`/tmp/matches/results.json`):
+```json
+[
+  {"timestamp": 720, "player1": "MA LONG", "player2": "FAN ZHENDONG"},
+  {"timestamp": 4140, "player1": "CHEN MENG", "player2": "SUN YINGSHA"}
+]
+```
+
+### Option B: Run with Python development environment
+Running without a docker will require to generate trained florence2 model using instructions below
+
+### Perform developer setup
+#### 1. Setup python venv
+Use florence_extractor/docker/Dockerfile file for reference which pip packages versions to install
+#### 2. Train the Model
 
 The repository does not include the trained Florence-2 model. Train it using the provided test data:
 
@@ -14,7 +52,7 @@ python train_florence2.py
 
 This creates `florence2-tt-finetuned/` based on `test_data_sample.csv`.
 
-### 2. (Optional) Create OpenVINO Version
+#### 3. (Optional) Create OpenVINO Version
 
 By default, Florence-2 runs on NVIDIA/CUDA or CPU. For Intel GPUs, create an optimized OpenVINO version:
 
@@ -24,7 +62,7 @@ python convert_to_openvino.py
 
 Even an integrated Intel GPU is ~4x faster than CPU!
 
-### 3. (Optional) Verify Model
+#### 4. (Optional) Verify Model
 
 Run verification against test data:
 
@@ -34,21 +72,19 @@ python score_extractor.py --images_dir=testdata
 
 All images from `testdata/` should pass.
 
-## Usage
-
-### Parse YouTube Video
+#### Parse YouTube Video
 
 ```bash
 python match_start_finder.py --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w"
 ```
 
-### Parse Local Video
+#### Parse Local Video
 
 ```bash
 python match_start_finder.py --local_video "/path/to/video.mp4"
 ```
 
-### Select Backend
+#### Select Backend
 
 ```bash
 # OpenVINO (Intel GPU)
@@ -58,7 +94,7 @@ python match_start_finder.py --youtube_video "..." --backend openvino
 python match_start_finder.py --youtube_video "..." --backend pytorch-cpu
 ```
 
-## Preparing Test Data
+## Add new Test Data to Retrain the model
 
 ### 1. Get Cropped Images
 

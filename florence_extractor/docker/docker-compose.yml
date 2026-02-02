@@ -1,0 +1,25 @@
+services:
+  match-finder:
+    image: wtt-stream-match-finder-openvino
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: wtt-stream-match-finder-openvino
+    
+    # Intel GPU passthrough for OpenVINO
+    devices:
+      - /dev/dri:/dev/dri
+    
+    # Note: For GPU access, use run.sh which auto-detects group IDs
+    # group_add is omitted here - use run.sh for portable execution
+    
+    volumes:
+      # Mount output directory for results
+      - ./output:/output
+    
+    environment:
+      # OpenVINO GPU settings
+      - OPENVINO_DEVICE=GPU
+    
+    # Example command (override with docker-compose run)
+    # command: ["--youtube_video", "https://youtube.com/watch?v=VIDEO_ID", "--output_json_file", "/output/results.json"]

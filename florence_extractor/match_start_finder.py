@@ -830,7 +830,6 @@ def main():
                 ]
                 with open(args.output_json_file, 'w') as f:
                     json.dump(json_data, f, indent=2)
-                print(f"\nJSON output saved to: {args.output_json_file}")
         else:
             print("\nNo match starts found.")
     finally:
