@@ -686,6 +686,59 @@ class MatchStartFinder:
         return curr_total < prev_total
 
 
+def extract_video_id(youtube_url: str) -> str:
+    """
+    Extract video ID from YouTube URL.
+
+    Supports formats:
+    - https://www.youtube.com/watch?v=i8OS-w44mrQ
+    - https://youtu.be/i8OS-w44mrQ
+    - https://www.youtube.com/live/i8OS-w44mrQ
+
+    Returns:
+        Video ID string (e.g., 'i8OS-w44mrQ')
+    """
+    if 'watch?v=' in youtube_url:
+        video_id = youtube_url.split('watch?v=')[-1].split('&')[0]
+    elif 'youtu.be/' in youtube_url:
+        video_id = youtube_url.split('youtu.be/')[-1].split('?')[0]
+    elif '/live/' in youtube_url:
+        video_id = youtube_url.split('/live/')[-1].split('?')[0]
+    else:
+        # Fallback: try to get last path segment
+        video_id = youtube_url.rstrip('/').split('/')[-1].split('?')[0]
+
+    return video_id
+
+
+def get_video_title(youtube_url: str) -> Optional[str]:
+    """
+    Fetch video title from YouTube using yt-dlp.
+
+    Returns:
+        Video title string, or None if failed.
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
+        return None
+
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            return info.get('title')
+    except Exception as e:
+        print(f"Warning: Could not fetch video title: {e}")
+        return None
+
+
 def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
     """
     Download YouTube video at 480p (video only, no audio).
@@ -700,10 +753,7 @@ def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
         return None
 
     # Extract video ID for filename
-    video_id = youtube_url.split('watch?v=')[-1].split('&')[0]
-    if '/' in video_id:
-        video_id = video_id.split('/')[-1]
-
+    video_id = extract_video_id(youtube_url)
     video_path = os.path.join(output_dir, f"{video_id}.webm")
 
     # Skip if already downloaded
@@ -756,10 +806,16 @@ def main():
     video_group = parser.add_mutually_exclusive_group(required=True)
     video_group.add_argument(
         '--local_video', type=str,
-        help='Path to a local video file')
+        help='Path to a local video file (requires --video_id and --video_title)')
     video_group.add_argument(
         '--youtube_video', type=str,
         help='YouTube video URL (will be downloaded first)')
+
+    # Video metadata (required for local videos)
+    parser.add_argument('--video_id', type=str, default=None,
+                        help='Video ID (required when using --local_video)')
+    parser.add_argument('--video_title', type=str, default=None,
+                        help='Video title (required when using --local_video)')
 
     parser.add_argument('--output', type=str, default='match_starts',
                         help='Output directory (default: match_starts)')
@@ -772,8 +828,19 @@ def main():
                         help='Path to output JSON file with match data')
     args = parser.parse_args()
 
+    # Validate that --video_id and --video_title are provided for local videos
+    if args.local_video:
+        if not args.video_id:
+            parser.error("--video_id is required when using --local_video")
+        if not args.video_title:
+            parser.error("--video_title is required when using --local_video")
+
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
+
+    # Variables for video metadata
+    video_id = None
+    video_title = None
 
     # Determine video path
     video_path = None
@@ -782,8 +849,23 @@ def main():
             print(f"Error: Video file not found: {args.local_video}")
             sys.exit(1)
         video_path = args.local_video
+        video_id = args.video_id
+        video_title = args.video_title
         print(f"Using local video: {video_path}")
+        print(f"Video ID: {video_id}")
+        print(f"Video Title: {video_title}")
     else:
+        # Extract video_id and fetch video_title for YouTube videos
+        video_id = extract_video_id(args.youtube_video)
+        print(f"Video ID: {video_id}")
+
+        print("Fetching video title...")
+        video_title = get_video_title(args.youtube_video)
+        if video_title:
+            print(f"Video Title: {video_title}")
+        else:
+            print("Warning: Could not fetch video title")
+
         # Download YouTube video
         video_path = download_youtube_video(args.youtube_video, args.output)
         if not video_path:
@@ -820,16 +902,21 @@ def main():
 
             # Write JSON output if requested
             if args.output_json_file:
-                json_data = [
-                    {
-                        "timestamp": int(m.timestamp_seconds),
-                        "player1": m.player1,
-                        "player2": m.player2
-                    }
-                    for m in matches
-                ]
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": video_title,
+                    "matches": [
+                        {
+                            "timestamp": int(m.timestamp_seconds),
+                            "player1": m.player1,
+                            "player2": m.player2
+                        }
+                        for m in matches
+                    ]
+                }
                 with open(args.output_json_file, 'w') as f:
                     json.dump(json_data, f, indent=2)
+                print(f"\nJSON output written to: {args.output_json_file}")
         else:
             print("\nNo match starts found.")
     finally:

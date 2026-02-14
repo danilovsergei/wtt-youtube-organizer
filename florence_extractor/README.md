@@ -79,9 +79,12 @@ python match_start_finder.py --youtube_video "https://www.youtube.com/watch?v=PR
 ```
 
 #### Parse Local Video
+add fake `video_id` and `video_title` if you are not planning to save results in the database
 
 ```bash
-python match_start_finder.py --local_video "/path/to/video.mp4"
+python match_start_finder.py --local_video "/path/to/video.mp4" \
+    --video_id "i8OS-w44mrQ" \
+    --video_title "WTT Star Contender Bangkok 2026 Day 1"
 ```
 
 #### Select Backend
