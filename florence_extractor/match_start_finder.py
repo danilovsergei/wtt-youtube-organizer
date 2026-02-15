@@ -711,32 +711,36 @@ def extract_video_id(youtube_url: str) -> str:
     return video_id
 
 
-def get_video_title(youtube_url: str) -> Optional[str]:
+def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Fetch video title from YouTube using yt-dlp.
+    Fetch video title and upload date from YouTube using yt-dlp.
 
     Returns:
-        Video title string, or None if failed.
+        Tuple of (title, upload_date) where upload_date is in YYYYMMDD format.
+        Either value can be None if fetch failed.
     """
     try:
         import yt_dlp
     except ImportError:
         print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return None
+        return None, None
 
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
+        'extractor_args': {'youtubetab': ['approximate_date']},
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
-            return info.get('title')
+            title = info.get('title')
+            upload_date = info.get('upload_date')  # Format: YYYYMMDD
+            return title, upload_date
     except Exception as e:
-        print(f"Warning: Could not fetch video title: {e}")
-        return None
+        print(f"Warning: Could not fetch video info: {e}")
+        return None, None
 
 
 def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
@@ -826,6 +830,9 @@ def main():
                         help='Save cropped score images to cropped_frames/')
     parser.add_argument('--output_json_file', type=str, default=None,
                         help='Path to output JSON file with match data')
+    parser.add_argument('--only_extract_video_metadata', action='store_true',
+                        help='Only extract video metadata (id, title, upload_date) '
+                             'without running match detection')
     args = parser.parse_args()
 
     # Validate that --video_id and --video_title are provided for local videos
@@ -841,6 +848,7 @@ def main():
     # Variables for video metadata
     video_id = None
     video_title = None
+    upload_date = None  # Format: YYYYMMDD
 
     # Determine video path
     video_path = None
@@ -855,16 +863,38 @@ def main():
         print(f"Video ID: {video_id}")
         print(f"Video Title: {video_title}")
     else:
-        # Extract video_id and fetch video_title for YouTube videos
+        # Extract video_id and fetch video info for YouTube videos
         video_id = extract_video_id(args.youtube_video)
         print(f"Video ID: {video_id}")
 
-        print("Fetching video title...")
-        video_title = get_video_title(args.youtube_video)
+        print("Fetching video info...")
+        video_title, upload_date = get_video_info(args.youtube_video)
         if video_title:
             print(f"Video Title: {video_title}")
         else:
             print("Warning: Could not fetch video title")
+        if upload_date:
+            print(f"Upload Date: {upload_date}")
+        else:
+            print("Warning: Could not fetch upload date")
+
+        # If only extracting metadata, output and exit early
+        if args.only_extract_video_metadata:
+            print("\n=== Video Metadata ===")
+            print(f"Video ID:    {video_id}")
+            print(f"Title:       {video_title}")
+            print(f"Upload Date: {upload_date}")
+            if args.output_json_file:
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": video_title,
+                    "upload_date": upload_date,
+                    "matches": []
+                }
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                print(f"\nJSON output written to: {args.output_json_file}")
+            sys.exit(0)
 
         # Download YouTube video
         video_path = download_youtube_video(args.youtube_video, args.output)
@@ -905,6 +935,7 @@ def main():
                 json_data = {
                     "video_id": video_id,
                     "video_title": video_title,
+                    "upload_date": upload_date,  # Format: YYYYMMDD
                     "matches": [
                         {
                             "timestamp": int(m.timestamp_seconds),
