@@ -711,6 +711,96 @@ def extract_video_id(youtube_url: str) -> str:
     return video_id
 
 
+def list_recent_streams(num_videos: int) -> None:
+    """
+    Fetch and display recent WTT live streams from YouTube.
+
+    Args:
+        num_videos: Number of videos to fetch from the playlist
+    """
+    try:
+        import yt_dlp
+        from datetime import datetime as dt
+    except ImportError:
+        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
+        return
+
+    playlist_url = "https://www.youtube.com/@WTTGlobal/streams"
+
+    # Use flat extraction with approximate_date extractor arg
+    # The arg enables timestamp extraction in YouTubeTabIE
+    # Format must match CLI: {'extractor': {'arg': ['value']}}
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': 'in_playlist',
+        'playlistend': num_videos,
+        'extractor_args': {'youtubetab': {'approximate_date': ['']}},
+    }
+
+    print(f"Fetching {num_videos} recent streams from WTT Global...")
+    print()
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(playlist_url, download=False)
+
+            if not info or 'entries' not in info:
+                print("Error: Could not fetch playlist entries")
+                return
+
+            entries = list(info['entries'])
+
+            if not entries:
+                print("No videos found.")
+                return
+
+            # Filter only completed live streams (was_live)
+            was_live_videos = [e for e in entries if e and
+                               e.get('live_status') == 'was_live']
+
+            if not was_live_videos:
+                print("No completed live streams found.")
+                return
+
+            # Print header
+            print(f"{'UPLOAD_DATE':<12} {'URL':<45} TITLE")
+            print("-" * 120)
+
+            for entry in was_live_videos:
+                video_url = entry.get('url', entry.get('webpage_url', 'N/A'))
+                title = entry.get('title', 'N/A')
+
+                # Get upload_date - try upload_date first, then convert from
+                # timestamp (which is set by approximate_date extractor arg)
+                upload_date = entry.get('upload_date')
+                if not upload_date:
+                    timestamp = entry.get('timestamp')
+                    if timestamp:
+                        try:
+                            upload_date = dt.fromtimestamp(
+                                timestamp).strftime('%Y%m%d')
+                        except (ValueError, OSError):
+                            pass
+
+                if not upload_date:
+                    upload_date = 'N/A'
+
+                # Format date from YYYYMMDD to YYYY-MM-DD
+                if upload_date and upload_date != 'N/A':
+                    if len(upload_date) == 8:
+                        upload_date = (f"{upload_date[:4]}-"
+                                       f"{upload_date[4:6]}-{upload_date[6:]}")
+
+                print(f"{upload_date:<12} {video_url:<45} {title}")
+
+            print(f"\nFound {len(was_live_videos)} completed streams "
+                  f"out of {len(entries)} videos")
+
+    except Exception as e:
+        print(f"Error fetching streams: {e}")
+
+
 def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Fetch video title and upload date from YouTube using yt-dlp.
@@ -806,8 +896,14 @@ def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
 def main():
     parser = argparse.ArgumentParser(
         description='Find match start timestamps in table tennis videos')
+
+    # Standalone action: list recent streams
+    parser.add_argument('--print_matches', type=int, metavar='NUM',
+                        help='List NUM recent WTT streams (completed live '
+                             'streams only) and exit')
+
     # Video source (mutually exclusive)
-    video_group = parser.add_mutually_exclusive_group(required=True)
+    video_group = parser.add_mutually_exclusive_group(required=False)
     video_group.add_argument(
         '--local_video', type=str,
         help='Path to a local video file (requires --video_id and --video_title)')
@@ -834,6 +930,16 @@ def main():
                         help='Only extract video metadata (id, title, upload_date) '
                              'without running match detection')
     args = parser.parse_args()
+
+    # Handle --print_matches (standalone action)
+    if args.print_matches:
+        list_recent_streams(args.print_matches)
+        sys.exit(0)
+
+    # Validate that a video source is provided if not using --print_matches
+    if not args.local_video and not args.youtube_video:
+        parser.error("Either --local_video, --youtube_video, or "
+                     "--print_matches is required")
 
     # Validate that --video_id and --video_title are provided for local videos
     if args.local_video:
