@@ -66,7 +66,7 @@ ORDER BY m.match_timestamp ASC;
 It resets data in multiple tables because they are using foreign keys:
 
 ```
-TRUNCATE TABLE matches, match_participants RESTART IDENTITY;
+TRUNCATE TABLE videos, players, tournaments, matches, match_participants RESTART IDENTITY;
 ```
 
 # print all tables query
