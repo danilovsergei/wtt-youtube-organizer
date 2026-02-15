@@ -141,3 +141,34 @@ florence_extractor/
     ├── pytorch_backend.py
     └── openvino_backend.py
 ```
+
+
+## Other useful commands
+### 
+Finds and processes all matches found at live streams after match with youtube id HYB4y7xADMY and writes output to `match.json`
+
+```
+python3 florence_extractor/match_start_finder.py --process_all_matches_after HYB4y7xADMY --output_json_file match.json
+```
+
+`--only_extract_video_metadata` does dry run and only prints videos to process and adds them to `--output_json_file`
+
+```
+python3 florence_extractor/match_start_finder.py --process_all_matches_after HYB4y7xADMY --only_extract_video_metadata --output_json_file match.json
+```
+
+outputs
+
+```
+Found 7 videos to process:
+
+UPLOAD_DATE  VIDEO_ID        TITLE
+----------------------------------------------------------------------------------------------------
+2026-02-14   11ZDP_A0Ado     LIVE! | T1 | Day 3 | WTT Star Contender Chennai 2026 | Singles QF & Doubles F
+2026-02-14   UDT641nBU90     LIVE! | T2 | Day 3 | WTT Star Contender Chennai 2026 | Singles QF
+2026-02-14   7UepN9zbe0s     LIVE! | T2 | Day 3 | WTT Star Contender Chennai 2026 | Session 1
+2026-02-14   UkYviSmVNoA     LIVE! | T1 | Day 3 | WTT Star Contender Chennai 2026 | Session 1
+2026-02-14   uNDVePxSfng     LIVE! | T4 | Day 3 | WTT Star Contender Chennai 2026
+2026-02-14   9jeGCqs1Sns     LIVE! | T3 | Day 3 | WTT Star Contender Chennai 2026
+2026-02-13   T1Ykn6kv7y0     LIVE! | T1 | Day 4 | WTT Youth Contender Vila Real 2026 | Session 2
+```

@@ -711,6 +711,80 @@ def extract_video_id(youtube_url: str) -> str:
     return video_id
 
 
+def get_videos_after(after_video_id: str,
+                     max_videos: int = 100) -> List[dict]:
+    """
+    Get all completed streams newer than the specified video_id.
+
+    Args:
+        after_video_id: Video ID to use as cutoff (exclusive)
+        max_videos: Maximum number of videos to fetch from playlist
+
+    Returns:
+        List of video info dicts for videos newer than after_video_id
+    """
+    try:
+        import yt_dlp
+        from datetime import datetime as dt
+    except ImportError:
+        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
+        return []
+
+    playlist_url = "https://www.youtube.com/@WTTGlobal/streams"
+
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': 'in_playlist',
+        'playlistend': max_videos,
+        'extractor_args': {'youtubetab': {'approximate_date': ['']}},
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(playlist_url, download=False)
+
+            if not info or 'entries' not in info:
+                print("Error: Could not fetch playlist entries")
+                return []
+
+            entries = list(info['entries'])
+            if not entries:
+                return []
+
+            # Filter only completed live streams (was_live)
+            # and collect videos until we hit the after_video_id
+            newer_videos = []
+            for entry in entries:
+                if not entry:
+                    continue
+
+                video_id = entry.get('id')
+
+                # Stop when we reach the cutoff video
+                if video_id == after_video_id:
+                    break
+
+                # Only include completed streams
+                if entry.get('live_status') == 'was_live':
+                    # Add upload_date from timestamp if not present
+                    if not entry.get('upload_date'):
+                        timestamp = entry.get('timestamp')
+                        if timestamp:
+                            try:
+                                entry['upload_date'] = dt.fromtimestamp(
+                                    timestamp).strftime('%Y%m%d')
+                            except (ValueError, OSError):
+                                pass
+                    newer_videos.append(entry)
+
+            return newer_videos
+
+    except Exception as e:
+        print(f"Error fetching streams: {e}")
+        return []
+
+
 def list_recent_streams(num_videos: int) -> None:
     """
     Fetch and display recent WTT live streams from YouTube.
@@ -902,6 +976,12 @@ def main():
                         help='List NUM recent WTT streams (completed live '
                              'streams only) and exit')
 
+    # Batch processing: process all videos newer than specified video_id
+    parser.add_argument('--process_all_matches_after', type=str,
+                        metavar='VIDEO_ID',
+                        help='Process all completed WTT streams newer than '
+                             'VIDEO_ID (fetches last 100 streams)')
+
     # Video source (mutually exclusive)
     video_group = parser.add_mutually_exclusive_group(required=False)
     video_group.add_argument(
@@ -936,10 +1016,129 @@ def main():
         list_recent_streams(args.print_matches)
         sys.exit(0)
 
-    # Validate that a video source is provided if not using --print_matches
+    # Handle --process_all_matches_after (batch processing)
+    if args.process_all_matches_after:
+        print(
+            f"Fetching videos newer than {args.process_all_matches_after}...")
+        videos = get_videos_after(args.process_all_matches_after)
+
+        if not videos:
+            print("No videos found newer than the specified video ID.")
+            print("(Video ID may not exist or there are no newer "
+                  "completed streams)")
+            sys.exit(0)
+
+        print(f"\nFound {len(videos)} videos to process:\n")
+        print(f"{'UPLOAD_DATE':<12} {'VIDEO_ID':<15} TITLE")
+        print("-" * 100)
+
+        for video in videos:
+            vid = video.get('id', 'N/A')
+            title = video.get('title', 'N/A')
+            upload_date = video.get('upload_date', 'N/A')
+            if upload_date and len(upload_date) == 8:
+                upload_date = (f"{upload_date[:4]}-"
+                               f"{upload_date[4:6]}-{upload_date[6:]}")
+            print(f"{upload_date:<12} {vid:<15} {title}")
+
+        # If --only_extract_video_metadata, write JSON with metadata and exit
+        if args.only_extract_video_metadata:
+            if args.output_json_file:
+                # Build metadata-only JSON (empty matches array for each video)
+                metadata_results = [
+                    {
+                        "video_id": v.get('id'),
+                        "video_title": v.get('title'),
+                        "upload_date": v.get('upload_date'),
+                        "matches": []
+                    }
+                    for v in videos
+                ]
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(metadata_results, f, indent=2)
+                print(f"\nJSON output written to: {args.output_json_file}")
+            print(f"\n(Dry run - {len(videos)} videos would be processed)")
+            sys.exit(0)
+
+        # Create output directory
+        os.makedirs(args.output, exist_ok=True)
+
+        # Collect all results for single JSON output
+        all_results = []
+
+        # Process each video
+        print(f"\n{'=' * 60}")
+        print(f"Starting batch processing of {len(videos)} videos...")
+        print('=' * 60)
+
+        # Reverse to process oldest first
+        for i, video in enumerate(reversed(videos), 1):
+            vid = video.get('id')
+            title = video.get('title', 'Unknown')
+            upload_date = video.get('upload_date')
+
+            print(f"\n[{i}/{len(videos)}] Processing: {title}")
+            print(f"  Video ID: {vid}")
+
+            youtube_url = f"https://www.youtube.com/watch?v={vid}"
+
+            # Download video
+            video_path = download_youtube_video(youtube_url, args.output)
+            if not video_path:
+                print("  ERROR: Failed to download video, skipping...")
+                continue
+
+            # Determine backend
+            backend = args.backend or get_default_backend()
+
+            # Find matches
+            finder = MatchStartFinder(
+                video_path, args.output, backend=backend,
+                keep_cropped=args.keep_cropped)
+
+            try:
+                matches = finder.find_match_starts()
+
+                video_result = {
+                    "video_id": vid,
+                    "video_title": title,
+                    "upload_date": upload_date,
+                    "matches": [
+                        {
+                            "timestamp": int(m.timestamp_seconds),
+                            "player1": m.player1,
+                            "player2": m.player2
+                        }
+                        for m in matches
+                    ]
+                }
+                all_results.append(video_result)
+
+                if matches:
+                    print(f"  Found {len(matches)} match starts")
+                else:
+                    print("  No match starts found")
+            finally:
+                finder.cleanup()
+
+        # Write single JSON output with all videos
+        json_path = args.output_json_file or os.path.join(
+            args.output, "all_matches.json")
+        with open(json_path, 'w') as f:
+            json.dump(all_results, f, indent=2)
+        print(f"\nJSON output written to: {json_path}")
+
+        print(f"\n{'=' * 60}")
+        print(f"Batch processing complete: {len(videos)} videos processed")
+        print(f"Total videos with results: {len(all_results)}")
+        print('=' * 60)
+        sys.exit(0)
+
+    # Validate that a video source is provided if not using batch modes
     if not args.local_video and not args.youtube_video:
-        parser.error("Either --local_video, --youtube_video, or "
-                     "--print_matches is required")
+        parser.error("Either --local_video, --youtube_video, "
+                     "--print_matches, or --process_all_matches_after "
+                     "is required")
 
     # Validate that --video_id and --video_title are provided for local videos
     if args.local_video:
