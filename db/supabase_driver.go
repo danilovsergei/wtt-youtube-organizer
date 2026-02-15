@@ -40,7 +40,17 @@ func buildYouTubeURL(videoID string, timestampSeconds int) string {
 type VideoJSON struct {
 	VideoID    string      `json:"video_id"`
 	VideoTitle string      `json:"video_title"`
+	UploadDate string      `json:"upload_date"` // Format: YYYYMMDD
 	Matches    []MatchJSON `json:"matches"`
+}
+
+// parseUploadDate parses upload_date from YYYYMMDD format to time.Time
+func parseUploadDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Now(), fmt.Errorf("empty upload_date")
+	}
+	// Parse YYYYMMDD format
+	return time.Parse("20060102", dateStr)
 }
 
 // MatchJSON represents a single match entry in the JSON file
@@ -331,8 +341,13 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 		return fmt.Errorf("failed to query tournament: %w", err)
 	}
 
-	// 4. Get or Insert Video record (use current time as base for timestamps)
-	videoTimestamp := time.Now()
+	// 5. Parse upload_date from JSON
+	uploadDate, err := parseUploadDate(videoJSON.UploadDate)
+	if err != nil {
+		fmt.Printf("Warning: %v, using current time\n", err)
+		uploadDate = time.Now()
+	}
+	fmt.Printf("Upload Date: %s\n", uploadDate.Format("2006-01-02"))
 
 	var videoID int
 	var videoExists bool
@@ -342,10 +357,10 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 	if err == pgx.ErrNoRows {
 		// Video doesn't exist, create it
 		err = tx.QueryRow(ctx, `
-			INSERT INTO videos (youtube_id, title, timestamp)
+			INSERT INTO videos (youtube_id, title, upload_date)
 			VALUES ($1, $2, $3)
 			RETURNING id`,
-			videoJSON.VideoID, videoJSON.VideoTitle, videoTimestamp).Scan(&videoID)
+			videoJSON.VideoID, videoJSON.VideoTitle, uploadDate).Scan(&videoID)
 		if err != nil {
 			return fmt.Errorf("failed to create video: %w", err)
 		}
@@ -353,11 +368,11 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 	} else if err != nil {
 		return fmt.Errorf("failed to query video: %w", err)
 	} else {
-		// Video exists - update title and timestamp, delete old matches
+		// Video exists - update title and upload_date, delete old matches
 		videoExists = true
 		_, err = tx.Exec(ctx, `
-			UPDATE videos SET title=$1, timestamp=$2 WHERE id=$3`,
-			videoJSON.VideoTitle, videoTimestamp, videoID)
+			UPDATE videos SET title=$1, upload_date=$2 WHERE id=$3`,
+			videoJSON.VideoTitle, uploadDate, videoID)
 		if err != nil {
 			return fmt.Errorf("failed to update video: %w", err)
 		}
@@ -388,8 +403,8 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 		teamB := parsePlayerName(matchJSON.Player2)
 		isDoubles := len(teamA) > 1 || len(teamB) > 1
 
-		// Convert timestamp (seconds) to time
-		matchTime := videoTimestamp.Add(time.Duration(matchJSON.Timestamp) * time.Second)
+		// Convert timestamp (seconds) to time based on upload date
+		matchTime := uploadDate.Add(time.Duration(matchJSON.Timestamp) * time.Second)
 
 		// Insert Match
 		var matchID int
