@@ -167,3 +167,21 @@ The model checkpoint saves tokenizer configuration that depends on the specific 
 - **Newer versions** may have breaking changes to tokenizer attributes
 - **Error example:** `RobertaTokenizer has no attribute additional_special_tokens`
 - **Fix:** Pin Docker versions to match training venv
+
+
+## Fine tune the model if image recognition breaks 
+Running with `wtt-youtube-organizer matchfinder` wrapper produces logs in the <system_config_dir>/wtt-youtube-organizer/log
+
+Sometimes model makes mistakes in player names. These mistakes flagged in the logs as
+```
+[OCR_NAME_VARIANCE] at 01:33:00: 'FLAVEN COTON' vs 'FLAVIEN COTON' (edit distance=1)
+```
+
+* Find out youtube video id from logs and extract cropped scoreboard images with
+```
+python3 florence_extractor/match_start_finder.py --youtube_video <video_id> --keep_cropped
+```
+
+* add cropped images to the the `florence_extractor/testdata`
+* add score and player names to `florence_extractor/test_data_sample.csv`
+* re-run model fine tunning by executing `florence_extractor/train_florence2.py`
