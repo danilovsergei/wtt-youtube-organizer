@@ -5,12 +5,14 @@ package matchfinder_cli
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"wtt-youtube-organizer/config"
 	"wtt-youtube-organizer/db/importer"
 	"wtt-youtube-organizer/utils"
 
@@ -19,6 +21,56 @@ import (
 )
 
 const imageName = "wtt-stream-match-finder-openvino"
+
+// logWriter is a multi-writer that writes to both console and log file
+var logWriter io.Writer
+var logFile *os.File
+
+// setupLogging creates a log file and sets up dual logging (console + file)
+func setupLogging() error {
+	logDir := filepath.Join(config.GetProjectConfigDir(), "log")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	logPath := filepath.Join(logDir, fmt.Sprintf("matchfinder-%s.log", timestamp))
+
+	var err error
+	logFile, err = os.Create(logPath)
+	if err != nil {
+		return fmt.Errorf("failed to create log file: %w", err)
+	}
+
+	logWriter = io.MultiWriter(os.Stdout, logFile)
+	fmt.Fprintf(logWriter, "Log file: %s\n\n", logPath)
+	return nil
+}
+
+// closeLogging closes the log file
+func closeLogging() {
+	if logFile != nil {
+		logFile.Close()
+	}
+}
+
+// logPrintf prints to both console and log file
+func logPrintf(format string, a ...interface{}) {
+	if logWriter != nil {
+		fmt.Fprintf(logWriter, format, a...)
+	} else {
+		fmt.Printf(format, a...)
+	}
+}
+
+// logPrintln prints to both console and log file
+func logPrintln(a ...interface{}) {
+	if logWriter != nil {
+		fmt.Fprintln(logWriter, a...)
+	} else {
+		fmt.Println(a...)
+	}
+}
 
 const example = `
 		# Show new streams since last processed (dry run)
@@ -82,6 +134,12 @@ func initCmd(flags *pflag.FlagSet) {
 }
 
 func runMatchFinder(extraArgs []string) error {
+	// Setup dual logging (console + file)
+	if err := setupLogging(); err != nil {
+		fmt.Printf("Warning: could not setup logging: %v\n", err)
+	}
+	defer closeLogging()
+
 	var absOutputJSON string
 	var tempFile bool
 
@@ -95,7 +153,7 @@ func runMatchFinder(extraArgs []string) error {
 		if lastVideoID == "" {
 			return fmt.Errorf("no last_processed video found in database")
 		}
-		fmt.Printf("Last processed video ID: %s\n", lastVideoID)
+		logPrintf("Last processed video ID: %s\n", lastVideoID)
 
 		// Build container args for metadata-only extraction
 		containerArgs := []string{
@@ -129,7 +187,7 @@ func runMatchFinder(extraArgs []string) error {
 		var videoID string
 		if len(extraArgs) > 0 {
 			videoID = extraArgs[0]
-			fmt.Printf("Processing streams after video ID: %s\n", videoID)
+			logPrintf("Processing streams after video ID: %s\n", videoID)
 		} else {
 			// Get last processed video ID from database
 			var err error
@@ -140,7 +198,7 @@ func runMatchFinder(extraArgs []string) error {
 			if videoID == "" {
 				return fmt.Errorf("no last_processed video found in database")
 			}
-			fmt.Printf("Last processed video ID (from database): %s\n", videoID)
+			logPrintf("Last processed video ID (from database): %s\n", videoID)
 		}
 
 		// Auto-generate temp file if not specified
@@ -158,7 +216,7 @@ func runMatchFinder(extraArgs []string) error {
 			timestamp := time.Now().Format("20060102-150405")
 			absOutputJSON = filepath.Join(tmpDir, fmt.Sprintf("matches-%s.json", timestamp))
 			tempFile = true
-			fmt.Printf("Using temp output: %s\n", absOutputJSON)
+			logPrintf("Using temp output: %s\n", absOutputJSON)
 		} else {
 			var err error
 			absOutputJSON, err = filepath.Abs(outputJSON)
@@ -174,20 +232,20 @@ func runMatchFinder(extraArgs []string) error {
 
 		// Run the docker container
 		if err := runDockerContainer(absOutputJSON, containerArgs); err != nil {
-			fmt.Printf("JSON file: %s\n", absOutputJSON)
+			logPrintf("JSON file: %s\n", absOutputJSON)
 			return err
 		}
 
 		// Import results to database
-		fmt.Println("\n=== Importing results to database ===")
+		logPrintln("\n=== Importing results to database ===")
 		if err := importer.ImportMatchesFromJSON(absOutputJSON); err != nil {
-			fmt.Printf("JSON file: %s\n", absOutputJSON)
+			logPrintf("JSON file: %s\n", absOutputJSON)
 			return fmt.Errorf("failed to import matches: %w", err)
 		}
 
 		// Keep temp files for debugging - never delete
 		if tempFile {
-			fmt.Printf("JSON file preserved at: %s\n", absOutputJSON)
+			logPrintf("JSON file preserved at: %s\n", absOutputJSON)
 		}
 
 		return nil
@@ -211,36 +269,44 @@ func runMatchFinder(extraArgs []string) error {
 	return runDockerContainer(absOutputJSON, extraArgs)
 }
 
+// getLogWriter returns logWriter if available, otherwise os.Stdout
+func getLogWriter() io.Writer {
+	if logWriter != nil {
+		return logWriter
+	}
+	return os.Stdout
+}
+
 // runDockerContainerNoOutput runs the container without any output file (stdout only)
 func runDockerContainerNoOutput(containerArgs []string) error {
 	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", "docker")
 
 	if !dockerImageExists(imageName) {
-		fmt.Printf("Image '%s' not found. Building...\n", imageName)
+		logPrintf("Image '%s' not found. Building...\n", imageName)
 		if err := dockerComposeBuild(scriptDir); err != nil {
 			return fmt.Errorf("failed to build image: %w", err)
 		}
-		fmt.Println()
+		logPrintln()
 	}
 
 	videoGID := getGroupID("video", 44)
 	renderGID := getGroupID("render", 0)
 
-	fmt.Println("Detected GPU groups:")
-	fmt.Printf("  video GID: %d\n", videoGID)
+	logPrintln("Detected GPU groups:")
+	logPrintf("  video GID: %d\n", videoGID)
 	if renderGID > 0 {
-		fmt.Printf("  render GID: %d\n", renderGID)
+		logPrintf("  render GID: %d\n", renderGID)
 	} else {
-		fmt.Println("  render GID: not found")
+		logPrintln("  render GID: not found")
 	}
 
-	fmt.Println("Intel GPU: Using container's built-in drivers\n")
+	logPrintln("Intel GPU: Using container's built-in drivers\n")
 
 	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs)
 
 	cmd := exec.Command("docker", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = getLogWriter()
+	cmd.Stderr = getLogWriter()
 	cmd.Stdin = os.Stdin
 
 	if err := cmd.Run(); err != nil {
@@ -257,39 +323,39 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", "docker")
 
 	if !dockerImageExists(imageName) {
-		fmt.Printf("Image '%s' not found. Building...\n", imageName)
+		logPrintf("Image '%s' not found. Building...\n", imageName)
 		if err := dockerComposeBuild(scriptDir); err != nil {
 			return fmt.Errorf("failed to build image: %w", err)
 		}
-		fmt.Println()
+		logPrintln()
 	}
 
 	videoGID := getGroupID("video", 44)
 	renderGID := getGroupID("render", 0)
 
-	fmt.Println("Detected GPU groups:")
-	fmt.Printf("  video GID: %d\n", videoGID)
+	logPrintln("Detected GPU groups:")
+	logPrintf("  video GID: %d\n", videoGID)
 	if renderGID > 0 {
-		fmt.Printf("  render GID: %d\n", renderGID)
+		logPrintf("  render GID: %d\n", renderGID)
 	} else {
-		fmt.Println("  render GID: not found")
+		logPrintln("  render GID: not found")
 	}
 
-	fmt.Println("Intel GPU: Using container's built-in drivers")
+	logPrintln("Intel GPU: Using container's built-in drivers")
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	fmt.Printf("Output directory: %s\n", outputDir)
-	fmt.Printf("Output file: %s\n\n", outputFilename)
+	logPrintf("Output directory: %s\n", outputDir)
+	logPrintf("Output file: %s\n\n", outputFilename)
 
 	fullContainerArgs := append(containerArgs, "--output_json_file", "/output/"+outputFilename)
 	args := buildDockerRunArgs(imageName, outputDir, videoGID, renderGID, fullContainerArgs)
 
 	cmd := exec.Command("docker", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = getLogWriter()
+	cmd.Stderr = getLogWriter()
 	cmd.Stdin = os.Stdin
 
 	if err := cmd.Run(); err != nil {
@@ -297,7 +363,7 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	}
 
 	if _, err := os.Stat(absOutputJSON); err == nil {
-		fmt.Printf("\nMatches details saved to: %s\n", absOutputJSON)
+		logPrintf("\nMatches details saved to: %s\n", absOutputJSON)
 	}
 
 	return nil
