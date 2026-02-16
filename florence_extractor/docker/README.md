@@ -25,20 +25,18 @@ cd florence_extractor/docker
 
 ## Usage
 
-### Recommended: Use wtt-stream-match-finder.sh wrapper
+### Recommended: Use matchfinder_cli wrapper
 
 Automatically detects GPU groups and builds/runs the `wtt-stream-match-finder-openvino` image:
 
 ```bash
-OUTPUT_DIR=/tmp ./wtt-stream-match-finder.sh \
-    --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w" \
-    --output_json_file /output/results.json
+wtt-youtube-organizer matchfinder --output_json=/tmp/matches.json -- --process_all_matches_after 11ZDP_A0Ado
 ```
 
 ## Output
 
-Results are saved to the mounted `/output` directory:
-- `results.json` - JSON array with match timestamps and player names
+Results are saved to the provided  `/tmp/matches.json` file:
+- `/tmp/matches.json` - JSON array with match timestamps and player names
 
 ### JSON Format
 

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/folder"
+	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/matchfinder_cli"
 	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/play"
 	"wtt-youtube-organizer/cmd/wtt-youtube-organizer/show"
 	"wtt-youtube-organizer/utils"
@@ -27,6 +28,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(show.NewCommand(&filters))
 	cmd.AddCommand(folder.NewCommand(&filters))
 	cmd.AddCommand(play.NewCommand(&filters))
+	cmd.AddCommand(matchfinder_cli.NewCommand())
 	return cmd
 }
 

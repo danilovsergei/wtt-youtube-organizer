@@ -98,40 +98,6 @@ func main() {
 	printMatches(client)
 }
 
-func addOneMatch() {
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close(context.Background())
-
-	// Example Usage: Singles Match
-	err = AddMatch(context.Background(), conn, "europe smash", 2026,
-		time.Now().Add(2*time.Hour),                           // Match time
-		[]string{"Lin Yun Ju"},                                // Team A
-		[]string{"Tomokazu Harimoto"},                         // Team B
-		"dQw4w9WgXcQ",                                         // Fake youtube_id
-		"Lin Yun Ju vs Tomokazu Harimoto | Europe Smash 2026", // Fake video_title
-	)
-	if err != nil {
-		log.Fatal("Failed to add singles match:", err)
-	}
-
-	// Example Usage: Doubles Match
-	err = AddMatch(context.Background(), conn, "europe smash", 2026,
-		time.Now().Add(3*time.Hour),
-		[]string{"Zhang", "Bo"},           // Team A (Doubles pair)
-		[]string{"Samsonov", "Schetinin"}, // Team B (Doubles pair)
-		"xyzABC12345",                     // Fake youtube_id
-		"Zhang/Bo vs Samsonov/Schetinin | Europe Smash 2026 Doubles", // Fake video_title
-	)
-	if err != nil {
-		log.Fatal("Failed to add doubles match:", err)
-	}
-
-	fmt.Println("Matches added successfully!")
-}
-
 func printMatches(client *supabase.Client) {
 	// Fetch from the View
 	var schedule []MatchRecord
@@ -292,9 +258,10 @@ func parsePlayerName(name string) []string {
 	return []string{strings.TrimSpace(name)}
 }
 
-// AddVideo reads a JSON file and adds all matches from the video to the database.
-// It creates a single video record and links all matches to it.
+// AddVideo reads a JSON file and adds all matches from the video(s) to the database.
+// The JSON can be either a single VideoJSON object or an array of VideoJSON objects.
 // Tournament name and year are extracted from the video_title field.
+// The last video in the array gets last_processed=true, clearing it from other videos.
 func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 	// 1. Read and parse JSON file
 	data, err := os.ReadFile(jsonFilePath)
@@ -302,172 +269,210 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 		return fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
-	var videoJSON VideoJSON
-	if err := json.Unmarshal(data, &videoJSON); err != nil {
-		return fmt.Errorf("failed to parse JSON: %w", err)
+	// Try to parse as array first, then as single object
+	var videos []VideoJSON
+	if err := json.Unmarshal(data, &videos); err != nil {
+		// Try as single object
+		var singleVideo VideoJSON
+		if err := json.Unmarshal(data, &singleVideo); err != nil {
+			return fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		videos = []VideoJSON{singleVideo}
 	}
 
-	fmt.Printf("Processing video: %s\n", videoJSON.VideoTitle)
-	fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
-	fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
-
-	// 2. Parse tournament name and year from video title
-	tournamentName, tournamentYear, err := parseTournamentFromTitle(videoJSON.VideoTitle)
-	if err != nil {
-		return fmt.Errorf("failed to parse tournament from title: %w", err)
+	if len(videos) == 0 {
+		return fmt.Errorf("no videos found in JSON file")
 	}
-	fmt.Printf("Tournament: %s (%d)\n", tournamentName, tournamentYear)
 
-	// 3. Start a Transaction
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	fmt.Printf("Found %d video(s) in JSON file\n", len(videos))
 
-	// 4. Get or Create Tournament
-	var tournamentID int
-	err = tx.QueryRow(ctx, "SELECT id FROM tournaments WHERE name=$1 AND year=$2",
-		tournamentName, tournamentYear).Scan(&tournamentID)
-	if err == pgx.ErrNoRows {
-		// Tournament doesn't exist, create it
-		err = tx.QueryRow(ctx, "INSERT INTO tournaments (name, year) VALUES ($1, $2) RETURNING id",
+	// Process each video
+	for videoIdx, videoJSON := range videos {
+		isLastVideo := videoIdx == len(videos)-1
+
+		fmt.Printf("\n[%d/%d] Processing video: %s\n", videoIdx+1, len(videos), videoJSON.VideoTitle)
+		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
+		fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
+
+		// 2. Parse tournament name and year from video title
+		tournamentName, tournamentYear, err := parseTournamentFromTitle(videoJSON.VideoTitle)
+		if err != nil {
+			return fmt.Errorf("failed to parse tournament from title: %w", err)
+		}
+		fmt.Printf("Tournament: %s (%d)\n", tournamentName, tournamentYear)
+
+		// 3. Start a Transaction
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		// 4. Get or Create Tournament
+		var tournamentID int
+		err = tx.QueryRow(ctx, "SELECT id FROM tournaments WHERE name=$1 AND year=$2",
 			tournamentName, tournamentYear).Scan(&tournamentID)
-		if err != nil {
-			return fmt.Errorf("failed to create tournament '%s' %d: %w", tournamentName, tournamentYear, err)
-		}
-		fmt.Printf("Created new tournament: %s (%d)\n", tournamentName, tournamentYear)
-	} else if err != nil {
-		return fmt.Errorf("failed to query tournament: %w", err)
-	}
-
-	// 5. Parse upload_date from JSON
-	uploadDate, err := parseUploadDate(videoJSON.UploadDate)
-	if err != nil {
-		fmt.Printf("Warning: %v, using current time\n", err)
-		uploadDate = time.Now()
-	}
-	fmt.Printf("Upload Date: %s\n", uploadDate.Format("2006-01-02"))
-
-	var videoID int
-	var videoExists bool
-
-	// Check if video already exists
-	err = tx.QueryRow(ctx, "SELECT id FROM videos WHERE youtube_id=$1", videoJSON.VideoID).Scan(&videoID)
-	if err == pgx.ErrNoRows {
-		// Video doesn't exist, create it
-		err = tx.QueryRow(ctx, `
-			INSERT INTO videos (youtube_id, title, upload_date)
-			VALUES ($1, $2, $3)
-			RETURNING id`,
-			videoJSON.VideoID, videoJSON.VideoTitle, uploadDate).Scan(&videoID)
-		if err != nil {
-			return fmt.Errorf("failed to create video: %w", err)
-		}
-		fmt.Printf("Created video record with ID: %d\n", videoID)
-	} else if err != nil {
-		return fmt.Errorf("failed to query video: %w", err)
-	} else {
-		// Video exists - update title and upload_date, delete old matches
-		videoExists = true
-		_, err = tx.Exec(ctx, `
-			UPDATE videos SET title=$1, upload_date=$2 WHERE id=$3`,
-			videoJSON.VideoTitle, uploadDate, videoID)
-		if err != nil {
-			return fmt.Errorf("failed to update video: %w", err)
-		}
-		fmt.Printf("Video already exists (ID: %d), updating matches...\n", videoID)
-
-		// Delete existing match participants for this video's matches
-		_, err = tx.Exec(ctx, `
-			DELETE FROM match_participants 
-			WHERE match_id IN (SELECT id FROM matches WHERE video_id=$1)`, videoID)
-		if err != nil {
-			return fmt.Errorf("failed to delete old match participants: %w", err)
-		}
-
-		// Delete existing matches for this video
-		result, err := tx.Exec(ctx, "DELETE FROM matches WHERE video_id=$1", videoID)
-		if err != nil {
-			return fmt.Errorf("failed to delete old matches: %w", err)
-		}
-		deletedCount := result.RowsAffected()
-		fmt.Printf("Deleted %d existing matches\n", deletedCount)
-	}
-
-	_ = videoExists // suppress unused variable warning
-
-	// 5. Process each match
-	for i, matchJSON := range videoJSON.Matches {
-		teamA := parsePlayerName(matchJSON.Player1)
-		teamB := parsePlayerName(matchJSON.Player2)
-		isDoubles := len(teamA) > 1 || len(teamB) > 1
-
-		// Convert timestamp (seconds) to time based on upload date
-		matchTime := uploadDate.Add(time.Duration(matchJSON.Timestamp) * time.Second)
-
-		// Insert Match
-		var matchID int
-		err = tx.QueryRow(ctx, `
-			INSERT INTO matches (tournament_id, match_timestamp, is_doubles, video_id)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id`,
-			tournamentID, matchTime, isDoubles, videoID).Scan(&matchID)
-		if err != nil {
-			return fmt.Errorf("failed to create match %d: %w", i+1, err)
-		}
-
-		// Add players for team A
-		for _, name := range teamA {
-			var playerID int
-			err := tx.QueryRow(ctx, "SELECT id FROM players WHERE name=$1", name).Scan(&playerID)
-			if err == pgx.ErrNoRows {
-				err = tx.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", name).Scan(&playerID)
-			}
+		if err == pgx.ErrNoRows {
+			// Tournament doesn't exist, create it
+			err = tx.QueryRow(ctx, "INSERT INTO tournaments (name, year) VALUES ($1, $2) RETURNING id",
+				tournamentName, tournamentYear).Scan(&tournamentID)
 			if err != nil {
-				return fmt.Errorf("failed to handle player %s: %w", name, err)
+				return fmt.Errorf("failed to create tournament '%s' %d: %w", tournamentName, tournamentYear, err)
 			}
+			fmt.Printf("Created new tournament: %s (%d)\n", tournamentName, tournamentYear)
+		} else if err != nil {
+			return fmt.Errorf("failed to query tournament: %w", err)
+		}
+
+		// 5. Parse upload_date from JSON
+		uploadDate, err := parseUploadDate(videoJSON.UploadDate)
+		if err != nil {
+			fmt.Printf("Warning: %v, using current time\n", err)
+			uploadDate = time.Now()
+		}
+		fmt.Printf("Upload Date: %s\n", uploadDate.Format("2006-01-02"))
+
+		var videoID int
+		var videoExists bool
+
+		// Check if video already exists
+		err = tx.QueryRow(ctx, "SELECT id FROM videos WHERE youtube_id=$1", videoJSON.VideoID).Scan(&videoID)
+		if err == pgx.ErrNoRows {
+			// Video doesn't exist, create it
+			err = tx.QueryRow(ctx, `
+				INSERT INTO videos (youtube_id, title, upload_date)
+				VALUES ($1, $2, $3)
+				RETURNING id`,
+				videoJSON.VideoID, videoJSON.VideoTitle, uploadDate).Scan(&videoID)
+			if err != nil {
+				return fmt.Errorf("failed to create video: %w", err)
+			}
+			fmt.Printf("Created video record with ID: %d\n", videoID)
+		} else if err != nil {
+			return fmt.Errorf("failed to query video: %w", err)
+		} else {
+			// Video exists - update title and upload_date, delete old matches
+			videoExists = true
 			_, err = tx.Exec(ctx, `
-				INSERT INTO match_participants (match_id, player_id, side)
-				VALUES ($1, $2, $3)`,
-				matchID, playerID, "A")
+				UPDATE videos SET title=$1, upload_date=$2 WHERE id=$3`,
+				videoJSON.VideoTitle, uploadDate, videoID)
 			if err != nil {
-				return fmt.Errorf("failed to link player %s: %w", name, err)
+				return fmt.Errorf("failed to update video: %w", err)
 			}
-		}
+			fmt.Printf("Video already exists (ID: %d), updating matches...\n", videoID)
 
-		// Add players for team B
-		for _, name := range teamB {
-			var playerID int
-			err := tx.QueryRow(ctx, "SELECT id FROM players WHERE name=$1", name).Scan(&playerID)
-			if err == pgx.ErrNoRows {
-				err = tx.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", name).Scan(&playerID)
-			}
-			if err != nil {
-				return fmt.Errorf("failed to handle player %s: %w", name, err)
-			}
+			// Delete existing match participants for this video's matches
 			_, err = tx.Exec(ctx, `
-				INSERT INTO match_participants (match_id, player_id, side)
-				VALUES ($1, $2, $3)`,
-				matchID, playerID, "B")
+				DELETE FROM match_participants 
+				WHERE match_id IN (SELECT id FROM matches WHERE video_id=$1)`, videoID)
 			if err != nil {
-				return fmt.Errorf("failed to link player %s: %w", name, err)
+				return fmt.Errorf("failed to delete old match participants: %w", err)
 			}
+
+			// Delete existing matches for this video
+			result, err := tx.Exec(ctx, "DELETE FROM matches WHERE video_id=$1", videoID)
+			if err != nil {
+				return fmt.Errorf("failed to delete old matches: %w", err)
+			}
+			deletedCount := result.RowsAffected()
+			fmt.Printf("Deleted %d existing matches\n", deletedCount)
 		}
 
-		matchType := "Singles"
-		if isDoubles {
-			matchType = "Doubles"
+		_ = videoExists // suppress unused variable warning
+
+		// 6. Process each match
+		for i, matchJSON := range videoJSON.Matches {
+			teamA := parsePlayerName(matchJSON.Player1)
+			teamB := parsePlayerName(matchJSON.Player2)
+			isDoubles := len(teamA) > 1 || len(teamB) > 1
+
+			// Convert timestamp (seconds) to time based on upload date
+			matchTime := uploadDate.Add(time.Duration(matchJSON.Timestamp) * time.Second)
+
+			// Insert Match
+			var matchID int
+			err = tx.QueryRow(ctx, `
+				INSERT INTO matches (tournament_id, match_timestamp, is_doubles, video_id)
+				VALUES ($1, $2, $3, $4)
+				RETURNING id`,
+				tournamentID, matchTime, isDoubles, videoID).Scan(&matchID)
+			if err != nil {
+				return fmt.Errorf("failed to create match %d: %w", i+1, err)
+			}
+
+			// Add players for team A
+			for _, name := range teamA {
+				var playerID int
+				err := tx.QueryRow(ctx, "SELECT id FROM players WHERE name=$1", name).Scan(&playerID)
+				if err == pgx.ErrNoRows {
+					err = tx.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", name).Scan(&playerID)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to handle player %s: %w", name, err)
+				}
+				_, err = tx.Exec(ctx, `
+					INSERT INTO match_participants (match_id, player_id, side)
+					VALUES ($1, $2, $3)`,
+					matchID, playerID, "A")
+				if err != nil {
+					return fmt.Errorf("failed to link player %s: %w", name, err)
+				}
+			}
+
+			// Add players for team B
+			for _, name := range teamB {
+				var playerID int
+				err := tx.QueryRow(ctx, "SELECT id FROM players WHERE name=$1", name).Scan(&playerID)
+				if err == pgx.ErrNoRows {
+					err = tx.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", name).Scan(&playerID)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to handle player %s: %w", name, err)
+				}
+				_, err = tx.Exec(ctx, `
+					INSERT INTO match_participants (match_id, player_id, side)
+					VALUES ($1, $2, $3)`,
+					matchID, playerID, "B")
+				if err != nil {
+					return fmt.Errorf("failed to link player %s: %w", name, err)
+				}
+			}
+
+			matchType := "Singles"
+			if isDoubles {
+				matchType = "Doubles"
+			}
+			fmt.Printf("  Match %d: %s vs %s (%s) at %ds\n",
+				i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
 		}
-		fmt.Printf("  Match %d: %s vs %s (%s) at %ds\n",
-			i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
+
+		// 7. Handle last_processed flag (only for the last video in the array)
+		if isLastVideo {
+			// Clear last_processed from all other videos
+			_, err = tx.Exec(ctx, `
+				UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
+			if err != nil {
+				return fmt.Errorf("failed to clear last_processed flags: %w", err)
+			}
+
+			// Set last_processed for this video
+			_, err = tx.Exec(ctx, `
+				UPDATE videos SET last_processed = true WHERE id = $1`, videoID)
+			if err != nil {
+				return fmt.Errorf("failed to set last_processed: %w", err)
+			}
+			fmt.Printf("Set last_processed=true for video ID: %d\n", videoID)
+		}
+
+		// 8. Commit the Transaction
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit: %w", err)
+		}
+
+		fmt.Printf("Successfully added %d matches from video\n", len(videoJSON.Matches))
 	}
 
-	// 6. Commit the Transaction
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit: %w", err)
-	}
-
-	fmt.Printf("Successfully added %d matches from video\n", len(videoJSON.Matches))
+	fmt.Printf("\n=== Summary ===\n")
+	fmt.Printf("Processed %d video(s) from JSON file\n", len(videos))
 	return nil
 }
