@@ -755,17 +755,55 @@ def extract_video_id(youtube_url: str) -> str:
     return video_id
 
 
+def validate_video_exists(video_id: str) -> bool:
+    """
+    Check if a YouTube video exists by fetching its info.
+
+    Args:
+        video_id: YouTube video ID to validate
+
+    Returns:
+        True if the video exists, False otherwise
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
+        return False
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+        'remote_components': ['ejs:github'],
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info is not None
+    except Exception:
+        return False
+
+
 def get_videos_after(after_video_id: str,
-                     max_videos: int = 100) -> List[dict]:
+                     batch_size: int = 200,
+                     max_batches: int = 5) -> List[dict]:
     """
     Get all completed streams newer than the specified video_id.
+    Fetches playlist in batches, loading older videos if the
+    cutoff video_id is not found in the current batch.
 
     Args:
         after_video_id: Video ID to use as cutoff (exclusive)
-        max_videos: Maximum number of videos to fetch from playlist
+        batch_size: Number of videos per batch (default 100)
+        max_batches: Maximum number of batches to fetch
+                     (default 5 = up to 500 videos)
 
     Returns:
-        List of video info dicts for videos newer than after_video_id
+        List of video info dicts for videos newer than
+        after_video_id
     """
     try:
         import yt_dlp
@@ -774,60 +812,98 @@ def get_videos_after(after_video_id: str,
         print("Error: yt-dlp not installed. Run: pip install yt-dlp")
         return []
 
+    # Validate video exists first
+    print(f"Validating video ID: {after_video_id}...")
+    if not validate_video_exists(after_video_id):
+        print(f"Error: Video '{after_video_id}' does not exist "
+              f"or is not accessible.")
+        return []
+
     playlist_url = "https://www.youtube.com/@WTTGlobal/streams"
 
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': 'in_playlist',
-        'playlistend': max_videos,
-        'extractor_args': {'youtubetab': {'approximate_date': ['']}},
-        'remote_components': ['ejs:github'],
-    }
+    for batch_num in range(1, max_batches + 1):
+        total_videos = batch_size * batch_num
+        print(f"Fetching playlist (up to {total_videos} videos, "
+              f"batch {batch_num}/{max_batches})...")
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(playlist_url, download=False)
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': 'in_playlist',
+            'playlistend': total_videos,
+            'extractor_args': {
+                'youtubetab': {'approximate_date': ['']}
+            },
+            'remote_components': ['ejs:github'],
+        }
 
-            if not info or 'entries' not in info:
-                print("Error: Could not fetch playlist entries")
-                return []
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(
+                    playlist_url, download=False)
 
-            entries = list(info['entries'])
-            if not entries:
-                return []
+                if not info or 'entries' not in info:
+                    print("Error: Could not fetch playlist "
+                          "entries")
+                    return []
 
-            # Filter only completed live streams (was_live)
-            # and collect videos until we hit the after_video_id
-            newer_videos = []
-            for entry in entries:
-                if not entry:
-                    continue
+                entries = list(info['entries'])
+                if not entries:
+                    return []
 
-                video_id = entry.get('id')
+                # Filter completed live streams and collect
+                # videos until we hit the after_video_id
+                newer_videos = []
+                found_cutoff = False
 
-                # Stop when we reach the cutoff video
-                if video_id == after_video_id:
-                    break
+                for entry in entries:
+                    if not entry:
+                        continue
 
-                # Only include completed streams
-                if entry.get('live_status') == 'was_live':
-                    # Add upload_date from timestamp if not present
-                    if not entry.get('upload_date'):
-                        timestamp = entry.get('timestamp')
-                        if timestamp:
-                            try:
-                                entry['upload_date'] = dt.fromtimestamp(
-                                    timestamp).strftime('%Y%m%d')
-                            except (ValueError, OSError):
-                                pass
-                    newer_videos.append(entry)
+                    video_id = entry.get('id')
 
-            return newer_videos
+                    # Stop when we reach the cutoff video
+                    if video_id == after_video_id:
+                        found_cutoff = True
+                        break
 
-    except Exception as e:
-        print(f"Error fetching streams: {e}")
-        return []
+                    # Only include completed streams
+                    if entry.get('live_status') == 'was_live':
+                        if not entry.get('upload_date'):
+                            timestamp = entry.get('timestamp')
+                            if timestamp:
+                                try:
+                                    entry['upload_date'] = (
+                                        dt.fromtimestamp(
+                                            timestamp
+                                        ).strftime('%Y%m%d'))
+                                except (ValueError, OSError):
+                                    pass
+                        newer_videos.append(entry)
+
+                if found_cutoff:
+                    return newer_videos
+
+                # Video not found in this batch
+                if len(entries) < total_videos:
+                    # Reached end of playlist, video not found
+                    print(f"Video '{after_video_id}' not found "
+                          f"in playlist ({len(entries)} videos "
+                          f"checked)")
+                    return []
+
+                # Try next batch
+                print(f"Video not found in first "
+                      f"{total_videos} entries, "
+                      f"fetching more...")
+
+        except Exception as e:
+            print(f"Error fetching streams: {e}")
+            return []
+
+    print(f"Video '{after_video_id}' not found after "
+          f"checking {batch_size * max_batches} videos")
+    return []
 
 
 def list_recent_streams(num_videos: int) -> None:

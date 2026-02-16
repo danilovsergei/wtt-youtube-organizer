@@ -152,8 +152,9 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 
 	fmt.Printf("Found %d video(s) in JSON file\n", len(videos))
 
+	// First video in the array is the newest (top of yt-dlp playlist order)
 	for videoIdx, videoJSON := range videos {
-		isLastVideo := videoIdx == len(videos)-1
+		isNewestVideo := videoIdx == 0
 
 		fmt.Printf("\n[%d/%d] Processing video: %s\n", videoIdx+1, len(videos), videoJSON.VideoTitle)
 		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
@@ -286,7 +287,7 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
 		}
 
-		if isLastVideo {
+		if isNewestVideo {
 			_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
 			if err != nil {
 				return fmt.Errorf("failed to clear last_processed flags: %w", err)

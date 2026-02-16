@@ -145,15 +145,22 @@ func runMatchFinder(extraArgs []string) error {
 
 	// Handle --show_new_streams mode
 	if showNewStreams {
-		// Get last processed video ID from database
-		lastVideoID, err := importer.GetLastProcessedVideoID()
-		if err != nil {
-			return fmt.Errorf("failed to get last processed video: %w", err)
+		// Get video ID from args or database
+		var lastVideoID string
+		if len(extraArgs) > 0 {
+			lastVideoID = extraArgs[0]
+			logPrintf("Using provided video ID: %s\n", lastVideoID)
+		} else {
+			var err error
+			lastVideoID, err = importer.GetLastProcessedVideoID()
+			if err != nil {
+				return fmt.Errorf("failed to get last processed video: %w", err)
+			}
+			if lastVideoID == "" {
+				return fmt.Errorf("no last_processed video found in database")
+			}
+			logPrintf("Last processed video ID (from database): %s\n", lastVideoID)
 		}
-		if lastVideoID == "" {
-			return fmt.Errorf("no last_processed video found in database")
-		}
-		logPrintf("Last processed video ID: %s\n", lastVideoID)
 
 		// Build container args for metadata-only extraction
 		containerArgs := []string{
@@ -163,6 +170,7 @@ func runMatchFinder(extraArgs []string) error {
 
 		// Only pass output file if --output_json is explicitly provided
 		if outputJSON != "" {
+			var err error
 			absOutputJSON, err = filepath.Abs(outputJSON)
 			if err != nil {
 				return fmt.Errorf("invalid output path: %w", err)
