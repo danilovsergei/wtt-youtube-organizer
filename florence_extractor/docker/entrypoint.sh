@@ -14,6 +14,11 @@ fi
 echo "Updating yt-dlp to the latest version..."
 pip install --no-cache-dir -U yt-dlp
 
+# Pre-download yt-dlp remote components for JS challenge solving (Deno)
+echo "Downloading yt-dlp remote components..."
+yt-dlp --remote-components ejs:github --version 2>&1 || echo "Warning: Failed to pre-download remote components"
+echo "Deno version: $(deno --version 2>&1 | head -1)"
+
 # Debug: Check OpenVINO availability and GPU libraries
 echo ""
 echo "=== OpenVINO Debug ==="

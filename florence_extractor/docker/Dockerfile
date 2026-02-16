@@ -39,6 +39,10 @@ RUN curl -fsSL https://deno.land/install.sh | sh
 ENV DENO_INSTALL="/root/.deno"
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 
+# Configure yt-dlp to use Deno remote components for JS challenge solving
+RUN mkdir -p /root/.config/yt-dlp && \
+    echo "--remote-components ejs:github" > /root/.config/yt-dlp/config
+
 # Create app directory
 WORKDIR /app
 

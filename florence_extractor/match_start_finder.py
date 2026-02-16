@@ -782,6 +782,7 @@ def get_videos_after(after_video_id: str,
         'extract_flat': 'in_playlist',
         'playlistend': max_videos,
         'extractor_args': {'youtubetab': {'approximate_date': ['']}},
+        'remote_components': ['ejs:github'],
     }
 
     try:
@@ -854,6 +855,7 @@ def list_recent_streams(num_videos: int) -> None:
         'extract_flat': 'in_playlist',
         'playlistend': num_videos,
         'extractor_args': {'youtubetab': {'approximate_date': ['']}},
+        'remote_components': ['ejs:github'],
     }
 
     print(f"Fetching {num_videos} recent streams from WTT Global...")
@@ -938,6 +940,7 @@ def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
         'no_warnings': True,
         'skip_download': True,
         'extractor_args': {'youtubetab': ['approximate_date']},
+        'remote_components': ['ejs:github'],
     }
 
     try:
@@ -978,6 +981,7 @@ def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
         'outtmpl': video_path,
         'quiet': False,
         'no_warnings': False,
+        'remote_components': ['ejs:github'],
     }
 
     print(f"Downloading YouTube video at 480p (video only)...")
