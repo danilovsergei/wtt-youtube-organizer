@@ -49,6 +49,41 @@ sys.modules["flash_attn"] = mock_flash_attn
 BOTTOM_PERCENT = 0.14  # Fraction of height to crop from the bottom
 LEFT_PERCENT = 0.40    # Fraction of width to crop from the left
 
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """Calculate Levenshtein (edit) distance between two strings."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            # j+1 instead of j since previous_row and current_row are 1 longer
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+
+    return previous_row[-1]
+
+
+def check_ocr_name_variance(prev_name: str, curr_name: str,
+                            timestamp: str) -> None:
+    """
+    Check if two player names differ by only 1 character (OCR mistake).
+    Prints a greppable warning: [OCR_NAME_VARIANCE]
+    """
+    distance = levenshtein_distance(prev_name.upper(), curr_name.upper())
+    if distance == 1:
+        print(f"[OCR_NAME_VARIANCE] at {timestamp}: "
+              f"'{prev_name}' vs '{curr_name}' (edit distance=1)")
+
+
 # Search strategy parameters
 COARSE_INTERVAL_SECONDS = 180  # 3 minutes between coarse samples
 BINARY_SEARCH_PRECISION = 10   # Stop binary search when interval < 10 seconds
@@ -542,6 +577,15 @@ class MatchStartFinder:
             if result.success:
                 print(f"Score: {result.player1} {result.set1}:{result.set2} {result.player2}, "
                       f"Game: {result.game1}:{result.game2}")
+
+                # Check for OCR name variance with previous sample
+                if coarse_samples:
+                    prev_ts, prev_result, _ = coarse_samples[-1]
+                    if prev_result.success:
+                        check_ocr_name_variance(prev_result.player1, result.player1,
+                                                format_timestamp(actual_ts))
+                        check_ocr_name_variance(prev_result.player2, result.player2,
+                                                format_timestamp(actual_ts))
 
                 # Check if this is already a match start
                 if result.is_match_start():
