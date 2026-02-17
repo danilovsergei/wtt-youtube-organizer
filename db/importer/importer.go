@@ -375,7 +375,7 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				if err != nil {
 					return fmt.Errorf("failed to handle player %s: %w", name, err)
 				}
-				_, err = tx.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, $3)`,
+				_, err = tx.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
 					matchID, playerID, "A")
 				if err != nil {
 					return fmt.Errorf("failed to link player %s: %w", name, err)
@@ -391,7 +391,7 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				if err != nil {
 					return fmt.Errorf("failed to handle player %s: %w", name, err)
 				}
-				_, err = tx.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, $3)`,
+				_, err = tx.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
 					matchID, playerID, "B")
 				if err != nil {
 					return fmt.Errorf("failed to link player %s: %w", name, err)
