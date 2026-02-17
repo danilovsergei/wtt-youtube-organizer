@@ -789,7 +789,7 @@ def validate_video_exists(video_id: str) -> bool:
 
 def get_videos_after(after_video_id: str,
                      batch_size: int = 200,
-                     max_batches: int = 5) -> List[dict]:
+                     max_batches: int = 10) -> List[dict]:
     """
     Get all completed streams newer than the specified video_id.
     Fetches playlist in batches, loading older videos if the
@@ -1152,18 +1152,7 @@ def main():
                   "completed streams)")
             sys.exit(0)
 
-        print(f"\nFound {len(videos)} videos to process:\n")
-        print(f"{'UPLOAD_DATE':<12} {'VIDEO_ID':<15} TITLE")
-        print("-" * 100)
-
-        for video in videos:
-            vid = video.get('id', 'N/A')
-            title = video.get('title', 'N/A')
-            upload_date = video.get('upload_date', 'N/A')
-            if upload_date and len(upload_date) == 8:
-                upload_date = (f"{upload_date[:4]}-"
-                               f"{upload_date[4:6]}-{upload_date[6:]}")
-            print(f"{upload_date:<12} {vid:<15} {title}")
+        print(f"\nFound {len(videos)} videos to process")
 
         # If --only_extract_video_metadata, write JSON with metadata and exit
         if args.only_extract_video_metadata:

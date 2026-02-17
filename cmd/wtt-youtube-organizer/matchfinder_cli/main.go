@@ -93,9 +93,11 @@ const example = `
 `
 
 var (
-	outputJSON        string
-	processNewStreams bool
-	showNewStreams    bool
+	outputJSON       string
+	addNewStreams    bool
+	processQueueName string
+	showNewStreams   bool
+	excludeProcessed bool
 )
 
 func NewCommand() *cobra.Command {
@@ -129,8 +131,10 @@ For custom usage, use --output_json with -- separator for container flags.`,
 
 func initCmd(flags *pflag.FlagSet) {
 	flags.StringVar(&outputJSON, "output_json", "", "Output JSON file path (optional with --show_new_streams)")
-	flags.BoolVar(&processNewStreams, "process_new_streams", false, "Process all new streams and import to database (optionally specify VIDEO_ID as arg)")
+	flags.BoolVar(&addNewStreams, "add_new_streams", false, "Fetch new streams and add to processing queue (optionally specify VIDEO_ID as arg)")
+	flags.StringVar(&processQueueName, "process", "", "Process videos from the specified queue file (e.g., latest_streams)")
 	flags.BoolVar(&showNewStreams, "show_new_streams", false, "Show new streams since last processed video (uses last_processed from database)")
+	flags.BoolVar(&excludeProcessed, "exclude_processed", false, "When used with --show_new_streams, only show videos not yet processed")
 }
 
 func runMatchFinder(extraArgs []string) error {
@@ -141,7 +145,6 @@ func runMatchFinder(extraArgs []string) error {
 	defer closeLogging()
 
 	var absOutputJSON string
-	var tempFile bool
 
 	// Handle --show_new_streams mode
 	if showNewStreams {
@@ -162,106 +165,185 @@ func runMatchFinder(extraArgs []string) error {
 			logPrintf("Last processed video ID (from database): %s\n", lastVideoID)
 		}
 
+		// Always use a temp output file to capture metadata JSON
+		tmpDir, err := os.MkdirTemp("", "matchfinder-")
+		if err != nil {
+			return fmt.Errorf("failed to create temp directory: %w", err)
+		}
+		if err := os.Chmod(tmpDir, 0777); err != nil {
+			return fmt.Errorf("failed to set temp directory permissions: %w", err)
+		}
+		timestamp := time.Now().Format("20060102-150405")
+		metadataJSON := filepath.Join(tmpDir, fmt.Sprintf("metadata-%s.json", timestamp))
+
 		// Build container args for metadata-only extraction
 		containerArgs := []string{
 			"--only_extract_video_metadata",
 			"--process_all_matches_after", lastVideoID,
 		}
 
-		// Only pass output file if --output_json is explicitly provided
+		// Run docker to get metadata JSON
+		if err := runDockerContainer(metadataJSON, containerArgs); err != nil {
+			return err
+		}
+
+		// Also save to user-specified path if provided
 		if outputJSON != "" {
-			var err error
-			absOutputJSON, err = filepath.Abs(outputJSON)
-			if err != nil {
-				return fmt.Errorf("invalid output path: %w", err)
+			absOut, err := filepath.Abs(outputJSON)
+			if err == nil {
+				data, readErr := os.ReadFile(metadataJSON)
+				if readErr == nil {
+					os.WriteFile(absOut, data, 0644)
+				}
 			}
-			// Run with output file
-			if err := runDockerContainer(absOutputJSON, containerArgs); err != nil {
-				return err
+		}
+
+		// Parse the metadata JSON
+		videos, err := importer.ParseVideoMetadataJSON(metadataJSON)
+		if err != nil {
+			logPrintf("Warning: could not parse metadata: %v\n", err)
+			return nil
+		}
+
+		if len(videos) == 0 {
+			logPrintln("No new streams found.")
+			return nil
+		}
+
+		// Collect video IDs and check database
+		youtubeIDs := make([]string, len(videos))
+		for i, v := range videos {
+			youtubeIDs[i] = v.VideoID
+		}
+
+		processedMap, err := importer.GetProcessedVideoIDs(youtubeIDs)
+		if err != nil {
+			logPrintf("Warning: could not check database: %v\n", err)
+			processedMap = map[string]bool{}
+		}
+
+		// Print formatted table with PROCESSED column
+		logPrintf("\nFound %d video(s) after %s:\n\n", len(videos), lastVideoID)
+		logPrintf("%-12s %-16s %-10s %s\n", "UPLOAD_DATE", "VIDEO_ID", "PROCESSED", "TITLE")
+		logPrintln(strings.Repeat("-", 120))
+
+		processedCount := 0
+		displayedCount := 0
+		for _, v := range videos {
+			isProcessed := processedMap[v.VideoID]
+			if isProcessed {
+				processedCount++
 			}
-		} else {
-			// Run without output file - just display to stdout
-			if err := runDockerContainerNoOutput(containerArgs); err != nil {
-				return err
+			// Skip processed videos if --exclude_processed is set
+			if excludeProcessed && isProcessed {
+				continue
 			}
+			uploadDate := v.UploadDate
+			if len(uploadDate) == 8 {
+				uploadDate = uploadDate[:4] + "-" + uploadDate[4:6] + "-" + uploadDate[6:]
+			}
+			processed := "no"
+			if isProcessed {
+				processed = "yes"
+			}
+			logPrintf("%-12s %-16s %-10s %s\n", uploadDate, v.VideoID, processed, v.VideoTitle)
+			displayedCount++
+		}
+
+		logPrintf("\nTotal: %d videos (%d processed, %d new)\n",
+			len(videos), processedCount, len(videos)-processedCount)
+		if excludeProcessed {
+			logPrintf("Showing: %d unprocessed videos (--exclude_processed)\n", displayedCount)
 		}
 
 		return nil
 	}
 
-	// Handle --process_new_streams mode
-	if processNewStreams {
-		// Get video ID from args or database
-		var videoID string
+	// Handle --add_new_streams mode
+	if addNewStreams {
+		// Determine video_id and queue name
+		var providedVideoID string
 		if len(extraArgs) > 0 {
-			videoID = extraArgs[0]
-			logPrintf("Processing streams after video ID: %s\n", videoID)
+			providedVideoID = extraArgs[0]
+			logPrintf("Fetching streams after video ID: %s\n", providedVideoID)
+		}
+
+		// Queue name depends on whether video_id was provided
+		queueName := QueueFileName(providedVideoID)
+		queuePath := QueueFilePath(queueName)
+
+		// Determine afterVideoID for the docker container
+		var afterVideoID string
+
+		// Check if queue already exists
+		existingQueue, err := LoadQueue(queuePath)
+		if err != nil {
+			return fmt.Errorf("failed to load queue: %w", err)
+		}
+
+		if len(existingQueue) > 0 {
+			// Queue exists: use top entry (newest) as cutoff
+			afterVideoID = existingQueue[0].VideoID
+			logPrintf("Queue exists with %d entries. Using top video ID: %s\n",
+				len(existingQueue), afterVideoID)
+		} else if providedVideoID != "" {
+			// New queue with provided video_id
+			afterVideoID = providedVideoID
 		} else {
-			// Get last processed video ID from database
-			var err error
-			videoID, err = importer.GetLastProcessedVideoID()
+			// New queue without video_id: use last_processed from DB
+			afterVideoID, err = importer.GetLastProcessedVideoID()
 			if err != nil {
 				return fmt.Errorf("failed to get last processed video: %w", err)
 			}
-			if videoID == "" {
+			if afterVideoID == "" {
 				return fmt.Errorf("no last_processed video found in database")
 			}
-			logPrintf("Last processed video ID (from database): %s\n", videoID)
+			logPrintf("Last processed video ID (from database): %s\n", afterVideoID)
 		}
 
-		// Auto-generate temp file if not specified
-		if outputJSON == "" {
-			// Create temp directory in /tmp with world-writable permissions
-			// Docker root can then create files inside it
-			tmpDir, err := os.MkdirTemp("", "matchfinder-")
-			if err != nil {
-				return fmt.Errorf("failed to create temp directory: %w", err)
-			}
-			if err := os.Chmod(tmpDir, 0777); err != nil {
-				return fmt.Errorf("failed to set temp directory permissions: %w", err)
-			}
-			// Use unique filename with timestamp
-			timestamp := time.Now().Format("20060102-150405")
-			absOutputJSON = filepath.Join(tmpDir, fmt.Sprintf("matches-%s.json", timestamp))
-			tempFile = true
-			logPrintf("Using temp output: %s\n", absOutputJSON)
+		// Create docker-based stream fetcher
+		fetcher := &dockerStreamFetcher{}
+
+		// Add new streams to queue
+		// When video_id is provided, filter out already-processed videos
+		var count int
+		if providedVideoID != "" {
+			checker := &dbProcessedChecker{}
+			count, err = AddNewStreams(queuePath, afterVideoID, fetcher, checker)
 		} else {
-			var err error
-			absOutputJSON, err = filepath.Abs(outputJSON)
-			if err != nil {
-				return fmt.Errorf("invalid output path: %w", err)
-			}
+			count, err = AddNewStreams(queuePath, afterVideoID, fetcher)
 		}
-
-		// Build container args for batch processing
-		containerArgs := []string{
-			"--process_all_matches_after", videoID,
-		}
-
-		// Run the docker container
-		if err := runDockerContainer(absOutputJSON, containerArgs); err != nil {
-			logPrintf("JSON file: %s\n", absOutputJSON)
+		if err != nil {
 			return err
 		}
 
-		// Import results to database
-		logPrintln("\n=== Importing results to database ===")
-		if err := importer.ImportMatchesFromJSON(absOutputJSON); err != nil {
-			logPrintf("JSON file: %s\n", absOutputJSON)
-			return fmt.Errorf("failed to import matches: %w", err)
-		}
+		logPrintf("\n=== Queue Update ===\n")
+		logPrintf("Queue file: %s\n", queuePath)
+		logPrintf("New videos added: %d\n", count)
 
-		// Keep temp files for debugging - never delete
-		if tempFile {
-			logPrintf("JSON file preserved at: %s\n", absOutputJSON)
-		}
+		// Reload to show current size
+		updatedQueue, _ := LoadQueue(queuePath)
+		logPrintf("Current queue size: %d\n", len(updatedQueue))
 
 		return nil
+	}
+
+	// Handle --process mode
+	if processQueueName != "" {
+		// Add .json extension if not provided
+		queueName := processQueueName
+		if !strings.HasSuffix(queueName, ".json") {
+			queueName = queueName + ".json"
+		}
+		queuePath := QueueFilePath(queueName)
+
+		logPrintf("Processing queue: %s\n", queuePath)
+		return processQueueVideos(queuePath)
 	}
 
 	// Standard mode - require --output_json and pass extra args to container
 	if outputJSON == "" {
-		return fmt.Errorf("--output_json is required (or use --process_new_streams)")
+		return fmt.Errorf("--output_json is required (or use --add_new_streams)")
 	}
 
 	if len(extraArgs) == 0 {
@@ -275,6 +357,129 @@ func runMatchFinder(extraArgs []string) error {
 	}
 
 	return runDockerContainer(absOutputJSON, extraArgs)
+}
+
+// dbProcessedChecker implements ProcessedChecker using the real database.
+type dbProcessedChecker struct{}
+
+func (d *dbProcessedChecker) GetProcessedVideoIDs(youtubeIDs []string) (map[string]bool, error) {
+	return importer.GetProcessedVideoIDs(youtubeIDs)
+}
+
+// dockerStreamFetcher implements StreamFetcher using the Docker container.
+type dockerStreamFetcher struct{}
+
+func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEntry, error) {
+	// Create temp directory for metadata output
+	tmpDir, err := os.MkdirTemp("", "matchfinder-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	if err := os.Chmod(tmpDir, 0777); err != nil {
+		return nil, fmt.Errorf("failed to set temp directory permissions: %w", err)
+	}
+	ts := time.Now().Format("20060102-150405")
+	metadataJSON := filepath.Join(tmpDir, fmt.Sprintf("metadata-%s.json", ts))
+
+	containerArgs := []string{
+		"--only_extract_video_metadata",
+		"--process_all_matches_after", afterVideoID,
+	}
+
+	if err := runDockerContainer(metadataJSON, containerArgs); err != nil {
+		return nil, fmt.Errorf("docker container failed: %w", err)
+	}
+
+	videos, err := importer.ParseVideoMetadataJSON(metadataJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	return VideosToQueueEntries(videos), nil
+}
+
+// processQueueVideos processes videos from the queue one by one (oldest first).
+// After each video is successfully processed and imported, it's removed from the queue.
+// When the queue is fully processed, updates last_processed in the database
+// if the top video's upload_date is >= the current last_processed upload_date.
+func processQueueVideos(queuePath string) error {
+	for {
+		// Reload queue each iteration (in case of crash recovery)
+		queue, err := LoadQueue(queuePath)
+		if err != nil {
+			return fmt.Errorf("failed to load queue: %w", err)
+		}
+
+		if len(queue) == 0 {
+			logPrintln("\n=== Queue is empty. All videos processed! ===")
+			return nil
+		}
+
+		// Process the last entry (oldest, since queue is newest-first)
+		entry := queue[len(queue)-1]
+		isLastItem := len(queue) == 1 // This is the top (newest) entry
+		logPrintf("\n=== Processing queue [%d remaining] ===\n", len(queue))
+		logPrintf("Video: %s (%s)\n", entry.VideoTitle, entry.VideoID)
+
+		// Create temp directory for this video's output
+		tmpDir, err := os.MkdirTemp("", "matchfinder-")
+		if err != nil {
+			return fmt.Errorf("failed to create temp directory: %w", err)
+		}
+		if err := os.Chmod(tmpDir, 0777); err != nil {
+			return fmt.Errorf("failed to set temp directory permissions: %w", err)
+		}
+		ts := time.Now().Format("20060102-150405")
+		outputFile := filepath.Join(tmpDir, fmt.Sprintf("matches-%s-%s.json", entry.VideoID, ts))
+
+		// Run docker to process this single video
+		youtubeURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID)
+		containerArgs := []string{
+			"--youtube_video", youtubeURL,
+		}
+
+		if err := runDockerContainer(outputFile, containerArgs); err != nil {
+			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, err)
+			logPrintf("JSON file: %s\n", outputFile)
+			return fmt.Errorf("failed to process video %s: %w", entry.VideoID, err)
+		}
+
+		// Import results to database
+		logPrintln("\n=== Importing results to database ===")
+		if err := importer.ImportMatchesFromJSON(outputFile); err != nil {
+			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, err)
+			logPrintf("JSON file: %s\n", outputFile)
+			return fmt.Errorf("failed to import video %s: %w", entry.VideoID, err)
+		}
+
+		// Remove processed video from queue (last entry)
+		queue = queue[:len(queue)-1]
+		if err := SaveQueue(queuePath, queue); err != nil {
+			return fmt.Errorf("failed to update queue: %w", err)
+		}
+
+		logPrintf("Successfully processed and removed from queue: %s\n", entry.VideoID)
+		logPrintf("Remaining in queue: %d\n", len(queue))
+
+		// Update last_processed when the last item (top/newest) is processed
+		if isLastItem {
+			dbUploadDate, err := importer.GetLastProcessedUploadDate()
+			if err != nil {
+				logPrintf("Warning: could not get DB upload date: %v\n", err)
+			}
+			if ShouldUpdateLastProcessed(entry.UploadDate, dbUploadDate) {
+				logPrintf("Updating last_processed to: %s (upload_date: %s)\n",
+					entry.VideoID, entry.UploadDate)
+				if err := importer.UpdateLastProcessed(entry.VideoID); err != nil {
+					return fmt.Errorf("failed to update last_processed: %w", err)
+				}
+				logPrintln("last_processed updated successfully")
+			} else {
+				logPrintf("Skipping last_processed update: video upload_date (%s) < DB upload_date (%s)\n",
+					entry.UploadDate, dbUploadDate)
+			}
+		}
+	}
 }
 
 // getLogWriter returns logWriter if available, otherwise os.Stdout
@@ -308,7 +513,8 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 		logPrintln("  render GID: not found")
 	}
 
-	logPrintln("Intel GPU: Using container's built-in drivers\n")
+	logPrintln("Intel GPU: Using container's built-in drivers")
+	logPrintln()
 
 	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs)
 

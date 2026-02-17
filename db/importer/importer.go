@@ -83,6 +83,63 @@ func parsePlayerName(name string) []string {
 	return []string{strings.TrimSpace(name)}
 }
 
+// GetProcessedVideoIDs checks which of the given youtube_ids exist in the videos table.
+// Returns a map of youtube_id -> true for videos that are already in the database.
+func GetProcessedVideoIDs(youtubeIDs []string) (map[string]bool, error) {
+	if len(youtubeIDs) == 0 {
+		return map[string]bool{}, nil
+	}
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer conn.Close(context.Background())
+
+	rows, err := conn.Query(context.Background(),
+		"SELECT youtube_id FROM videos WHERE youtube_id = ANY($1)", youtubeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query processed videos: %w", err)
+	}
+	defer rows.Close()
+
+	processed := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan video id: %w", err)
+		}
+		processed[id] = true
+	}
+
+	return processed, nil
+}
+
+// ParseVideoMetadataJSON reads and parses a video metadata JSON file.
+// Returns the list of VideoJSON entries.
+func ParseVideoMetadataJSON(jsonFilePath string) ([]VideoJSON, error) {
+	data, err := os.ReadFile(jsonFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read JSON file: %w", err)
+	}
+
+	var videos []VideoJSON
+	if err := json.Unmarshal(data, &videos); err != nil {
+		var singleVideo VideoJSON
+		if err := json.Unmarshal(data, &singleVideo); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		videos = []VideoJSON{singleVideo}
+	}
+
+	return videos, nil
+}
+
 // GetLastProcessedVideoID returns the YouTube video ID of the video marked as last_processed=true.
 // Returns empty string if no video is marked as last processed.
 // Requires DATABASE_URL environment variable to be set.
@@ -109,6 +166,68 @@ func GetLastProcessedVideoID() (string, error) {
 	}
 
 	return videoID, nil
+}
+
+// GetLastProcessedUploadDate returns the upload_date of the last_processed video.
+// Returns empty string if no video is marked as last processed.
+func GetLastProcessedUploadDate() (string, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return "", fmt.Errorf("DATABASE_URL environment variable is required")
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer conn.Close(context.Background())
+
+	var uploadDate time.Time
+	err = conn.QueryRow(context.Background(),
+		"SELECT upload_date FROM videos WHERE last_processed = true LIMIT 1").Scan(&uploadDate)
+	if err == pgx.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to query last processed upload date: %w", err)
+	}
+
+	return uploadDate.Format("20060102"), nil
+}
+
+// UpdateLastProcessed sets last_processed=true for the given youtube_id
+// and clears it from all other videos.
+func UpdateLastProcessed(youtubeID string) error {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return fmt.Errorf("DATABASE_URL environment variable is required")
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer conn.Close(context.Background())
+
+	tx, err := conn.Begin(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(context.Background())
+
+	_, err = tx.Exec(context.Background(),
+		"UPDATE videos SET last_processed = NULL WHERE last_processed = true")
+	if err != nil {
+		return fmt.Errorf("failed to clear last_processed: %w", err)
+	}
+
+	_, err = tx.Exec(context.Background(),
+		"UPDATE videos SET last_processed = true WHERE youtube_id = $1", youtubeID)
+	if err != nil {
+		return fmt.Errorf("failed to set last_processed: %w", err)
+	}
+
+	return tx.Commit(context.Background())
 }
 
 // ImportMatchesFromJSON reads a JSON file and imports all matches to the database.
