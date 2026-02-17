@@ -72,16 +72,28 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return previous_row[-1]
 
 
-def check_ocr_name_variance(prev_name: str, curr_name: str,
-                            timestamp: str) -> None:
+def check_ocr_name_variance(
+    prev_name: str, curr_name: str,
+    timestamp: str, cropped_path: str = ""
+) -> None:
     """
-    Check if two player names differ by only 1 character (OCR mistake).
+    Check if two player names differ by only 1 character.
     Prints a greppable warning: [OCR_NAME_VARIANCE]
     """
-    distance = levenshtein_distance(prev_name.upper(), curr_name.upper())
+    distance = levenshtein_distance(
+        prev_name.upper(), curr_name.upper())
     if distance == 1:
-        print(f"[OCR_NAME_VARIANCE] at {timestamp}: "
-              f"'{prev_name}' vs '{curr_name}' (edit distance=1)")
+        img_suffix = ""
+        if cropped_path:
+            # Show <video_id>/filename for easy copy
+            parent = os.path.basename(
+                os.path.dirname(cropped_path))
+            fname = os.path.basename(cropped_path)
+            img_suffix = f", {parent}/{fname}"
+        print(
+            f"[OCR_NAME_VARIANCE] at {timestamp}: "
+            f"'{prev_name}' vs '{curr_name}' "
+            f"(edit distance=1){img_suffix}")
 
 
 # Search strategy parameters
@@ -367,7 +379,7 @@ class MatchStartFinder:
     """Main class implementing the multi-phase search strategy."""
 
     def __init__(self, video_path: str, output_dir: str, backend: str = None,
-                 keep_cropped: bool = False):
+                 keep_cropped: bool = False, crop_output_dir: str = None):
         self.video_path = video_path
         self.output_dir = output_dir
         self.extractor = ScoreExtractor(backend=backend)
@@ -375,8 +387,13 @@ class MatchStartFinder:
         self.ocr_calls = 0
         self.found_matches: List[MatchStart] = []
         self.keep_cropped = keep_cropped
+        self.crop_output_dir = crop_output_dir
         self.cropped_dir = None
-        if keep_cropped:
+        if crop_output_dir:
+            # Use explicit crop output directory (e.g., log/<video_id>/)
+            self.cropped_dir = crop_output_dir
+            os.makedirs(self.cropped_dir, exist_ok=True)
+        elif keep_cropped:
             self.cropped_dir = os.path.join(output_dir, "cropped_frames")
             os.makedirs(self.cropped_dir, exist_ok=True)
 
@@ -390,47 +407,79 @@ class MatchStartFinder:
         return os.path.join(self.temp_dir, f"frame_{timestamp:.1f}.jpg")
 
     def _extract_and_analyze(self, timestamp: float,
-                             retry: int = 0) -> Tuple[ScoreResult, str]:
-        """Extract frame and analyze score with retry logic."""
+                             retry: int = 0
+                             ) -> Tuple[ScoreResult, str, str]:
+        """Extract frame and analyze score with retry logic.
+
+        Returns:
+            Tuple of (ScoreResult, frame_image_path,
+                      cropped_image_path)
+        """
         actual_timestamp = timestamp + (retry * RETRY_OFFSET_SECONDS)
         image_path = self._get_temp_image_path(actual_timestamp)
+        cropped_path = ""
 
-        if not extract_frame(self.video_path, actual_timestamp, image_path):
-            return ScoreResult(success=False, error="Frame extraction failed"), ""
+        if not extract_frame(
+                self.video_path, actual_timestamp, image_path):
+            return (ScoreResult(
+                success=False,
+                error="Frame extraction failed"), "", "")
 
         cropped = crop_image(image_path)
         if cropped is None:
-            return ScoreResult(success=False, error="Image cropping failed"), ""
+            return (ScoreResult(
+                success=False,
+                error="Image cropping failed"), "", "")
 
-        # Save cropped image if --keep_cropped is enabled
-        if self.keep_cropped and self.cropped_dir:
+        # Save cropped image when cropped_dir is configured
+        if self.cropped_dir:
             unique_id = str(uuid.uuid4())
+            cropped_filename = (
+                f"cropped_{actual_timestamp:.1f}"
+                f"-{unique_id}.jpg")
             cropped_path = os.path.join(
-                self.cropped_dir,
-                f"cropped_{actual_timestamp:.1f}-{unique_id}.jpg")
+                self.cropped_dir, cropped_filename)
             cropped.save(cropped_path)
 
         self.ocr_calls += 1
         result = self.extractor.extract_score(cropped)
-        return result, image_path
+        return result, image_path, cropped_path
 
-    def _analyze_with_retry(self, timestamp: float) -> Tuple[ScoreResult, str, float]:
-        """Analyze timestamp with retry logic for empty frames."""
+    def _analyze_with_retry(
+            self, timestamp: float
+    ) -> Tuple[ScoreResult, str, str, float]:
+        """Analyze timestamp with retry logic.
+
+        Returns:
+            Tuple of (ScoreResult, frame_path,
+                      cropped_path, actual_ts)
+        """
         for retry in range(MAX_RETRIES_PER_TIMESTAMP):
-            actual_ts = timestamp + (retry * RETRY_OFFSET_SECONDS)
-            result, image_path = self._extract_and_analyze(timestamp, retry)
+            actual_ts = timestamp + (
+                retry * RETRY_OFFSET_SECONDS)
+            result, image_path, cropped_path = (
+                self._extract_and_analyze(
+                    timestamp, retry))
 
             if result.success:
-                return result, image_path, actual_ts
+                return (result, image_path,
+                        cropped_path, actual_ts)
 
             # Try negative offset on second retry
             if retry == 1:
-                actual_ts = timestamp - RETRY_OFFSET_SECONDS
-                result, image_path = self._extract_and_analyze(
-                    timestamp - RETRY_OFFSET_SECONDS, 0)
+                actual_ts = (
+                    timestamp - RETRY_OFFSET_SECONDS)
+                result, image_path, cropped_path = (
+                    self._extract_and_analyze(
+                        timestamp
+                        - RETRY_OFFSET_SECONDS, 0))
                 if result.success:
-                    return result, image_path, actual_ts
-        return ScoreResult(success=False, error="All retries failed"), "", timestamp
+                    return (result, image_path,
+                            cropped_path, actual_ts)
+        return (ScoreResult(
+            success=False,
+            error="All retries failed"),
+            "", "", timestamp)
 
     def _save_match_image(self, temp_path: str, timestamp: float,
                           player1: str, player2: str) -> str:
@@ -465,7 +514,8 @@ class MatchStartFinder:
 
         while (end_ts - start_ts) > BINARY_SEARCH_PRECISION:
             mid_ts = (start_ts + end_ts) / 2
-            result, image_path, actual_ts = self._analyze_with_retry(mid_ts)
+            result, image_path, _, actual_ts = (
+                self._analyze_with_retry(mid_ts))
 
             if result.success:
                 if result.is_match_start():
@@ -527,7 +577,8 @@ class MatchStartFinder:
 
         search_start = max(0, timestamp - estimated_game_time)
 
-        result, image_path, actual_ts = self._analyze_with_retry(search_start)
+        result, image_path, _, actual_ts = (
+            self._analyze_with_retry(search_start))
 
         if result.success and result.is_game_start():
             # Check if it's also a match start (0:0 sets)
@@ -567,25 +618,52 @@ class MatchStartFinder:
         phase1_start = time.time()
         print(f"\n=== Phase 1: Coarse Scan ===")
         print(f"Started at: {datetime.now().strftime('%H:%M:%S')}")
-        coarse_samples: List[Tuple[float, ScoreResult, str]] = []
+        # coarse_samples: (ts, result, image_path, cropped)
+        coarse_samples: List[
+            Tuple[float, ScoreResult, str, str]
+        ] = []
 
         timestamp = 0
         while timestamp < duration:
-            print(f"  Sampling at {format_timestamp(timestamp)}...", end=" ")
-            result, image_path, actual_ts = self._analyze_with_retry(timestamp)
+            ts_fmt = format_timestamp(timestamp)
+            print(
+                f"  Sampling at {ts_fmt}...",
+                end=" ")
+            result, image_path, cropped_path, actual_ts = (
+                self._analyze_with_retry(timestamp))
 
             if result.success:
-                print(f"Score: {result.player1} {result.set1}:{result.set2} {result.player2}, "
-                      f"Game: {result.game1}:{result.game2}")
+                img_info = ""
+                if cropped_path:
+                    # Show <video_id>/filename
+                    parent = os.path.basename(
+                        os.path.dirname(cropped_path))
+                    fname = os.path.basename(
+                        cropped_path)
+                    img_info = f", {parent}/{fname}"
+                print(
+                    f"Score: {result.player1} "
+                    f"{result.set1}:{result.set2} "
+                    f"{result.player2}, "
+                    f"Game: {result.game1}:"
+                    f"{result.game2}"
+                    f"{img_info}")
 
-                # Check for OCR name variance with previous sample
+                # Check for OCR name variance
                 if coarse_samples:
-                    prev_ts, prev_result, _ = coarse_samples[-1]
+                    prev = coarse_samples[-1]
+                    prev_result = prev[1]
                     if prev_result.success:
-                        check_ocr_name_variance(prev_result.player1, result.player1,
-                                                format_timestamp(actual_ts))
-                        check_ocr_name_variance(prev_result.player2, result.player2,
-                                                format_timestamp(actual_ts))
+                        check_ocr_name_variance(
+                            prev_result.player1,
+                            result.player1,
+                            format_timestamp(actual_ts),
+                            cropped_path)
+                        check_ocr_name_variance(
+                            prev_result.player2,
+                            result.player2,
+                            format_timestamp(actual_ts),
+                            cropped_path)
 
                 # Check if this is already a match start
                 if result.is_match_start():
@@ -603,7 +681,9 @@ class MatchStartFinder:
             else:
                 print(f"No score: {result.error}")
 
-            coarse_samples.append((actual_ts, result, image_path))
+            coarse_samples.append(
+                (actual_ts, result, image_path,
+                 cropped_path))
             timestamp += COARSE_INTERVAL_SECONDS
 
         phase1_duration = time.time() - phase1_start
@@ -615,8 +695,10 @@ class MatchStartFinder:
         print(f"Started at: {datetime.now().strftime('%H:%M:%S')}")
 
         for i in range(1, len(coarse_samples)):
-            prev_ts, prev_result, _ = coarse_samples[i - 1]
-            curr_ts, curr_result, curr_image = coarse_samples[i]
+            prev_ts, prev_result, _, _ = (
+                coarse_samples[i - 1])
+            curr_ts, curr_result, curr_image, _ = (
+                coarse_samples[i])
 
             # Detect transition: no score → score visible
             # Only consider it a real match break if gap >= MIN_BREAK_DURATION
@@ -1130,6 +1212,10 @@ def main():
                         help='Save cropped score images to cropped_frames/')
     parser.add_argument('--output_json_file', type=str, default=None,
                         help='Path to output JSON file with match data')
+    parser.add_argument(
+        '--crop_output_dir', type=str, default=None,
+        help='Directory to save cropped score images '
+             '(e.g., /log/<video_id>/)')
     parser.add_argument('--only_extract_video_metadata', action='store_true',
                         help='Only extract video metadata (id, title, upload_date) '
                              'without running match detection')
@@ -1204,10 +1290,18 @@ def main():
             # Determine backend
             backend = args.backend or get_default_backend()
 
+            # Determine crop output dir for this video
+            crop_dir = None
+            if args.crop_output_dir:
+                crop_dir = os.path.join(
+                    args.crop_output_dir, vid)
+
             # Find matches
             finder = MatchStartFinder(
-                video_path, args.output, backend=backend,
-                keep_cropped=args.keep_cropped)
+                video_path, args.output,
+                backend=backend,
+                keep_cropped=args.keep_cropped,
+                crop_output_dir=crop_dir)
 
             try:
                 matches = finder.find_match_starts()
@@ -1331,8 +1425,16 @@ def main():
     print(f"Backend: {backend}")
     print('=' * 60)
 
-    finder = MatchStartFinder(video_path, args.output, backend=backend,
-                              keep_cropped=args.keep_cropped)
+    # Determine crop output dir for single video
+    crop_dir = None
+    if args.crop_output_dir and video_id:
+        crop_dir = os.path.join(
+            args.crop_output_dir, video_id)
+
+    finder = MatchStartFinder(
+        video_path, args.output, backend=backend,
+        keep_cropped=args.keep_cropped,
+        crop_output_dir=crop_dir)
 
     try:
         matches = finder.find_match_starts()

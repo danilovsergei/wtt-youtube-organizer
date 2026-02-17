@@ -641,6 +641,11 @@ func getGroupID(groupName string, defaultGID int) int {
 	return defaultGID
 }
 
+// getCropLogDir returns the host path for cropped image logs.
+func getCropLogDir() string {
+	return filepath.Join(config.GetProjectConfigDir(), "log")
+}
+
 func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, containerArgs []string) []string {
 	args := []string{
 		"run", "--rm",
@@ -652,11 +657,18 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 		args = append(args, "--group-add", strconv.Itoa(renderGID))
 	}
 
+	// Mount output dir and log dir for cropped images
+	cropLogDir := getCropLogDir()
+	os.MkdirAll(cropLogDir, 0755)
+
 	args = append(args,
 		"-v", fmt.Sprintf("%s:/output", outputDir),
+		"-v", fmt.Sprintf("%s:/log", cropLogDir),
 		imageName,
 	)
 
+	// Always pass --crop_output_dir so cropped images are saved
+	containerArgs = append(containerArgs, "--crop_output_dir", "/log")
 	args = append(args, containerArgs...)
 
 	return args
