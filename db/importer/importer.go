@@ -19,6 +19,7 @@ type VideoJSON struct {
 	VideoTitle string      `json:"video_title"`
 	UploadDate string      `json:"upload_date"` // Format: YYYYMMDD
 	Matches    []MatchJSON `json:"matches"`
+	Error      string      `json:"error,omitempty"` // Processing error (e.g., "No match starts found")
 }
 
 // MatchJSON represents a single match entry in the JSON file
@@ -348,6 +349,42 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				return fmt.Errorf("failed to delete old matches: %w", err)
 			}
 			fmt.Printf("Deleted %d existing matches\n", result.RowsAffected())
+		}
+
+		// Handle processing error: save error to DB and skip match import
+		if videoJSON.Error != "" {
+			fmt.Printf("Processing error for video: %s\n", videoJSON.Error)
+			_, err = tx.Exec(ctx,
+				`UPDATE videos SET processing_error = $1 WHERE id = $2`,
+				videoJSON.Error, videoID)
+			if err != nil {
+				return fmt.Errorf("failed to save processing_error: %w", err)
+			}
+
+			if isNewestVideo {
+				_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
+				if err != nil {
+					return fmt.Errorf("failed to clear last_processed flags: %w", err)
+				}
+				_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = true WHERE id = $1`, videoID)
+				if err != nil {
+					return fmt.Errorf("failed to set last_processed: %w", err)
+				}
+				fmt.Printf("Set last_processed=true for video ID: %d\n", videoID)
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				return fmt.Errorf("failed to commit: %w", err)
+			}
+			fmt.Printf("Saved processing error for video (no matches imported)\n")
+			continue
+		}
+
+		// Clear any previous processing error on successful re-import
+		_, err = tx.Exec(ctx,
+			`UPDATE videos SET processing_error = NULL WHERE id = $1`, videoID)
+		if err != nil {
+			return fmt.Errorf("failed to clear processing_error: %w", err)
 		}
 
 		for i, matchJSON := range videoJSON.Matches {

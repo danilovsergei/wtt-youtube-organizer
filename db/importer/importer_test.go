@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS videos (
 	youtube_id TEXT NOT NULL,
 	upload_date TIMESTAMPTZ NOT NULL,
 	title TEXT NOT NULL,
-	last_processed BOOLEAN
+	last_processed BOOLEAN,
+	processing_error TEXT
 );
 
 CREATE TABLE IF NOT EXISTS matches (
@@ -276,5 +277,111 @@ func TestImport_ReimportReplacesMatches(t *testing.T) {
 	conn.QueryRow(ctx, "SELECT count(*) FROM matches").Scan(&matchCount)
 	if matchCount != 3 {
 		t.Fatalf("expected 3 matches after re-import, got %d", matchCount)
+	}
+}
+
+// Test: importing video with error field saves processing_error to DB
+func TestImport_WithError_SavesProcessingError(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	video := VideoJSON{
+		VideoID:    "error_test",
+		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
+		UploadDate: "20260115",
+		Matches:    []MatchJSON{},
+		Error:      "No match starts found",
+	}
+
+	jsonPath := writeTestJSON(t, []VideoJSON{video})
+	err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath)
+	if err != nil {
+		t.Fatalf("import with error field failed: %v", err)
+	}
+
+	// Verify processing_error is saved in DB
+	var processingError *string
+	err = conn.QueryRow(ctx,
+		"SELECT processing_error FROM videos WHERE youtube_id=$1",
+		"error_test").Scan(&processingError)
+	if err != nil {
+		t.Fatalf("failed to query processing_error: %v", err)
+	}
+	if processingError == nil {
+		t.Fatal("expected processing_error to be set, got NULL")
+	}
+	if *processingError != "No match starts found" {
+		t.Fatalf("expected 'No match starts found', got %q", *processingError)
+	}
+
+	// Verify no matches were imported
+	var matchCount int
+	conn.QueryRow(ctx, "SELECT count(*) FROM matches").Scan(&matchCount)
+	if matchCount != 0 {
+		t.Fatalf("expected 0 matches (error video), got %d", matchCount)
+	}
+}
+
+// Test: re-importing video WITHOUT error clears processing_error
+func TestImport_ClearsErrorOnSuccess(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// First import: video with error
+	videoWithError := VideoJSON{
+		VideoID:    "clear_test",
+		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
+		UploadDate: "20260115",
+		Matches:    []MatchJSON{},
+		Error:      "No match starts found",
+	}
+
+	jsonPath := writeTestJSON(t, []VideoJSON{videoWithError})
+	if err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath); err != nil {
+		t.Fatalf("first import (with error) failed: %v", err)
+	}
+
+	// Verify error is set
+	var processingError *string
+	conn.QueryRow(ctx,
+		"SELECT processing_error FROM videos WHERE youtube_id=$1",
+		"clear_test").Scan(&processingError)
+	if processingError == nil {
+		t.Fatal("expected processing_error to be set after first import")
+	}
+
+	// Second import: same video, now successful (no error)
+	videoSuccess := VideoJSON{
+		VideoID:    "clear_test",
+		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
+		UploadDate: "20260115",
+		Matches: []MatchJSON{
+			{Timestamp: 360, Player1: "ALICE", Player2: "BOB"},
+		},
+	}
+
+	jsonPath2 := writeTestJSON(t, []VideoJSON{videoSuccess})
+	if err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath2); err != nil {
+		t.Fatalf("second import (success) failed: %v", err)
+	}
+
+	// Verify processing_error is cleared
+	conn.QueryRow(ctx,
+		"SELECT processing_error FROM videos WHERE youtube_id=$1",
+		"clear_test").Scan(&processingError)
+	if processingError != nil {
+		t.Fatalf("expected processing_error to be NULL after successful re-import, got %q",
+			*processingError)
+	}
+
+	// Verify match was imported
+	var matchCount int
+	conn.QueryRow(ctx, "SELECT count(*) FROM matches").Scan(&matchCount)
+	if matchCount != 1 {
+		t.Fatalf("expected 1 match after successful re-import, got %d", matchCount)
 	}
 }

@@ -1312,17 +1312,23 @@ def main():
                     "upload_date": upload_date,
                     "matches": [
                         {
-                            "timestamp": int(m.timestamp_seconds),
+                            "timestamp": int(
+                                m.timestamp_seconds),
                             "player1": m.player1,
                             "player2": m.player2
                         }
                         for m in matches
-                    ]
+                    ],
                 }
+                if not matches:
+                    video_result["error"] = (
+                        "No match starts found")
                 all_results.append(video_result)
 
                 if matches:
-                    print(f"  Found {len(matches)} match starts")
+                    print(
+                        f"  Found {len(matches)} "
+                        f"match starts")
                 else:
                     print("  No match starts found")
             finally:
@@ -1449,27 +1455,34 @@ def main():
                 print(f"  Player 1:  {match.player1}")
                 print(f"  Player 2:  {match.player2}")
                 print(f"  Image:     {match.image_path}")
-
-            # Write JSON output if requested
-            if args.output_json_file:
-                json_data = {
-                    "video_id": video_id,
-                    "video_title": video_title,
-                    "upload_date": upload_date,  # Format: YYYYMMDD
-                    "matches": [
-                        {
-                            "timestamp": int(m.timestamp_seconds),
-                            "player1": m.player1,
-                            "player2": m.player2
-                        }
-                        for m in matches
-                    ]
-                }
-                with open(args.output_json_file, 'w') as f:
-                    json.dump(json_data, f, indent=2)
-                print(f"\nJSON output written to: {args.output_json_file}")
         else:
             print("\nNo match starts found.")
+
+        # Always write JSON output if requested
+        if args.output_json_file:
+            json_data = {
+                "video_id": video_id,
+                "video_title": video_title,
+                "upload_date": upload_date,
+                "matches": [
+                    {
+                        "timestamp": int(
+                            m.timestamp_seconds),
+                        "player1": m.player1,
+                        "player2": m.player2
+                    }
+                    for m in matches
+                ],
+            }
+            if not matches:
+                json_data["error"] = (
+                    "No match starts found")
+            with open(
+                    args.output_json_file, 'w') as f:
+                json.dump(json_data, f, indent=2)
+            print(
+                f"\nJSON output written to: "
+                f"{args.output_json_file}")
     finally:
         finder.cleanup()
 

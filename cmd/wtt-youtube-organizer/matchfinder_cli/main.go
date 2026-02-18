@@ -398,11 +398,38 @@ func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEnt
 	return VideosToQueueEntries(videos), nil
 }
 
+// queueProcessorDeps holds injectable dependencies for processQueueVideos.
+type queueProcessorDeps struct {
+	// runDocker runs the Docker container and writes output JSON.
+	runDocker func(outputFile string, containerArgs []string) error
+	// importJSON imports matches from a JSON file to the database.
+	importJSON func(jsonFilePath string) error
+	// getLastProcessedUploadDate returns the upload date of last_processed video.
+	getLastProcessedUploadDate func() (string, error)
+	// updateLastProcessed sets last_processed for the given video ID.
+	updateLastProcessed func(youtubeID string) error
+}
+
+// defaultQueueDeps returns real production dependencies.
+func defaultQueueDeps() queueProcessorDeps {
+	return queueProcessorDeps{
+		runDocker:                  runDockerContainer,
+		importJSON:                 importer.ImportMatchesFromJSON,
+		getLastProcessedUploadDate: importer.GetLastProcessedUploadDate,
+		updateLastProcessed:        importer.UpdateLastProcessed,
+	}
+}
+
 // processQueueVideos processes videos from the queue one by one (oldest first).
 // After each video is successfully processed and imported, it's removed from the queue.
 // When the queue is fully processed, updates last_processed in the database
 // if the top video's upload_date is >= the current last_processed upload_date.
 func processQueueVideos(queuePath string) error {
+	return processQueueVideosWithDeps(queuePath, defaultQueueDeps())
+}
+
+// processQueueVideosWithDeps is the testable implementation of processQueueVideos.
+func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error {
 	for {
 		// Reload queue each iteration (in case of crash recovery)
 		queue, err := LoadQueue(queuePath)
@@ -438,21 +465,23 @@ func processQueueVideos(queuePath string) error {
 			"--youtube_video", youtubeURL,
 		}
 
-		if err := runDockerContainer(outputFile, containerArgs); err != nil {
-			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, err)
+		dockerErr := deps.runDocker(outputFile, containerArgs)
+		if dockerErr != nil {
+			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
 			logPrintf("JSON file: %s\n", outputFile)
-			return fmt.Errorf("failed to process video %s: %w", entry.VideoID, err)
+			logPrintln("Docker failed, attempting import (JSON may contain error field)...")
 		}
 
-		// Import results to database
+		// Import results to database (attempt even after docker error,
+		// since the JSON may have been written with an error field)
 		logPrintln("\n=== Importing results to database ===")
-		if err := importer.ImportMatchesFromJSON(outputFile); err != nil {
-			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, err)
+		if importErr := deps.importJSON(outputFile); importErr != nil {
+			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, importErr)
 			logPrintf("JSON file: %s\n", outputFile)
-			return fmt.Errorf("failed to import video %s: %w", entry.VideoID, err)
+			return fmt.Errorf("failed to import video %s: %w", entry.VideoID, importErr)
 		}
 
-		// Remove processed video from queue (last entry)
+		// Remove from queue only after successful import
 		queue = queue[:len(queue)-1]
 		if err := SaveQueue(queuePath, queue); err != nil {
 			return fmt.Errorf("failed to update queue: %w", err)
@@ -463,14 +492,14 @@ func processQueueVideos(queuePath string) error {
 
 		// Update last_processed when the last item (top/newest) is processed
 		if isLastItem {
-			dbUploadDate, err := importer.GetLastProcessedUploadDate()
+			dbUploadDate, err := deps.getLastProcessedUploadDate()
 			if err != nil {
 				logPrintf("Warning: could not get DB upload date: %v\n", err)
 			}
 			if ShouldUpdateLastProcessed(entry.UploadDate, dbUploadDate) {
 				logPrintf("Updating last_processed to: %s (upload_date: %s)\n",
 					entry.VideoID, entry.UploadDate)
-				if err := importer.UpdateLastProcessed(entry.VideoID); err != nil {
+				if err := deps.updateLastProcessed(entry.VideoID); err != nil {
 					return fmt.Errorf("failed to update last_processed: %w", err)
 				}
 				logPrintln("last_processed updated successfully")

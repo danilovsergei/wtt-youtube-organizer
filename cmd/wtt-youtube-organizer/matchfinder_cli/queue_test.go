@@ -663,6 +663,224 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 
 // --- Test: AddNewStreams with no new results ---
 
+// --- Test: processQueueVideos continues on docker/import errors ---
+
+func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	// Queue has 3 videos (newest first, oldest last)
+	queue := []QueueEntry{
+		entry("C", "Video C", "20260216"),
+		entry("B", "Video B", "20260215"),
+		entry("A", "Video A", "20260214"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	// Track which videos were processed
+	var dockerCalls []string
+	var importCalls []string
+
+	deps := queueProcessorDeps{
+		// Docker mock: fails for video B, succeeds for A and C
+		// Also writes JSON with error field for B
+		runDocker: func(outputFile string, containerArgs []string) error {
+			// Extract video ID from the YouTube URL in containerArgs
+			for i, arg := range containerArgs {
+				if arg == "--youtube_video" && i+1 < len(containerArgs) {
+					url := containerArgs[i+1]
+					vid := url[len("https://www.youtube.com/watch?v="):]
+					dockerCalls = append(dockerCalls, vid)
+
+					if vid == "B" {
+						// Simulate: docker writes JSON with error, then fails
+						jsonData := `{"video_id":"B","video_title":"Video B","upload_date":"20260215","matches":[],"error":"No match starts found"}`
+						os.WriteFile(outputFile, []byte(jsonData), 0644)
+						return fmt.Errorf("docker run failed: exit code 1")
+					}
+					// Success: write normal JSON
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
+					os.WriteFile(outputFile, []byte(jsonData), 0644)
+				}
+			}
+			return nil
+		},
+		// Import mock: just records what was called
+		importJSON: func(jsonFilePath string) error {
+			data, err := os.ReadFile(jsonFilePath)
+			if err != nil {
+				return err
+			}
+			// Extract video_id from JSON
+			content := string(data)
+			for _, vid := range []string{"A", "B", "C"} {
+				if fmt.Sprintf(`"video_id":"%s"`, vid) == "" {
+					continue
+				}
+				if len(content) > 0 && contains(content, fmt.Sprintf(`"video_id":"%s"`, vid)) {
+					importCalls = append(importCalls, vid)
+				}
+			}
+			return nil
+		},
+		getLastProcessedUploadDate: func() (string, error) {
+			return "20260210", nil
+		},
+		updateLastProcessed: func(youtubeID string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps)
+	if err != nil {
+		t.Fatalf("processQueueVideos should not fail: %v", err)
+	}
+
+	// All 3 videos should have been processed by docker (oldest first: A, B, C)
+	if len(dockerCalls) != 3 {
+		t.Fatalf("expected 3 docker calls, got %d: %v", len(dockerCalls), dockerCalls)
+	}
+	if dockerCalls[0] != "A" || dockerCalls[1] != "B" || dockerCalls[2] != "C" {
+		t.Fatalf("expected docker calls [A, B, C], got %v", dockerCalls)
+	}
+
+	// All 3 videos should have been imported (including B with error JSON)
+	if len(importCalls) != 3 {
+		t.Fatalf("expected 3 import calls, got %d: %v", len(importCalls), importCalls)
+	}
+
+	// Queue should be empty
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("expected empty queue, got %d entries", len(remaining))
+	}
+}
+
+func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	// Queue has 2 videos (newest first, oldest last)
+	queue := []QueueEntry{
+		entry("B", "Video B", "20260216"),
+		entry("A", "Video A", "20260215"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			for i, arg := range containerArgs {
+				if arg == "--youtube_video" && i+1 < len(containerArgs) {
+					url := containerArgs[i+1]
+					vid := url[len("https://www.youtube.com/watch?v="):]
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[]}`, vid, vid)
+					os.WriteFile(outputFile, []byte(jsonData), 0644)
+				}
+			}
+			return nil
+		},
+		// Import fails for video A (the first to be processed, oldest)
+		importJSON: func(jsonFilePath string) error {
+			data, _ := os.ReadFile(jsonFilePath)
+			content := string(data)
+			if contains(content, `"video_id":"A"`) {
+				return fmt.Errorf("DATABASE_URL environment variable is required")
+			}
+			return nil
+		},
+		getLastProcessedUploadDate: func() (string, error) {
+			return "20260210", nil
+		},
+		updateLastProcessed: func(youtubeID string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps)
+
+	// Processing should stop with an error
+	if err == nil {
+		t.Fatal("expected error from processQueueVideos, got nil")
+	}
+	if !contains(err.Error(), "failed to import video A") {
+		t.Fatalf("expected import error for video A, got: %v", err)
+	}
+
+	// Video A should remain in queue (not removed)
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 2 {
+		t.Fatalf("expected 2 entries still in queue (A failed), got %d", len(remaining))
+	}
+	assertIDs(t, remaining, []string{"B", "A"})
+}
+
+func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	// Queue has 2 videos
+	queue := []QueueEntry{
+		entry("B", "Video B", "20260216"),
+		entry("A", "Video A", "20260215"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			for i, arg := range containerArgs {
+				if arg == "--youtube_video" && i+1 < len(containerArgs) {
+					url := containerArgs[i+1]
+					vid := url[len("https://www.youtube.com/watch?v="):]
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
+					os.WriteFile(outputFile, []byte(jsonData), 0644)
+				}
+			}
+			return nil
+		},
+		// Import always succeeds
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+		getLastProcessedUploadDate: func() (string, error) {
+			return "20260210", nil
+		},
+		updateLastProcessed: func(youtubeID string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps)
+	if err != nil {
+		t.Fatalf("processQueueVideos should not fail: %v", err)
+	}
+
+	// Queue should be empty (both successfully imported and removed)
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("expected empty queue, got %d entries", len(remaining))
+	}
+}
+
+// contains checks if s contains substr
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAddNewStreams_NoNewStreams(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "latest_streams.json")
