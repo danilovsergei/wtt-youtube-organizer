@@ -1139,6 +1139,7 @@ def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
         'outtmpl': video_path,
         'quiet': False,
         'no_warnings': False,
+        'retries': 100,
         'remote_components': ['ejs:github'],
     }
 
@@ -1417,7 +1418,20 @@ def main():
         # Download YouTube video
         video_path = download_youtube_video(args.youtube_video, args.output)
         if not video_path:
-            print("Failed to download YouTube video.")
+            error_msg = "Failed to download YouTube video"
+            print(f"{error_msg}.")
+            # Write error to output JSON so the Go importer can record it
+            if args.output_json_file:
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": video_title,
+                    "upload_date": upload_date,
+                    "matches": [],
+                    "error": error_msg,
+                }
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                print(f"Error JSON written to: {args.output_json_file}")
             sys.exit(1)
 
     # Determine backend
@@ -1483,6 +1497,23 @@ def main():
             print(
                 f"\nJSON output written to: "
                 f"{args.output_json_file}")
+    except Exception as e:
+        # Ensure output JSON is always written, even on unexpected errors
+        error_msg = f"Processing failed: {e}"
+        print(f"\nERROR: {error_msg}")
+        traceback.print_exc()
+        if args.output_json_file:
+            json_data = {
+                "video_id": video_id,
+                "video_title": video_title,
+                "upload_date": upload_date,
+                "matches": [],
+                "error": error_msg,
+            }
+            with open(args.output_json_file, 'w') as f:
+                json.dump(json_data, f, indent=2)
+            print(f"Error JSON written to: {args.output_json_file}")
+        sys.exit(1)
     finally:
         finder.cleanup()
 

@@ -650,6 +650,50 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 	}
 }
 
+// TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue tests that when
+// the output JSON file is missing (a bug in the Python script), processing stops
+// with an error and the video remains in the queue.
+func TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	queue := []QueueEntry{
+		entry("B", "Video B", "20260216"),
+		entry("A", "Video A", "20260215"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			// Docker fails and does NOT write JSON file
+			return fmt.Errorf("docker run failed: exit code 1")
+		},
+		importJSON: func(jsonFilePath string) error {
+			if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
+				return fmt.Errorf("failed to read JSON file: no such file or directory")
+			}
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps)
+
+	if err == nil {
+		t.Fatal("expected error from processQueueVideos, got nil")
+	}
+	if !contains(err.Error(), "failed to import video A") {
+		t.Fatalf("expected import error for video A, got: %v", err)
+	}
+
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 2 {
+		t.Fatalf("expected 2 entries still in queue, got %d", len(remaining))
+	}
+	assertIDs(t, remaining, []string{"B", "A"})
+}
+
 func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")

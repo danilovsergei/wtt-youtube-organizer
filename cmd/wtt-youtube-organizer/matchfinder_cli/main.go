@@ -454,7 +454,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 		}
 
 		// Import results to database (attempt even after docker error,
-		// since the JSON may have been written with an error field)
+		// since the Python script should always write output JSON with error field)
 		logPrintln("\n=== Importing results to database ===")
 		if importErr := deps.importJSON(outputFile); importErr != nil {
 			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, importErr)
