@@ -25,13 +25,6 @@ type StreamFetcher interface {
 	FetchStreamsAfter(afterVideoID string) ([]QueueEntry, error)
 }
 
-// LastProcessedDB provides access to the last_processed video in the database.
-type LastProcessedDB interface {
-	GetLastProcessedVideoID() (string, error)
-	GetLastProcessedUploadDate() (string, error)
-	UpdateLastProcessed(youtubeID string) error
-}
-
 // ProcessedChecker checks which videos are already processed in the database.
 type ProcessedChecker interface {
 	GetProcessedVideoIDs(youtubeIDs []string) (map[string]bool, error)
@@ -227,14 +220,4 @@ func VideosToQueueEntries(videos []importer.VideoJSON) []QueueEntry {
 		}
 	}
 	return entries
-}
-
-// ShouldUpdateLastProcessed checks if the video's upload_date is >= the
-// current last_processed upload_date in the database.
-func ShouldUpdateLastProcessed(videoUploadDate string, dbUploadDate string) bool {
-	if dbUploadDate == "" {
-		return true
-	}
-	// YYYYMMDD format: string comparison works for date ordering
-	return videoUploadDate >= dbUploadDate
 }

@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS videos (
 	youtube_id TEXT NOT NULL,
 	upload_date TIMESTAMPTZ NOT NULL,
 	title TEXT NOT NULL,
-	last_processed BOOLEAN,
 	processing_error TEXT
 );
 
@@ -383,5 +382,109 @@ func TestImport_ClearsErrorOnSuccess(t *testing.T) {
 	conn.QueryRow(ctx, "SELECT count(*) FROM matches").Scan(&matchCount)
 	if matchCount != 1 {
 		t.Fatalf("expected 1 match after successful re-import, got %d", matchCount)
+	}
+}
+
+// Test: GetVideoIDBeforeLatestUploadDate returns video from day before latest
+func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Import videos with different upload dates:
+	// 2025-12-18: bjeo13vJALg
+	// 2025-12-19: _vFHdnrgau4, lxJIbTLc-2w
+	videos := []VideoJSON{
+		{
+			VideoID:    "bjeo13vJALg",
+			VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
+			UploadDate: "20251218",
+			Matches:    []MatchJSON{{Timestamp: 100, Player1: "P1", Player2: "P2"}},
+		},
+		{
+			VideoID:    "_vFHdnrgau4",
+			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 1",
+			UploadDate: "20251219",
+			Matches:    []MatchJSON{{Timestamp: 200, Player1: "P3", Player2: "P4"}},
+		},
+		{
+			VideoID:    "lxJIbTLc-2w",
+			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
+			UploadDate: "20251219",
+			Matches:    []MatchJSON{{Timestamp: 300, Player1: "P5", Player2: "P6"}},
+		},
+	}
+
+	for _, v := range videos {
+		jsonPath := writeTestJSON(t, []VideoJSON{v})
+		if err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath); err != nil {
+			t.Fatalf("import failed for %s: %v", v.VideoID, err)
+		}
+	}
+
+	// Should return bjeo13vJALg (from 2025-12-18, which is day before 2025-12-19)
+	videoID, err := GetVideoIDBeforeLatestUploadDateWithConn(ctx, conn)
+	if err != nil {
+		t.Fatalf("GetVideoIDBeforeLatestUploadDate failed: %v", err)
+	}
+	if videoID != "bjeo13vJALg" {
+		t.Fatalf("expected bjeo13vJALg, got %s", videoID)
+	}
+}
+
+// Test: GetVideoIDsWithLatestUploadDate returns all videos with max upload_date
+func TestGetVideoIDsWithLatestUploadDate(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Same data: 2025-12-18 has 1 video, 2025-12-19 has 2 videos
+	videos := []VideoJSON{
+		{
+			VideoID:    "bjeo13vJALg",
+			VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
+			UploadDate: "20251218",
+			Matches:    []MatchJSON{{Timestamp: 100, Player1: "P1", Player2: "P2"}},
+		},
+		{
+			VideoID:    "_vFHdnrgau4",
+			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 1",
+			UploadDate: "20251219",
+			Matches:    []MatchJSON{{Timestamp: 200, Player1: "P3", Player2: "P4"}},
+		},
+		{
+			VideoID:    "lxJIbTLc-2w",
+			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
+			UploadDate: "20251219",
+			Matches:    []MatchJSON{{Timestamp: 300, Player1: "P5", Player2: "P6"}},
+		},
+	}
+
+	for _, v := range videos {
+		jsonPath := writeTestJSON(t, []VideoJSON{v})
+		if err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath); err != nil {
+			t.Fatalf("import failed for %s: %v", v.VideoID, err)
+		}
+	}
+
+	// Should return both videos from 2025-12-19
+	latestIDs, err := GetVideoIDsWithLatestUploadDateWithConn(ctx, conn)
+	if err != nil {
+		t.Fatalf("GetVideoIDsWithLatestUploadDate failed: %v", err)
+	}
+	if len(latestIDs) != 2 {
+		t.Fatalf("expected 2 videos with latest upload_date, got %d", len(latestIDs))
+	}
+	if !latestIDs["_vFHdnrgau4"] {
+		t.Fatal("expected _vFHdnrgau4 in latest upload date videos")
+	}
+	if !latestIDs["lxJIbTLc-2w"] {
+		t.Fatal("expected lxJIbTLc-2w in latest upload date videos")
+	}
+	// bjeo13vJALg should NOT be in the result
+	if latestIDs["bjeo13vJALg"] {
+		t.Fatal("bjeo13vJALg should NOT be in latest upload date (it's from 12-18, not 12-19)")
 	}
 }

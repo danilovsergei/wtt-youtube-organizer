@@ -16,24 +16,14 @@ import (
 )
 
 type MatchRecord struct {
-	Tournament         string `json:"tournament"`
-	Year               int    `json:"year"`
-	MatchTime          string `json:"match_time"`
-	TeamA              string `json:"team_a"`
-	TeamB              string `json:"team_b"`
-	IsDoubles          bool   `json:"is_doubles"`
-	YoutubeID          string `json:"youtube_id"`
-	VideoTitle         string `json:"video_title"`
-	VideoOffsetSeconds int    `json:"video_offset_seconds"` // seconds from video start
-}
-
-// buildYouTubeURL constructs a full YouTube URL with timestamp
-// Example: https://youtu.be/2wOjD1O4Qow?t=2222 points to 37:02 in the video
-func buildYouTubeURL(videoID string, timestampSeconds int) string {
-	if timestampSeconds > 0 {
-		return fmt.Sprintf("https://youtu.be/%s?t=%d", videoID, timestampSeconds)
-	}
-	return fmt.Sprintf("https://youtu.be/%s", videoID)
+	Tournament string `json:"tournament"`
+	Year       int    `json:"year"`
+	MatchTime  string `json:"match_time"`
+	TeamA      string `json:"team_a"`
+	TeamB      string `json:"team_b"`
+	IsDoubles  bool   `json:"is_doubles"`
+	YoutubeID  string `json:"youtube_id"`
+	VideoTitle string `json:"video_title"`
 }
 
 // VideoJSON represents the structure of the match.json file
@@ -110,12 +100,11 @@ func printMatches(client *supabase.Client) {
 		log.Fatal("REST request failed: ", err)
 	}
 
-	fmt.Printf("%-25s %-25s vs %-25s %s\n", "TOURNAMENT", "TEAM A", "TEAM B", "YOUTUBE LINK")
+	fmt.Printf("%-25s %-25s vs %-25s %-14s %s\n", "TOURNAMENT", "TEAM A", "TEAM B", "YOUTUBE_ID", "VIDEO_TITLE")
 	fmt.Println(strings.Repeat("-", 150))
 	for _, r := range schedule {
-		youtubeURL := buildYouTubeURL(r.YoutubeID, r.VideoOffsetSeconds)
-		fmt.Printf("%-25s %-25s vs %-25s %s\n",
-			r.Tournament, r.TeamA, r.TeamB, youtubeURL)
+		fmt.Printf("%-25s %-25s vs %-25s %-14s %s\n",
+			r.Tournament, r.TeamA, r.TeamB, r.YoutubeID, r.VideoTitle)
 	}
 }
 
@@ -261,7 +250,6 @@ func parsePlayerName(name string) []string {
 // AddVideo reads a JSON file and adds all matches from the video(s) to the database.
 // The JSON can be either a single VideoJSON object or an array of VideoJSON objects.
 // Tournament name and year are extracted from the video_title field.
-// The last video in the array gets last_processed=true, clearing it from other videos.
 func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 	// 1. Read and parse JSON file
 	data, err := os.ReadFile(jsonFilePath)
@@ -288,8 +276,6 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 
 	// Process each video
 	for videoIdx, videoJSON := range videos {
-		isLastVideo := videoIdx == len(videos)-1
-
 		fmt.Printf("\n[%d/%d] Processing video: %s\n", videoIdx+1, len(videos), videoJSON.VideoTitle)
 		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
 		fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
@@ -446,25 +432,7 @@ func AddVideo(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
 				i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
 		}
 
-		// 7. Handle last_processed flag (only for the last video in the array)
-		if isLastVideo {
-			// Clear last_processed from all other videos
-			_, err = tx.Exec(ctx, `
-				UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
-			if err != nil {
-				return fmt.Errorf("failed to clear last_processed flags: %w", err)
-			}
-
-			// Set last_processed for this video
-			_, err = tx.Exec(ctx, `
-				UPDATE videos SET last_processed = true WHERE id = $1`, videoID)
-			if err != nil {
-				return fmt.Errorf("failed to set last_processed: %w", err)
-			}
-			fmt.Printf("Set last_processed=true for video ID: %d\n", videoID)
-		}
-
-		// 8. Commit the Transaction
+		// 7. Commit the Transaction
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to commit: %w", err)
 		}

@@ -141,10 +141,10 @@ func ParseVideoMetadataJSON(jsonFilePath string) ([]VideoJSON, error) {
 	return videos, nil
 }
 
-// GetLastProcessedVideoID returns the YouTube video ID of the video marked as last_processed=true.
-// Returns empty string if no video is marked as last processed.
-// Requires DATABASE_URL environment variable to be set.
-func GetLastProcessedVideoID() (string, error) {
+// GetVideoIDBeforeLatestUploadDate returns a youtube_id from the day before the latest upload_date.
+// This is used as the starting point for --show_new_streams / --add_new_streams when no video_id is provided.
+// For example, if the latest upload_date is 2025-12-19, it returns a video_id from 2025-12-18.
+func GetVideoIDBeforeLatestUploadDate() (string, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return "", fmt.Errorf("DATABASE_URL environment variable is required")
@@ -156,79 +156,61 @@ func GetLastProcessedVideoID() (string, error) {
 	}
 	defer conn.Close(context.Background())
 
+	return GetVideoIDBeforeLatestUploadDateWithConn(context.Background(), conn)
+}
+
+// GetVideoIDBeforeLatestUploadDateWithConn is the testable version using a provided connection.
+func GetVideoIDBeforeLatestUploadDateWithConn(ctx context.Context, conn *pgx.Conn) (string, error) {
 	var videoID string
-	err = conn.QueryRow(context.Background(),
-		"SELECT youtube_id FROM videos WHERE last_processed = true LIMIT 1").Scan(&videoID)
+	err := conn.QueryRow(ctx, `
+		SELECT youtube_id FROM videos
+		WHERE upload_date::date = (SELECT MAX(upload_date::date) - INTERVAL '1 day' FROM videos)
+		LIMIT 1`).Scan(&videoID)
 	if err == pgx.ErrNoRows {
-		return "", nil
+		return "", fmt.Errorf("no video found for the day before latest upload_date")
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to query last processed video: %w", err)
+		return "", fmt.Errorf("failed to query video before latest upload date: %w", err)
 	}
-
 	return videoID, nil
 }
 
-// GetLastProcessedUploadDate returns the upload_date of the last_processed video.
-// Returns empty string if no video is marked as last processed.
-func GetLastProcessedUploadDate() (string, error) {
+// GetVideoIDsWithLatestUploadDate returns all youtube_ids that have the latest (max) upload_date.
+// These are the videos that docker will return as duplicates and need to be filtered out.
+func GetVideoIDsWithLatestUploadDate() (map[string]bool, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		return "", fmt.Errorf("DATABASE_URL environment variable is required")
+		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
 	}
 
 	conn, err := pgx.Connect(context.Background(), databaseURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer conn.Close(context.Background())
 
-	var uploadDate time.Time
-	err = conn.QueryRow(context.Background(),
-		"SELECT upload_date FROM videos WHERE last_processed = true LIMIT 1").Scan(&uploadDate)
-	if err == pgx.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to query last processed upload date: %w", err)
-	}
-
-	return uploadDate.Format("20060102"), nil
+	return GetVideoIDsWithLatestUploadDateWithConn(context.Background(), conn)
 }
 
-// UpdateLastProcessed sets last_processed=true for the given youtube_id
-// and clears it from all other videos.
-func UpdateLastProcessed(youtubeID string) error {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
-	}
-
-	conn, err := pgx.Connect(context.Background(), databaseURL)
+// GetVideoIDsWithLatestUploadDateWithConn is the testable version using a provided connection.
+func GetVideoIDsWithLatestUploadDateWithConn(ctx context.Context, conn *pgx.Conn) (map[string]bool, error) {
+	rows, err := conn.Query(ctx, `
+		SELECT youtube_id FROM videos
+		WHERE upload_date::date = (SELECT MAX(upload_date::date) FROM videos)`)
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to query videos with latest upload date: %w", err)
 	}
-	defer conn.Close(context.Background())
+	defer rows.Close()
 
-	tx, err := conn.Begin(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+	result := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan video id: %w", err)
+		}
+		result[id] = true
 	}
-	defer tx.Rollback(context.Background())
-
-	_, err = tx.Exec(context.Background(),
-		"UPDATE videos SET last_processed = NULL WHERE last_processed = true")
-	if err != nil {
-		return fmt.Errorf("failed to clear last_processed: %w", err)
-	}
-
-	_, err = tx.Exec(context.Background(),
-		"UPDATE videos SET last_processed = true WHERE youtube_id = $1", youtubeID)
-	if err != nil {
-		return fmt.Errorf("failed to set last_processed: %w", err)
-	}
-
-	return tx.Commit(context.Background())
+	return result, nil
 }
 
 // ImportMatchesFromJSON reads a JSON file and imports all matches to the database.
@@ -272,10 +254,7 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 
 	fmt.Printf("Found %d video(s) in JSON file\n", len(videos))
 
-	// First video in the array is the newest (top of yt-dlp playlist order)
 	for videoIdx, videoJSON := range videos {
-		isNewestVideo := videoIdx == 0
-
 		fmt.Printf("\n[%d/%d] Processing video: %s\n", videoIdx+1, len(videos), videoJSON.VideoTitle)
 		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
 		fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
@@ -361,18 +340,6 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				return fmt.Errorf("failed to save processing_error: %w", err)
 			}
 
-			if isNewestVideo {
-				_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
-				if err != nil {
-					return fmt.Errorf("failed to clear last_processed flags: %w", err)
-				}
-				_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = true WHERE id = $1`, videoID)
-				if err != nil {
-					return fmt.Errorf("failed to set last_processed: %w", err)
-				}
-				fmt.Printf("Set last_processed=true for video ID: %d\n", videoID)
-			}
-
 			if err := tx.Commit(ctx); err != nil {
 				return fmt.Errorf("failed to commit: %w", err)
 			}
@@ -441,18 +408,6 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 			}
 			fmt.Printf("  Match %d: %s vs %s (%s) at %ds\n",
 				i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
-		}
-
-		if isNewestVideo {
-			_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = NULL WHERE last_processed = true`)
-			if err != nil {
-				return fmt.Errorf("failed to clear last_processed flags: %w", err)
-			}
-			_, err = tx.Exec(ctx, `UPDATE videos SET last_processed = true WHERE id = $1`, videoID)
-			if err != nil {
-				return fmt.Errorf("failed to set last_processed: %w", err)
-			}
-			fmt.Printf("Set last_processed=true for video ID: %d\n", videoID)
 		}
 
 		if err := tx.Commit(ctx); err != nil {

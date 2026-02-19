@@ -21,31 +21,6 @@ func (m *mockStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEntry
 	return m.returnEntries, m.returnErr
 }
 
-// mockLastProcessedDB is a hermetic in-memory database double.
-type mockLastProcessedDB struct {
-	lastProcessedVideoID    string
-	lastProcessedUploadDate string
-	updatedVideoID          string
-	updateCalled            bool
-}
-
-func (m *mockLastProcessedDB) GetLastProcessedVideoID() (string, error) {
-	if m.lastProcessedVideoID == "" {
-		return "", fmt.Errorf("no last_processed video found")
-	}
-	return m.lastProcessedVideoID, nil
-}
-
-func (m *mockLastProcessedDB) GetLastProcessedUploadDate() (string, error) {
-	return m.lastProcessedUploadDate, nil
-}
-
-func (m *mockLastProcessedDB) UpdateLastProcessed(youtubeID string) error {
-	m.updateCalled = true
-	m.updatedVideoID = youtubeID
-	return nil
-}
-
 // --- Helper functions ---
 
 func entry(id, title, date string) QueueEntry {
@@ -74,7 +49,7 @@ func assertIDs(t *testing.T, got []QueueEntry, wantIDs []string) {
 	}
 }
 
-// --- Test 1: Queue naming ---
+// --- Test: Queue naming ---
 
 func TestQueueFileName_NoVideoID(t *testing.T) {
 	name := QueueFileName("")
@@ -91,7 +66,7 @@ func TestQueueFileName_WithVideoID(t *testing.T) {
 	}
 }
 
-// --- Test 1: add_new_streams without video_id creates latest_streams.json ---
+// --- Test: add_new_streams without video_id creates latest_streams.json ---
 
 func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -104,7 +79,6 @@ func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 		},
 	}
 
-	// afterVideoID comes from "last_processed in DB"
 	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
@@ -113,20 +87,18 @@ func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 		t.Fatalf("expected 2 new entries, got %d", count)
 	}
 
-	// Verify file was created
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		t.Fatalf("LoadQueue failed: %v", err)
 	}
 	assertIDs(t, queue, []string{"A", "B"})
 
-	// Verify fetcher was called with DB last_processed
 	if fetcher.calledWithVideoID != "DB_LAST" {
 		t.Fatalf("expected fetcher called with DB_LAST, got %s", fetcher.calledWithVideoID)
 	}
 }
 
-// --- Test 1b: add_new_streams with video_id creates streams_after_<video_id>.json ---
+// --- Test: add_new_streams with video_id creates streams_after_<video_id>.json ---
 
 func TestAddNewStreams_WithVideoID_CreatesNamedQueue(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -147,18 +119,16 @@ func TestAddNewStreams_WithVideoID_CreatesNamedQueue(t *testing.T) {
 		t.Fatalf("expected 1 new entry, got %d", count)
 	}
 
-	// Verify file was created with correct name
 	if _, err := os.Stat(queuePath); os.IsNotExist(err) {
 		t.Fatalf("queue file not created at %s", queuePath)
 	}
 
-	// Verify fetcher was called with the provided video_id
 	if fetcher.calledWithVideoID != "xyz789" {
 		t.Fatalf("expected fetcher called with xyz789, got %s", fetcher.calledWithVideoID)
 	}
 }
 
-// --- Test 2: empty queue uses provided afterVideoID (from DB) ---
+// --- Test: empty queue uses provided afterVideoID ---
 
 func TestAddNewStreams_EmptyQueue_UsesAfterVideoID(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -170,26 +140,22 @@ func TestAddNewStreams_EmptyQueue_UsesAfterVideoID(t *testing.T) {
 		},
 	}
 
-	// Simulate: no queue exists, afterVideoID comes from DB mock
-	dbLastProcessed := "DB_VIDEO_ID"
-	_, err := AddNewStreams(queuePath, dbLastProcessed, fetcher)
+	_, err := AddNewStreams(queuePath, "DB_VIDEO_ID", fetcher)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
 
-	// Fetcher should have been called with the DB last_processed video ID
 	if fetcher.calledWithVideoID != "DB_VIDEO_ID" {
 		t.Fatalf("expected fetcher called with DB_VIDEO_ID, got %s", fetcher.calledWithVideoID)
 	}
 }
 
-// --- Test 3: existing queue uses top video ID as cutoff ---
+// --- Test: existing queue uses top video ID as cutoff ---
 
 func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "latest_streams.json")
 
-	// Create existing queue with some entries
 	existingQueue := []QueueEntry{
 		entry("EXISTING_TOP", "Existing Top", "20260214"),
 		entry("EXISTING_OLD", "Existing Old", "20260213"),
@@ -210,19 +176,17 @@ func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
 
-	// Fetcher should have been called with top video ID from queue, NOT the DB ID
 	if fetcher.calledWithVideoID != "EXISTING_TOP" {
 		t.Fatalf("expected fetcher called with EXISTING_TOP, got %s", fetcher.calledWithVideoID)
 	}
 }
 
-// --- Test 4: new videos prepended to top of queue ---
+// --- Test: new videos prepended to top of queue ---
 
 func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "latest_streams.json")
 
-	// Existing queue: B (newer), C (older)
 	existingQueue := []QueueEntry{
 		entry("B", "Video B", "20260215"),
 		entry("C", "Video C", "20260214"),
@@ -231,7 +195,6 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 		t.Fatalf("SaveQueue failed: %v", err)
 	}
 
-	// Docker returns A (newest, after B)
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
 			entry("A", "Video A", "20260216"),
@@ -246,42 +209,11 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 		t.Fatalf("expected 1 new entry, got %d", count)
 	}
 
-	// Queue should be: A (newest, top), B, C (oldest, bottom)
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		t.Fatalf("LoadQueue failed: %v", err)
 	}
 	assertIDs(t, queue, []string{"A", "B", "C"})
-}
-
-// --- Test 5: last_processed update logic ---
-
-func TestShouldUpdateLastProcessed_FresherDate(t *testing.T) {
-	// Video date is fresher than DB date
-	if !ShouldUpdateLastProcessed("20260216", "20260215") {
-		t.Fatal("expected true: video date is fresher")
-	}
-}
-
-func TestShouldUpdateLastProcessed_SameDate(t *testing.T) {
-	// Video date equals DB date
-	if !ShouldUpdateLastProcessed("20260215", "20260215") {
-		t.Fatal("expected true: video date equals DB date")
-	}
-}
-
-func TestShouldUpdateLastProcessed_OlderDate(t *testing.T) {
-	// Video date is older than DB date
-	if ShouldUpdateLastProcessed("20260214", "20260215") {
-		t.Fatal("expected false: video date is older")
-	}
-}
-
-func TestShouldUpdateLastProcessed_EmptyDBDate(t *testing.T) {
-	// No last_processed in DB
-	if !ShouldUpdateLastProcessed("20260214", "") {
-		t.Fatal("expected true: empty DB date should always update")
-	}
 }
 
 // --- Test: PrependToQueue ---
@@ -395,100 +327,6 @@ func TestLoadQueue_NonExistent(t *testing.T) {
 	}
 }
 
-// --- Test 5: last_processed update called once, only if date is fresh enough ---
-
-func TestLastProcessedUpdate_CalledOnceWhenFresher(t *testing.T) {
-	db := &mockLastProcessedDB{
-		lastProcessedVideoID:    "OLD_VIDEO",
-		lastProcessedUploadDate: "20260210",
-	}
-
-	// Simulate processing a queue where top entry has fresher date
-	topEntry := entry("NEW_TOP", "Newest Video", "20260216")
-
-	// Check condition
-	dbDate, _ := db.GetLastProcessedUploadDate()
-	if !ShouldUpdateLastProcessed(topEntry.UploadDate, dbDate) {
-		t.Fatal("expected ShouldUpdateLastProcessed=true for fresher date")
-	}
-
-	// Simulate the update
-	if err := db.UpdateLastProcessed(topEntry.VideoID); err != nil {
-		t.Fatalf("UpdateLastProcessed failed: %v", err)
-	}
-
-	// Verify it was called exactly once with the correct video ID
-	if !db.updateCalled {
-		t.Fatal("expected UpdateLastProcessed to be called")
-	}
-	if db.updatedVideoID != "NEW_TOP" {
-		t.Fatalf("expected updated video ID NEW_TOP, got %s", db.updatedVideoID)
-	}
-}
-
-func TestLastProcessedUpdate_NotCalledWhenOlder(t *testing.T) {
-	db := &mockLastProcessedDB{
-		lastProcessedVideoID:    "CURRENT_VIDEO",
-		lastProcessedUploadDate: "20260220", // DB has newer date
-	}
-
-	// Top entry has older date
-	topEntry := entry("OLD_TOP", "Older Video", "20260210")
-
-	// Check condition - should NOT update
-	dbDate, _ := db.GetLastProcessedUploadDate()
-	if ShouldUpdateLastProcessed(topEntry.UploadDate, dbDate) {
-		t.Fatal("expected ShouldUpdateLastProcessed=false for older date")
-	}
-
-	// UpdateLastProcessed should NOT be called
-	if db.updateCalled {
-		t.Fatal("expected UpdateLastProcessed to NOT be called")
-	}
-}
-
-func TestLastProcessedUpdate_CalledWhenSameDate(t *testing.T) {
-	db := &mockLastProcessedDB{
-		lastProcessedVideoID:    "SAME_DATE_VIDEO",
-		lastProcessedUploadDate: "20260215",
-	}
-
-	topEntry := entry("NEW_TOP", "Same Date Video", "20260215")
-
-	dbDate, _ := db.GetLastProcessedUploadDate()
-	if !ShouldUpdateLastProcessed(topEntry.UploadDate, dbDate) {
-		t.Fatal("expected ShouldUpdateLastProcessed=true for same date")
-	}
-
-	if err := db.UpdateLastProcessed(topEntry.VideoID); err != nil {
-		t.Fatalf("UpdateLastProcessed failed: %v", err)
-	}
-	if db.updatedVideoID != "NEW_TOP" {
-		t.Fatalf("expected updated video ID NEW_TOP, got %s", db.updatedVideoID)
-	}
-}
-
-func TestLastProcessedUpdate_CalledWhenDBEmpty(t *testing.T) {
-	db := &mockLastProcessedDB{
-		lastProcessedVideoID:    "",
-		lastProcessedUploadDate: "", // No last_processed in DB
-	}
-
-	topEntry := entry("FIRST_VIDEO", "First Video", "20260210")
-
-	dbDate, _ := db.GetLastProcessedUploadDate()
-	if !ShouldUpdateLastProcessed(topEntry.UploadDate, dbDate) {
-		t.Fatal("expected ShouldUpdateLastProcessed=true when DB is empty")
-	}
-
-	if err := db.UpdateLastProcessed(topEntry.VideoID); err != nil {
-		t.Fatalf("UpdateLastProcessed failed: %v", err)
-	}
-	if db.updatedVideoID != "FIRST_VIDEO" {
-		t.Fatalf("expected updated video ID FIRST_VIDEO, got %s", db.updatedVideoID)
-	}
-}
-
 // --- Mock ProcessedChecker ---
 
 type mockProcessedChecker struct {
@@ -515,7 +353,7 @@ func TestFilterUnprocessed_FiltersOutProcessed(t *testing.T) {
 	}
 
 	checker := &mockProcessedChecker{
-		processedIDs: map[string]bool{"B": true}, // B is already in DB
+		processedIDs: map[string]bool{"B": true},
 	}
 
 	filtered, err := FilterUnprocessed(entries, checker)
@@ -523,7 +361,6 @@ func TestFilterUnprocessed_FiltersOutProcessed(t *testing.T) {
 		t.Fatalf("FilterUnprocessed failed: %v", err)
 	}
 
-	// B should be filtered out, A and C remain
 	assertIDs(t, filtered, []string{"A", "C"})
 }
 
@@ -565,13 +402,66 @@ func TestFilterUnprocessed_NoneProcessed(t *testing.T) {
 	assertIDs(t, filtered, []string{"A", "B"})
 }
 
+// --- Test: FilterUnprocessed filters videos with latest upload_date existing in DB ---
+
+// Scenario: DB has videos with latest upload_date 2025-12-19.
+// Docker returns videos including _vFHdnrgau4 and lxJIbTLc-2w (already in DB with 2025-12-19)
+// and new_video_1, new_video_2 (upload_date 2025-12-19 but NOT in DB yet).
+// The filter should remove only videos that exist in the DB.
+func TestFilterUnprocessed_LatestUploadDateVideosInDB_FilteredOut(t *testing.T) {
+	// Docker returned these videos (including some already processed with latest upload_date)
+	entries := []QueueEntry{
+		entry("new_video_2", "New Video 2", "20251220"),
+		entry("new_video_1", "New Video 1", "20251219"),
+		entry("lxJIbTLc-2w", "Existing Video 2", "20251219"),
+		entry("_vFHdnrgau4", "Existing Video 1", "20251219"),
+	}
+
+	// DB has these two videos with the latest upload_date
+	checker := &mockProcessedChecker{
+		processedIDs: map[string]bool{
+			"_vFHdnrgau4": true,
+			"lxJIbTLc-2w": true,
+		},
+	}
+
+	filtered, err := FilterUnprocessed(entries, checker)
+	if err != nil {
+		t.Fatalf("FilterUnprocessed failed: %v", err)
+	}
+
+	// Only new videos should remain (the ones NOT in DB)
+	assertIDs(t, filtered, []string{"new_video_2", "new_video_1"})
+}
+
+// Scenario: Videos with latest upload_date NOT existing in the DB should remain.
+func TestFilterUnprocessed_LatestUploadDateVideosNotInDB_Remaining(t *testing.T) {
+	// Docker returned these - all have the latest upload_date, none in DB yet
+	entries := []QueueEntry{
+		entry("brand_new_1", "Brand New 1", "20251219"),
+		entry("brand_new_2", "Brand New 2", "20251219"),
+	}
+
+	// DB has no videos at all
+	checker := &mockProcessedChecker{
+		processedIDs: map[string]bool{},
+	}
+
+	filtered, err := FilterUnprocessed(entries, checker)
+	if err != nil {
+		t.Fatalf("FilterUnprocessed failed: %v", err)
+	}
+
+	// All should remain since none are in DB
+	assertIDs(t, filtered, []string{"brand_new_1", "brand_new_2"})
+}
+
 // --- Test: AddNewStreams with checker filters processed videos ---
 
 func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "streams_after_xyz.json")
 
-	// Docker returns 3 videos
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
 			entry("A", "Video A", "20260216"),
@@ -580,7 +470,6 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 		},
 	}
 
-	// B is already in the database
 	checker := &mockProcessedChecker{
 		processedIDs: map[string]bool{"B": true},
 	}
@@ -590,7 +479,6 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
 
-	// Only 2 should be added (A and C, not B)
 	if count != 2 {
 		t.Fatalf("expected 2 new entries, got %d", count)
 	}
@@ -600,7 +488,6 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 		t.Fatalf("LoadQueue failed: %v", err)
 	}
 
-	// Queue should contain A and C only
 	assertIDs(t, queue, []string{"A", "C"})
 }
 
@@ -615,7 +502,6 @@ func TestAddNewStreams_WithChecker_AllProcessed_NothingAdded(t *testing.T) {
 		},
 	}
 
-	// All already processed
 	checker := &mockProcessedChecker{
 		processedIDs: map[string]bool{"A": true, "B": true},
 	}
@@ -628,7 +514,6 @@ func TestAddNewStreams_WithChecker_AllProcessed_NothingAdded(t *testing.T) {
 		t.Fatalf("expected 0 new entries, got %d", count)
 	}
 
-	// Queue file should not be created
 	if _, err := os.Stat(queuePath); !os.IsNotExist(err) {
 		t.Fatal("queue file should not exist when all videos already processed")
 	}
@@ -645,7 +530,6 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 		},
 	}
 
-	// No checker passed - all videos should be added
 	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
@@ -661,15 +545,43 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 	assertIDs(t, queue, []string{"A", "B"})
 }
 
-// --- Test: AddNewStreams with no new results ---
+func TestAddNewStreams_NoNewStreams(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "latest_streams.json")
 
-// --- Test: processQueueVideos continues on docker/import errors ---
+	fetcher := &mockStreamFetcher{
+		returnEntries: []QueueEntry{},
+	}
+
+	count, err := AddNewStreams(queuePath, "SOME_ID", fetcher)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 new entries, got %d", count)
+	}
+
+	if _, err := os.Stat(queuePath); !os.IsNotExist(err) {
+		t.Fatal("queue file should not exist when no streams found")
+	}
+}
+
+// --- Test: processQueueVideos ---
+
+// contains checks if s contains substr
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
 
 func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
-	// Queue has 3 videos (newest first, oldest last)
 	queue := []QueueEntry{
 		entry("C", "Video C", "20260216"),
 		entry("B", "Video B", "20260215"),
@@ -679,15 +591,11 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 		t.Fatalf("SaveQueue failed: %v", err)
 	}
 
-	// Track which videos were processed
 	var dockerCalls []string
 	var importCalls []string
 
 	deps := queueProcessorDeps{
-		// Docker mock: fails for video B, succeeds for A and C
-		// Also writes JSON with error field for B
 		runDocker: func(outputFile string, containerArgs []string) error {
-			// Extract video ID from the YouTube URL in containerArgs
 			for i, arg := range containerArgs {
 				if arg == "--youtube_video" && i+1 < len(containerArgs) {
 					url := containerArgs[i+1]
@@ -695,40 +603,27 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 					dockerCalls = append(dockerCalls, vid)
 
 					if vid == "B" {
-						// Simulate: docker writes JSON with error, then fails
 						jsonData := `{"video_id":"B","video_title":"Video B","upload_date":"20260215","matches":[],"error":"No match starts found"}`
 						os.WriteFile(outputFile, []byte(jsonData), 0644)
 						return fmt.Errorf("docker run failed: exit code 1")
 					}
-					// Success: write normal JSON
 					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
 				}
 			}
 			return nil
 		},
-		// Import mock: just records what was called
 		importJSON: func(jsonFilePath string) error {
 			data, err := os.ReadFile(jsonFilePath)
 			if err != nil {
 				return err
 			}
-			// Extract video_id from JSON
 			content := string(data)
 			for _, vid := range []string{"A", "B", "C"} {
-				if fmt.Sprintf(`"video_id":"%s"`, vid) == "" {
-					continue
-				}
-				if len(content) > 0 && contains(content, fmt.Sprintf(`"video_id":"%s"`, vid)) {
+				if contains(content, fmt.Sprintf(`"video_id":"%s"`, vid)) {
 					importCalls = append(importCalls, vid)
 				}
 			}
-			return nil
-		},
-		getLastProcessedUploadDate: func() (string, error) {
-			return "20260210", nil
-		},
-		updateLastProcessed: func(youtubeID string) error {
 			return nil
 		},
 	}
@@ -738,7 +633,6 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
 
-	// All 3 videos should have been processed by docker (oldest first: A, B, C)
 	if len(dockerCalls) != 3 {
 		t.Fatalf("expected 3 docker calls, got %d: %v", len(dockerCalls), dockerCalls)
 	}
@@ -746,12 +640,10 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 		t.Fatalf("expected docker calls [A, B, C], got %v", dockerCalls)
 	}
 
-	// All 3 videos should have been imported (including B with error JSON)
 	if len(importCalls) != 3 {
 		t.Fatalf("expected 3 import calls, got %d: %v", len(importCalls), importCalls)
 	}
 
-	// Queue should be empty
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 0 {
 		t.Fatalf("expected empty queue, got %d entries", len(remaining))
@@ -762,7 +654,6 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
-	// Queue has 2 videos (newest first, oldest last)
 	queue := []QueueEntry{
 		entry("B", "Video B", "20260216"),
 		entry("A", "Video A", "20260215"),
@@ -783,7 +674,6 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 			}
 			return nil
 		},
-		// Import fails for video A (the first to be processed, oldest)
 		importJSON: func(jsonFilePath string) error {
 			data, _ := os.ReadFile(jsonFilePath)
 			content := string(data)
@@ -792,17 +682,10 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 			}
 			return nil
 		},
-		getLastProcessedUploadDate: func() (string, error) {
-			return "20260210", nil
-		},
-		updateLastProcessed: func(youtubeID string) error {
-			return nil
-		},
 	}
 
 	err := processQueueVideosWithDeps(queuePath, deps)
 
-	// Processing should stop with an error
 	if err == nil {
 		t.Fatal("expected error from processQueueVideos, got nil")
 	}
@@ -810,7 +693,6 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 		t.Fatalf("expected import error for video A, got: %v", err)
 	}
 
-	// Video A should remain in queue (not removed)
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 2 {
 		t.Fatalf("expected 2 entries still in queue (A failed), got %d", len(remaining))
@@ -822,7 +704,6 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
-	// Queue has 2 videos
 	queue := []QueueEntry{
 		entry("B", "Video B", "20260216"),
 		entry("A", "Video A", "20260215"),
@@ -843,14 +724,7 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 			}
 			return nil
 		},
-		// Import always succeeds
 		importJSON: func(jsonFilePath string) error {
-			return nil
-		},
-		getLastProcessedUploadDate: func() (string, error) {
-			return "20260210", nil
-		},
-		updateLastProcessed: func(youtubeID string) error {
 			return nil
 		},
 	}
@@ -860,45 +734,8 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
 
-	// Queue should be empty (both successfully imported and removed)
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 0 {
 		t.Fatalf("expected empty queue, got %d entries", len(remaining))
-	}
-}
-
-// contains checks if s contains substr
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-func TestAddNewStreams_NoNewStreams(t *testing.T) {
-	tmpDir := t.TempDir()
-	queuePath := filepath.Join(tmpDir, "latest_streams.json")
-
-	fetcher := &mockStreamFetcher{
-		returnEntries: []QueueEntry{}, // nothing new
-	}
-
-	count, err := AddNewStreams(queuePath, "SOME_ID", fetcher)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("expected 0 new entries, got %d", count)
-	}
-
-	// Queue file should not be created
-	if _, err := os.Stat(queuePath); !os.IsNotExist(err) {
-		t.Fatal("queue file should not exist when no streams found")
 	}
 }

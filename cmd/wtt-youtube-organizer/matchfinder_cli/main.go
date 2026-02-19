@@ -73,13 +73,13 @@ func logPrintln(a ...interface{}) {
 }
 
 const example = `
-		# Show new streams since last processed (dry run)
+		# Show new streams since latest upload date (dry run)
 		{cmd} matchfinder --show_new_streams
 
 		# Show new streams and save to file
 		{cmd} matchfinder --show_new_streams --output_json /path/to/results.json
 
-		# Process all new streams since last processed (uses database)
+		# Process all new streams (uses database)
 		{cmd} matchfinder --process_new_streams
 
 		# Process all streams after a specific video ID
@@ -108,12 +108,12 @@ func NewCommand() *cobra.Command {
 for Intel OpenVINO acceleration.
 
 When --show_new_streams is provided:
-  - Queries database for last_processed video ID
+  - Queries database for video ID from day before latest upload date
   - Runs Docker with --only_extract_video_metadata to show new streams
   - Shows list of new streams (dry run unless you process them)
 
 When --process_new_streams is provided:
-  - Uses VIDEO_ID arg if provided, otherwise uses last_processed from database
+  - Uses VIDEO_ID arg if provided, otherwise queries database for latest upload date
   - Generates temp output file automatically
   - Runs Docker container to find matches
   - Imports results to database automatically
@@ -133,7 +133,7 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.StringVar(&outputJSON, "output_json", "", "Output JSON file path (optional with --show_new_streams)")
 	flags.BoolVar(&addNewStreams, "add_new_streams", false, "Fetch new streams and add to processing queue (optionally specify VIDEO_ID as arg)")
 	flags.StringVar(&processQueueName, "process", "", "Process videos from the specified queue file (e.g., latest_streams)")
-	flags.BoolVar(&showNewStreams, "show_new_streams", false, "Show new streams since last processed video (uses last_processed from database)")
+	flags.BoolVar(&showNewStreams, "show_new_streams", false, "Show new streams since day before latest upload date in database")
 	flags.BoolVar(&excludeProcessed, "exclude_processed", false, "When used with --show_new_streams, only show videos not yet processed")
 }
 
@@ -155,14 +155,11 @@ func runMatchFinder(extraArgs []string) error {
 			logPrintf("Using provided video ID: %s\n", lastVideoID)
 		} else {
 			var err error
-			lastVideoID, err = importer.GetLastProcessedVideoID()
+			lastVideoID, err = importer.GetVideoIDBeforeLatestUploadDate()
 			if err != nil {
-				return fmt.Errorf("failed to get last processed video: %w", err)
+				return fmt.Errorf("failed to get video ID from database: %w", err)
 			}
-			if lastVideoID == "" {
-				return fmt.Errorf("no last_processed video found in database")
-			}
-			logPrintf("Last processed video ID (from database): %s\n", lastVideoID)
+			logPrintf("Using video ID from day before latest upload date: %s\n", lastVideoID)
 		}
 
 		// Always use a temp output file to capture metadata JSON
@@ -290,29 +287,22 @@ func runMatchFinder(extraArgs []string) error {
 			// New queue with provided video_id
 			afterVideoID = providedVideoID
 		} else {
-			// New queue without video_id: use last_processed from DB
-			afterVideoID, err = importer.GetLastProcessedVideoID()
+			// New queue without video_id: use video from day before latest upload date
+			afterVideoID, err = importer.GetVideoIDBeforeLatestUploadDate()
 			if err != nil {
-				return fmt.Errorf("failed to get last processed video: %w", err)
+				return fmt.Errorf("failed to get video ID from database: %w", err)
 			}
-			if afterVideoID == "" {
-				return fmt.Errorf("no last_processed video found in database")
-			}
-			logPrintf("Last processed video ID (from database): %s\n", afterVideoID)
+			logPrintf("Using video ID from day before latest upload date: %s\n", afterVideoID)
 		}
 
 		// Create docker-based stream fetcher
 		fetcher := &dockerStreamFetcher{}
 
-		// Add new streams to queue
-		// When video_id is provided, filter out already-processed videos
+		// Always filter out already-processed videos
+		// (docker may return duplicates from the latest upload_date that are already in DB)
+		checker := &dbProcessedChecker{}
 		var count int
-		if providedVideoID != "" {
-			checker := &dbProcessedChecker{}
-			count, err = AddNewStreams(queuePath, afterVideoID, fetcher, checker)
-		} else {
-			count, err = AddNewStreams(queuePath, afterVideoID, fetcher)
-		}
+		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, checker)
 		if err != nil {
 			return err
 		}
@@ -404,26 +394,18 @@ type queueProcessorDeps struct {
 	runDocker func(outputFile string, containerArgs []string) error
 	// importJSON imports matches from a JSON file to the database.
 	importJSON func(jsonFilePath string) error
-	// getLastProcessedUploadDate returns the upload date of last_processed video.
-	getLastProcessedUploadDate func() (string, error)
-	// updateLastProcessed sets last_processed for the given video ID.
-	updateLastProcessed func(youtubeID string) error
 }
 
 // defaultQueueDeps returns real production dependencies.
 func defaultQueueDeps() queueProcessorDeps {
 	return queueProcessorDeps{
-		runDocker:                  runDockerContainer,
-		importJSON:                 importer.ImportMatchesFromJSON,
-		getLastProcessedUploadDate: importer.GetLastProcessedUploadDate,
-		updateLastProcessed:        importer.UpdateLastProcessed,
+		runDocker:  runDockerContainer,
+		importJSON: importer.ImportMatchesFromJSON,
 	}
 }
 
 // processQueueVideos processes videos from the queue one by one (oldest first).
 // After each video is successfully processed and imported, it's removed from the queue.
-// When the queue is fully processed, updates last_processed in the database
-// if the top video's upload_date is >= the current last_processed upload_date.
 func processQueueVideos(queuePath string) error {
 	return processQueueVideosWithDeps(queuePath, defaultQueueDeps())
 }
@@ -444,7 +426,6 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 
 		// Process the last entry (oldest, since queue is newest-first)
 		entry := queue[len(queue)-1]
-		isLastItem := len(queue) == 1 // This is the top (newest) entry
 		logPrintf("\n=== Processing queue [%d remaining] ===\n", len(queue))
 		logPrintf("Video: %s (%s)\n", entry.VideoTitle, entry.VideoID)
 
@@ -489,25 +470,6 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 
 		logPrintf("Successfully processed and removed from queue: %s\n", entry.VideoID)
 		logPrintf("Remaining in queue: %d\n", len(queue))
-
-		// Update last_processed when the last item (top/newest) is processed
-		if isLastItem {
-			dbUploadDate, err := deps.getLastProcessedUploadDate()
-			if err != nil {
-				logPrintf("Warning: could not get DB upload date: %v\n", err)
-			}
-			if ShouldUpdateLastProcessed(entry.UploadDate, dbUploadDate) {
-				logPrintf("Updating last_processed to: %s (upload_date: %s)\n",
-					entry.VideoID, entry.UploadDate)
-				if err := deps.updateLastProcessed(entry.VideoID); err != nil {
-					return fmt.Errorf("failed to update last_processed: %w", err)
-				}
-				logPrintln("last_processed updated successfully")
-			} else {
-				logPrintf("Skipping last_processed update: video upload_date (%s) < DB upload_date (%s)\n",
-					entry.UploadDate, dbUploadDate)
-			}
-		}
 	}
 }
 
