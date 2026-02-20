@@ -433,6 +433,73 @@ func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
 	}
 }
 
+// Test: parseTournamentFromTitle extracts tournament name and year
+func TestParseTournamentFromTitle(t *testing.T) {
+	tests := []struct {
+		name     string
+		title    string
+		wantName string
+		wantYear int
+		wantErr  bool
+	}{
+		{
+			name:     "4 parts with Day prefix",
+			title:    "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Finals",
+			wantName: "wtt star contender chennai",
+			wantYear: 2026,
+		},
+		{
+			name:     "4 parts with Day prefix and complex round",
+			title:    "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Singles SF & Mixed Doubles F",
+			wantName: "wtt star contender chennai",
+			wantYear: 2026,
+		},
+		{
+			name:     "3 parts without Day prefix",
+			title:    "LIVE! | WTT Star Contender Doha 2026 | Singles Semifinals and Mixed Doubles Final",
+			wantName: "wtt star contender doha",
+			wantYear: 2026,
+		},
+		{
+			name:     "5 parts with T1 and Q Day prefix",
+			title:    "LIVE! | T1 | Q Day 1 | WTT Contender Muscat 2026 | Session 1",
+			wantName: "wtt contender muscat",
+			wantYear: 2026,
+		},
+		{
+			name:    "too few parts",
+			title:   "Some Video Title",
+			wantErr: true,
+		},
+		{
+			name:    "no year in any part",
+			title:   "LIVE! | Day 1 | No Year Here | Finals",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, year, err := parseTournamentFromTitle(tt.title)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got name=%q year=%d", name, year)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if name != tt.wantName {
+				t.Errorf("name: got %q, want %q", name, tt.wantName)
+			}
+			if year != tt.wantYear {
+				t.Errorf("year: got %d, want %d", year, tt.wantYear)
+			}
+		})
+	}
+}
+
 // Test: GetVideoIDsWithLatestUploadDate returns all videos with max upload_date
 func TestGetVideoIDsWithLatestUploadDate(t *testing.T) {
 	conn, cleanup := setupTestDB(t)

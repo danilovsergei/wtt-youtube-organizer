@@ -47,8 +47,8 @@ func parseTournamentFromTitle(title string) (string, int, error) {
 		return "", 0, fmt.Errorf("title has %d pipe-separated parts, expected at least 3", len(parts))
 	}
 
-	// Try each part (from index 2 onwards) to find one with a valid year
-	for i := 2; i < len(parts); i++ {
+	// Try each part (from index 1 onwards) to find one with a valid year
+	for i := 1; i < len(parts); i++ {
 		part := strings.TrimSpace(parts[i])
 		words := strings.Fields(part)
 		if len(words) < 2 {
