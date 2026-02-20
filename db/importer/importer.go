@@ -17,7 +17,7 @@ import (
 type VideoJSON struct {
 	VideoID    string      `json:"video_id"`
 	VideoTitle string      `json:"video_title"`
-	UploadDate string      `json:"upload_date"` // Format: YYYYMMDD
+	UploadDate string      `json:"upload_date"` // Unix UTC timestamp string (e.g., "1747745671")
 	Matches    []MatchJSON `json:"matches"`
 	Error      string      `json:"error,omitempty"` // Processing error (e.g., "No match starts found")
 }
@@ -29,12 +29,17 @@ type MatchJSON struct {
 	Player2   string `json:"player2"`
 }
 
-// parseUploadDate parses upload_date from YYYYMMDD format to time.Time
+// parseUploadDate parses upload_date (Unix UTC timestamp string) to time.Time.
+// Example: "1747745671" → 2025-05-20 10:34:31 UTC
 func parseUploadDate(dateStr string) (time.Time, error) {
 	if dateStr == "" {
 		return time.Now(), fmt.Errorf("empty upload_date")
 	}
-	return time.Parse("20060102", dateStr)
+	ts, err := strconv.ParseInt(dateStr, 10, 64)
+	if err != nil {
+		return time.Now(), fmt.Errorf("invalid upload_date %q: %w", dateStr, err)
+	}
+	return time.Unix(ts, 0).UTC(), nil
 }
 
 // parseTournamentFromTitle extracts tournament name and year from video title.

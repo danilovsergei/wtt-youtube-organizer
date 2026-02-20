@@ -74,8 +74,8 @@ func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("A", "Video A", "20260216"),
-			entry("B", "Video B", "20260215"),
+			entry("A", "Video A", "1771200000"),
+			entry("B", "Video B", "1771113600"),
 		},
 	}
 
@@ -107,7 +107,7 @@ func TestAddNewStreams_WithVideoID_CreatesNamedQueue(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("C", "Video C", "20260214"),
+			entry("C", "Video C", "1771027200"),
 		},
 	}
 
@@ -136,7 +136,7 @@ func TestAddNewStreams_EmptyQueue_UsesAfterVideoID(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("NEW1", "New Video 1", "20260216"),
+			entry("NEW1", "New Video 1", "1771200000"),
 		},
 	}
 
@@ -157,8 +157,8 @@ func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "latest_streams.json")
 
 	existingQueue := []QueueEntry{
-		entry("EXISTING_TOP", "Existing Top", "20260214"),
-		entry("EXISTING_OLD", "Existing Old", "20260213"),
+		entry("EXISTING_TOP", "Existing Top", "1771027200"),
+		entry("EXISTING_OLD", "Existing Old", "1770940800"),
 	}
 	if err := SaveQueue(queuePath, existingQueue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -166,8 +166,8 @@ func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("NEWER1", "Newer 1", "20260216"),
-			entry("NEWER2", "Newer 2", "20260215"),
+			entry("NEWER1", "Newer 1", "1771200000"),
+			entry("NEWER2", "Newer 2", "1771113600"),
 		},
 	}
 
@@ -188,8 +188,8 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "latest_streams.json")
 
 	existingQueue := []QueueEntry{
-		entry("B", "Video B", "20260215"),
-		entry("C", "Video C", "20260214"),
+		entry("B", "Video B", "1771113600"),
+		entry("C", "Video C", "1771027200"),
 	}
 	if err := SaveQueue(queuePath, existingQueue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -197,7 +197,7 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("A", "Video A", "20260216"),
+			entry("A", "Video A", "1771200000"),
 		},
 	}
 
@@ -220,11 +220,11 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 
 func TestPrependToQueue_Basic(t *testing.T) {
 	existing := []QueueEntry{
-		entry("B", "Video B", "20260215"),
-		entry("C", "Video C", "20260214"),
+		entry("B", "Video B", "1771113600"),
+		entry("C", "Video C", "1771027200"),
 	}
 	newEntries := []QueueEntry{
-		entry("A", "Video A", "20260216"),
+		entry("A", "Video A", "1771200000"),
 	}
 
 	result := PrependToQueue(existing, newEntries)
@@ -232,13 +232,13 @@ func TestPrependToQueue_Basic(t *testing.T) {
 }
 
 func TestPrependToQueue_EmptyNew(t *testing.T) {
-	existing := []QueueEntry{entry("A", "Video A", "20260216")}
+	existing := []QueueEntry{entry("A", "Video A", "1771200000")}
 	result := PrependToQueue(existing, nil)
 	assertIDs(t, result, []string{"A"})
 }
 
 func TestPrependToQueue_EmptyExisting(t *testing.T) {
-	newEntries := []QueueEntry{entry("A", "Video A", "20260216")}
+	newEntries := []QueueEntry{entry("A", "Video A", "1771200000")}
 	result := PrependToQueue(nil, newEntries)
 	assertIDs(t, result, []string{"A"})
 }
@@ -247,9 +247,9 @@ func TestPrependToQueue_EmptyExisting(t *testing.T) {
 
 func TestRemoveLastEntry_Basic(t *testing.T) {
 	queue := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
-		entry("C", "Video C", "20260214"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
+		entry("C", "Video C", "1771027200"),
 	}
 
 	removed, remaining := RemoveLastEntry(queue)
@@ -273,8 +273,8 @@ func TestRemoveLastEntry_Empty(t *testing.T) {
 
 func TestTopEntry_Basic(t *testing.T) {
 	queue := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
 	}
 	top, ok := TopEntry(queue)
 	if !ok || top.VideoID != "A" {
@@ -296,8 +296,8 @@ func TestLoadSaveQueue_Roundtrip(t *testing.T) {
 	path := filepath.Join(tmpDir, "test_queue.json")
 
 	queue := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
 	}
 
 	if err := SaveQueue(path, queue); err != nil {
@@ -347,9 +347,9 @@ func (m *mockProcessedChecker) GetProcessedVideoIDs(youtubeIDs []string) (map[st
 
 func TestFilterUnprocessed_FiltersOutProcessed(t *testing.T) {
 	entries := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
-		entry("C", "Video C", "20260214"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
+		entry("C", "Video C", "1771027200"),
 	}
 
 	checker := &mockProcessedChecker{
@@ -366,8 +366,8 @@ func TestFilterUnprocessed_FiltersOutProcessed(t *testing.T) {
 
 func TestFilterUnprocessed_AllProcessed(t *testing.T) {
 	entries := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
 	}
 
 	checker := &mockProcessedChecker{
@@ -386,8 +386,8 @@ func TestFilterUnprocessed_AllProcessed(t *testing.T) {
 
 func TestFilterUnprocessed_NoneProcessed(t *testing.T) {
 	entries := []QueueEntry{
-		entry("A", "Video A", "20260216"),
-		entry("B", "Video B", "20260215"),
+		entry("A", "Video A", "1771200000"),
+		entry("B", "Video B", "1771113600"),
 	}
 
 	checker := &mockProcessedChecker{
@@ -411,10 +411,10 @@ func TestFilterUnprocessed_NoneProcessed(t *testing.T) {
 func TestFilterUnprocessed_LatestUploadDateVideosInDB_FilteredOut(t *testing.T) {
 	// Docker returned these videos (including some already processed with latest upload_date)
 	entries := []QueueEntry{
-		entry("new_video_2", "New Video 2", "20251220"),
-		entry("new_video_1", "New Video 1", "20251219"),
-		entry("lxJIbTLc-2w", "Existing Video 2", "20251219"),
-		entry("_vFHdnrgau4", "Existing Video 1", "20251219"),
+		entry("new_video_2", "New Video 2", "1766188800"),
+		entry("new_video_1", "New Video 1", "1766102400"),
+		entry("lxJIbTLc-2w", "Existing Video 2", "1766102400"),
+		entry("_vFHdnrgau4", "Existing Video 1", "1766102400"),
 	}
 
 	// DB has these two videos with the latest upload_date
@@ -438,8 +438,8 @@ func TestFilterUnprocessed_LatestUploadDateVideosInDB_FilteredOut(t *testing.T) 
 func TestFilterUnprocessed_LatestUploadDateVideosNotInDB_Remaining(t *testing.T) {
 	// Docker returned these - all have the latest upload_date, none in DB yet
 	entries := []QueueEntry{
-		entry("brand_new_1", "Brand New 1", "20251219"),
-		entry("brand_new_2", "Brand New 2", "20251219"),
+		entry("brand_new_1", "Brand New 1", "1766102400"),
+		entry("brand_new_2", "Brand New 2", "1766102400"),
 	}
 
 	// DB has no videos at all
@@ -464,9 +464,9 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("A", "Video A", "20260216"),
-			entry("B", "Video B", "20260215"),
-			entry("C", "Video C", "20260214"),
+			entry("A", "Video A", "1771200000"),
+			entry("B", "Video B", "1771113600"),
+			entry("C", "Video C", "1771027200"),
 		},
 	}
 
@@ -497,8 +497,8 @@ func TestAddNewStreams_WithChecker_AllProcessed_NothingAdded(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("A", "Video A", "20260216"),
-			entry("B", "Video B", "20260215"),
+			entry("A", "Video A", "1771200000"),
+			entry("B", "Video B", "1771113600"),
 		},
 	}
 
@@ -525,8 +525,8 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			entry("A", "Video A", "20260216"),
-			entry("B", "Video B", "20260215"),
+			entry("A", "Video A", "1771200000"),
+			entry("B", "Video B", "1771113600"),
 		},
 	}
 
@@ -583,9 +583,9 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
 	queue := []QueueEntry{
-		entry("C", "Video C", "20260216"),
-		entry("B", "Video B", "20260215"),
-		entry("A", "Video A", "20260214"),
+		entry("C", "Video C", "1771200000"),
+		entry("B", "Video B", "1771113600"),
+		entry("A", "Video A", "1771027200"),
 	}
 	if err := SaveQueue(queuePath, queue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -603,11 +603,11 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 					dockerCalls = append(dockerCalls, vid)
 
 					if vid == "B" {
-						jsonData := `{"video_id":"B","video_title":"Video B","upload_date":"20260215","matches":[],"error":"No match starts found"}`
+						jsonData := `{"video_id":"B","video_title":"Video B","upload_date":"1771113600","matches":[],"error":"No match starts found"}`
 						os.WriteFile(outputFile, []byte(jsonData), 0644)
 						return fmt.Errorf("docker run failed: exit code 1")
 					}
-					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
 				}
 			}
@@ -658,8 +658,8 @@ func TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
 	queue := []QueueEntry{
-		entry("B", "Video B", "20260216"),
-		entry("A", "Video A", "20260215"),
+		entry("B", "Video B", "1771200000"),
+		entry("A", "Video A", "1771113600"),
 	}
 	if err := SaveQueue(queuePath, queue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -699,8 +699,8 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
 	queue := []QueueEntry{
-		entry("B", "Video B", "20260216"),
-		entry("A", "Video A", "20260215"),
+		entry("B", "Video B", "1771200000"),
+		entry("A", "Video A", "1771113600"),
 	}
 	if err := SaveQueue(queuePath, queue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -712,7 +712,7 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 				if arg == "--youtube_video" && i+1 < len(containerArgs) {
 					url := containerArgs[i+1]
 					vid := url[len("https://www.youtube.com/watch?v="):]
-					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[]}`, vid, vid)
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
 				}
 			}
@@ -749,8 +749,8 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
 	queue := []QueueEntry{
-		entry("B", "Video B", "20260216"),
-		entry("A", "Video A", "20260215"),
+		entry("B", "Video B", "1771200000"),
+		entry("A", "Video A", "1771113600"),
 	}
 	if err := SaveQueue(queuePath, queue); err != nil {
 		t.Fatalf("SaveQueue failed: %v", err)
@@ -762,7 +762,7 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 				if arg == "--youtube_video" && i+1 < len(containerArgs) {
 					url := containerArgs[i+1]
 					vid := url[len("https://www.youtube.com/watch?v="):]
-					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"20260215","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
+					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
 				}
 			}

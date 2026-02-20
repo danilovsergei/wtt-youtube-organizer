@@ -951,16 +951,11 @@ def get_videos_after(after_video_id: str,
 
                     # Only include completed streams
                     if entry.get('live_status') == 'was_live':
-                        if not entry.get('upload_date'):
-                            timestamp = entry.get('timestamp')
-                            if timestamp:
-                                try:
-                                    entry['upload_date'] = (
-                                        dt.fromtimestamp(
-                                            timestamp
-                                        ).strftime('%Y%m%d'))
-                                except (ValueError, OSError):
-                                    pass
+                        # Prefer timestamp as Unix UTC string
+                        ts = entry.get('timestamp')
+                        if ts is not None:
+                            entry['upload_date'] = str(
+                                int(ts))
                         newer_videos.append(entry)
 
                 if found_cutoff:
@@ -1084,7 +1079,8 @@ def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
     Fetch video title and upload date from YouTube using yt-dlp.
 
     Returns:
-        Tuple of (title, upload_date) where upload_date is in YYYYMMDD format.
+        Tuple of (title, upload_date) where upload_date is a Unix UTC
+        timestamp string (e.g., '1747745671') from release_timestamp.
         Either value can be None if fetch failed.
     """
     try:
@@ -1105,7 +1101,16 @@ def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             title = info.get('title')
-            upload_date = info.get('upload_date')  # Format: YYYYMMDD
+            # Use release_timestamp or timestamp (UTC)
+            release_ts = info.get('release_timestamp')
+            if release_ts is not None:
+                upload_date = str(int(release_ts))
+            else:
+                ts = info.get('timestamp')
+                if ts is not None:
+                    upload_date = str(int(ts))
+                else:
+                    upload_date = None
             return title, upload_date
     except Exception as e:
         print(f"Warning: Could not fetch video info: {e}")
@@ -1367,7 +1372,7 @@ def main():
     # Variables for video metadata
     video_id = None
     video_title = None
-    upload_date = None  # Format: YYYYMMDD
+    upload_date = None  # Unix UTC timestamp string
 
     # Determine video path
     video_path = None

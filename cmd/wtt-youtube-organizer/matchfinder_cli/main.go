@@ -236,8 +236,8 @@ func runMatchFinder(extraArgs []string) error {
 				continue
 			}
 			uploadDate := v.UploadDate
-			if len(uploadDate) == 8 {
-				uploadDate = uploadDate[:4] + "-" + uploadDate[4:6] + "-" + uploadDate[6:]
+			if ts, err := strconv.ParseInt(uploadDate, 10, 64); err == nil {
+				uploadDate = time.Unix(ts, 0).UTC().Format("2006-01-02")
 			}
 			processed := "no"
 			if isProcessed {

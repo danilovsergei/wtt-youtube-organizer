@@ -30,17 +30,20 @@ type MatchRecord struct {
 type VideoJSON struct {
 	VideoID    string      `json:"video_id"`
 	VideoTitle string      `json:"video_title"`
-	UploadDate string      `json:"upload_date"` // Format: YYYYMMDD
+	UploadDate string      `json:"upload_date"` // Unix UTC timestamp string (e.g., "1747745671")
 	Matches    []MatchJSON `json:"matches"`
 }
 
-// parseUploadDate parses upload_date from YYYYMMDD format to time.Time
+// parseUploadDate parses upload_date (Unix UTC timestamp string) to time.Time.
 func parseUploadDate(dateStr string) (time.Time, error) {
 	if dateStr == "" {
 		return time.Now(), fmt.Errorf("empty upload_date")
 	}
-	// Parse YYYYMMDD format
-	return time.Parse("20060102", dateStr)
+	ts, err := strconv.ParseInt(dateStr, 10, 64)
+	if err != nil {
+		return time.Now(), fmt.Errorf("invalid upload_date %q: %w", dateStr, err)
+	}
+	return time.Unix(ts, 0).UTC(), nil
 }
 
 // MatchJSON represents a single match entry in the JSON file

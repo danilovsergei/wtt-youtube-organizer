@@ -121,7 +121,7 @@ func sampleVideo() VideoJSON {
 	return VideoJSON{
 		VideoID:    "test123",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200", // 2026-01-15 00:00:00 UTC
 		Matches: []MatchJSON{
 			{Timestamp: 360, Player1: "PLAYER_A", Player2: "PLAYER_B"},
 			{Timestamp: 2700, Player1: "PLAYER_C/PLAYER_D", Player2: "PLAYER_E/PLAYER_F"},
@@ -161,7 +161,7 @@ func TestImport_ExistingTournament_DoesNotFail(t *testing.T) {
 	video1 := VideoJSON{
 		VideoID:    "vid1",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200", // 2026-01-15
 		Matches: []MatchJSON{
 			{Timestamp: 100, Player1: "ALICE", Player2: "BOB"},
 		},
@@ -170,7 +170,7 @@ func TestImport_ExistingTournament_DoesNotFail(t *testing.T) {
 	video2 := VideoJSON{
 		VideoID:    "vid2",
 		VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
-		UploadDate: "20260116",
+		UploadDate: "1768521600", // 2026-01-16
 		Matches: []MatchJSON{
 			{Timestamp: 200, Player1: "CHARLIE", Player2: "ALICE"}, // ALICE already exists
 		},
@@ -214,7 +214,7 @@ func TestImport_DuplicateParticipant_DoesNotFail(t *testing.T) {
 	video := VideoJSON{
 		VideoID:    "dup_test",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200",
 		Matches: []MatchJSON{
 			// "PLAYER_A/PLAYER_A" — same player listed twice on side A
 			{Timestamp: 100, Player1: "PLAYER_A/PLAYER_A", Player2: "PLAYER_B"},
@@ -245,7 +245,7 @@ func TestImport_ReimportReplacesMatches(t *testing.T) {
 	video := VideoJSON{
 		VideoID:    "replace_test",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Finals",
-		UploadDate: "20260115",
+		UploadDate: "1768435200",
 		Matches: []MatchJSON{
 			{Timestamp: 100, Player1: "ALICE", Player2: "BOB"},
 			{Timestamp: 200, Player1: "CHARLIE", Player2: "DAVE"},
@@ -289,7 +289,7 @@ func TestImport_WithError_SavesProcessingError(t *testing.T) {
 	video := VideoJSON{
 		VideoID:    "error_test",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200",
 		Matches:    []MatchJSON{},
 		Error:      "No match starts found",
 	}
@@ -334,7 +334,7 @@ func TestImport_ClearsErrorOnSuccess(t *testing.T) {
 	videoWithError := VideoJSON{
 		VideoID:    "clear_test",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200",
 		Matches:    []MatchJSON{},
 		Error:      "No match starts found",
 	}
@@ -357,7 +357,7 @@ func TestImport_ClearsErrorOnSuccess(t *testing.T) {
 	videoSuccess := VideoJSON{
 		VideoID:    "clear_test",
 		VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-		UploadDate: "20260115",
+		UploadDate: "1768435200",
 		Matches: []MatchJSON{
 			{Timestamp: 360, Player1: "ALICE", Player2: "BOB"},
 		},
@@ -399,19 +399,19 @@ func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
 		{
 			VideoID:    "bjeo13vJALg",
 			VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-			UploadDate: "20251218",
+			UploadDate: "1766016000",
 			Matches:    []MatchJSON{{Timestamp: 100, Player1: "P1", Player2: "P2"}},
 		},
 		{
 			VideoID:    "_vFHdnrgau4",
 			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 1",
-			UploadDate: "20251219",
+			UploadDate: "1766102400",
 			Matches:    []MatchJSON{{Timestamp: 200, Player1: "P3", Player2: "P4"}},
 		},
 		{
 			VideoID:    "lxJIbTLc-2w",
 			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
-			UploadDate: "20251219",
+			UploadDate: "1766102400",
 			Matches:    []MatchJSON{{Timestamp: 300, Player1: "P5", Player2: "P6"}},
 		},
 	}
@@ -430,6 +430,56 @@ func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
 	}
 	if videoID != "bjeo13vJALg" {
 		t.Fatalf("expected bjeo13vJALg, got %s", videoID)
+	}
+}
+
+// Test: parseUploadDate handles Unix UTC timestamp strings
+func TestParseUploadDate(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantUTC string // expected date in "2006-01-02" format
+		wantErr bool
+	}{
+		{
+			name:    "Unix timestamp",
+			input:   "1747745671",
+			wantUTC: "2025-05-20",
+		},
+		{
+			name:    "Unix timestamp midnight",
+			input:   "1768435200",
+			wantUTC: "2026-01-15",
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric string",
+			input:   "not-a-number",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseUploadDate(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %v", result)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := result.UTC().Format("2006-01-02")
+			if got != tt.wantUTC {
+				t.Errorf("date: got %s, want %s", got, tt.wantUTC)
+			}
+		})
 	}
 }
 
@@ -512,19 +562,19 @@ func TestGetVideoIDsWithLatestUploadDate(t *testing.T) {
 		{
 			VideoID:    "bjeo13vJALg",
 			VideoTitle: "LIVE! | T4 | Day 1 | WTT Star Contender Chennai 2026 | Session 1",
-			UploadDate: "20251218",
+			UploadDate: "1766016000",
 			Matches:    []MatchJSON{{Timestamp: 100, Player1: "P1", Player2: "P2"}},
 		},
 		{
 			VideoID:    "_vFHdnrgau4",
 			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 1",
-			UploadDate: "20251219",
+			UploadDate: "1766102400",
 			Matches:    []MatchJSON{{Timestamp: 200, Player1: "P3", Player2: "P4"}},
 		},
 		{
 			VideoID:    "lxJIbTLc-2w",
 			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
-			UploadDate: "20251219",
+			UploadDate: "1766102400",
 			Matches:    []MatchJSON{{Timestamp: 300, Player1: "P5", Player2: "P6"}},
 		},
 	}

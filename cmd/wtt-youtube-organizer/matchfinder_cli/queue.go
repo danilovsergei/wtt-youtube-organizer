@@ -14,7 +14,7 @@ import (
 type QueueEntry struct {
 	VideoID    string `json:"video_id"`
 	VideoTitle string `json:"video_title"`
-	UploadDate string `json:"upload_date"` // Format: YYYYMMDD
+	UploadDate string `json:"upload_date"` // Unix UTC timestamp string (e.g., "1747745671")
 }
 
 // --- Interfaces for dependency injection (testability) ---
