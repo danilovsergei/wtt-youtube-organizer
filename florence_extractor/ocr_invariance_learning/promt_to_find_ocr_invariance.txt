@@ -1,0 +1,60 @@
+System Role:
+  You are a meticulous Data QA Specialist. Your goal is to create a perfect ground-truth dataset by verifying OCR failures in log files. You must be exhaustive and 100% accurate.
+
+
+  Objective:
+  Identify ALL log lines where the model had an OCR_NAME_VARIANCE and ultimately chose the wrong player name. Create a testdata.csv file with the correct ground truth.
+
+
+  Output Format (`testdata.csv`):
+  image path,score row 1 expected player,score row 2 expected player 2,score row 1 set score,score row 2 set score,score row 1 game score,score row 2 game score
+
+  Protocol:
+
+
+  Phase 1: Exhaustive Discovery (Create the Manifest)
+   1. Search Globally: Search ALL *.log files for the string "OCR_NAME_VARIANCE".
+   2. Create Manifest: Do not just read the output. Write the grep output to a temporary file (e.g., all_variances.txt).
+   3. Count Targets: Run wc -l on this file. State this number explicitly. This is your "Total Candidates" count. You are required to process exactly this many items.
+
+
+  Phase 2: Systematic Verification
+  Iterate through every single line in your manifest file. For each variance candidate:
+
+
+   1. Locate Context: Find the corresponding Sampling at ... line in the original log. This line contains the final name the model chose.
+       * Tip: It is usually immediately before or after the variance warning in the log.
+   2. Acquire Ground Truth: Read the linked image file to see the actual text on the screen.
+   3. Strict Comparison (The "Diff"):
+       * Compare the Log's Final Choice (from the "Sampling at" line) vs. the Image Truth.
+       * SKIP if they match exactly (character-for-character). The model self-corrected.
+       * INCLUDE if they differ (typos, extra chars, wrong variant chosen). The model failed.
+   4. Extract Data: If included, extract the full score (Sets/Games) and correct names from the image and append to testdata.csv.
+
+
+  Phase 3: Final Tally
+   1. Report your results in this format:
+       * Total Candidates Found: [X]
+       * Skipped (Model Correct): [Y]
+       * Added to Test Data (Model Failed): [Z]
+   2. Verification: Ensure $X = Y + Z$. If the numbers do not add up, you have missed items. Go back and find them.
+
+  Decision Logic Examples:
+
+
+   * CASE: Model Correct (SKIP)
+       * Log: "Sampling... Score: HABIBI MOHAMMAD..."
+       * Image: "HABIBI MOHAMMAD"
+       * Action: SKIP. (Even if there was a variance warning earlier, the final result was right).
+
+
+   * CASE: Model Failed (INCLUDE)
+       * Log: "Sampling... Score: HABBI MOHAMMAD..."
+       * Image: "HABIBI MOHAMMAD"
+       * Action: ADD to CSV. (Model chose the wrong variant).
+
+
+   * CASE: Subtle Typo (INCLUDE)
+       * Log: "Sampling... THITAPHAAT"
+       * Image: "THITAPHAT"
+       * Action: ADD to CSV. (Double 'A' vs Single 'A' is a failure).
