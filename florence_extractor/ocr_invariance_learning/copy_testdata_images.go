@@ -10,11 +10,13 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run copy_images.go <destination_folder>")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: go run copy_images.go <path_to_testdata.csv> <source_images_root> <destination_folder>")
 		os.Exit(1)
 	}
-	destDir := os.Args[1]
+	csvPath := os.Args[1]
+	srcRoot := os.Args[2]
+	destDir := os.Args[3]
 
 	// Create destination directory
 	if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -22,9 +24,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	csvFile, err := os.Open("testdata.csv")
+	csvFile, err := os.Open(csvPath)
 	if err != nil {
-		fmt.Printf("Error opening testdata.csv: %v\n", err)
+		fmt.Printf("Error opening CSV file: %v\n", err)
 		os.Exit(1)
 	}
 	defer csvFile.Close()
@@ -36,19 +38,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Copying %d images to '%s'...\n", len(records), destDir)
+	fmt.Printf("Processing %d records from '%s'...\n", len(records), csvPath)
+	fmt.Printf("Copying images from '%s' to '%s'...\n", srcRoot, destDir)
 
 	count := 0
 	for _, record := range records {
 		if len(record) == 0 {
 			continue
 		}
-		srcPath := strings.TrimSpace(record[0])
+		// CSV record[0] is the relative path found in logs (e.g. "subdir/image.jpg")
+		relPath := strings.TrimSpace(record[0])
 
-		// Flatten path structure but preserve directory info in filename
+		// Construct full source path
+		srcPath := filepath.Join(srcRoot, relPath)
+
+		// Flatten path structure for destination filename to avoid overwrites/deep nesting
 		// Example: "folder/image.jpg" -> "folder_image.jpg"
-		cleanSrc := filepath.Clean(srcPath)
-		flatName := strings.ReplaceAll(cleanSrc, string(os.PathSeparator), "_")
+		cleanRel := filepath.Clean(relPath)
+		flatName := strings.ReplaceAll(cleanRel, string(os.PathSeparator), "_")
+
+		// Basic sanitization for colons (Windows compatibility or just cleanliness)
+		flatName = strings.ReplaceAll(flatName, ":", "_")
 
 		destPath := filepath.Join(destDir, flatName)
 

@@ -9,3 +9,9 @@ AI will find all the `OCR_NAME_VARIANCE` , fetch the correct player names from t
 
 Use `verify_generated_testdata.go` to manually verify that generated testdata.csv is correct\
 It will print incorrect detection in the log and correct result AI found
+
+use `copy_testdata_images.go` to copy images from generated `testdata.csv` into project testdata folder
+```
+go run florence_extractor/ocr_invariance_learning/copy_testdata_images.go $HOME/.config/wtt-youtube-organizer/log/testdata.csv $HOME/.config/wtt-youtube-organizer/log florence_extractor/testdata/
+```
+
