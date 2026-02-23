@@ -667,17 +667,31 @@ class MatchStartFinder:
 
                 # Check if this is already a match start
                 if result.is_match_start():
-                    print(
-                        f"    → Found match start at {format_timestamp(actual_ts)}")
-                    saved_path = self._save_match_image(
-                        image_path, actual_ts, result.player1, result.player2)
-                    self.found_matches.append(MatchStart(
+                    candidate = MatchStart(
                         timestamp_seconds=actual_ts,
-                        timestamp_formatted=format_timestamp(actual_ts),
+                        timestamp_formatted=format_timestamp(
+                            actual_ts),
                         player1=result.player1,
                         player2=result.player2,
-                        image_path=saved_path
-                    ))
+                        image_path=image_path
+                    )
+                    if not self._is_duplicate(candidate):
+                        print(
+                            f"    → Found match start at "
+                            f"{format_timestamp(actual_ts)}")
+                        saved_path = self._save_match_image(
+                            image_path, actual_ts,
+                            result.player1,
+                            result.player2)
+                        candidate.image_path = saved_path
+                        self.found_matches.append(candidate)
+                    else:
+                        print(
+                            f"    → Duplicate match start "
+                            f"at "
+                            f"{format_timestamp(actual_ts)}"
+                            f" (same player pair), "
+                            f"skipping")
             else:
                 print(f"No score: {result.error}")
 
@@ -786,8 +800,20 @@ class MatchStartFinder:
         return self.found_matches
 
     def _is_duplicate(self, match: MatchStart) -> bool:
-        """Check if match start already found (within MIN_BREAK_DURATION)."""
+        """Check if match start already found (within MIN_BREAK_DURATION or same player pair)."""
+        def normalize(name: str) -> str:
+            return re.sub(r'[^A-Z0-9]', '', name.upper())
+
+        new_pair = frozenset(
+            {normalize(match.player1), normalize(match.player2)})
+
         for existing in self.found_matches:
+            # Duplicate if same player pair (regardless of timestamp)
+            existing_pair = frozenset(
+                {normalize(existing.player1), normalize(existing.player2)})
+            if new_pair == existing_pair:
+                return True
+            # Duplicate if too close in time
             if abs(existing.timestamp_seconds - match.timestamp_seconds) < MIN_BREAK_DURATION:
                 return True
         return False
