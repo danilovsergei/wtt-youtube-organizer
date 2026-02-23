@@ -386,16 +386,17 @@ func TestImport_ClearsErrorOnSuccess(t *testing.T) {
 	}
 }
 
-// Test: GetVideoIDBeforeLatestUploadDate returns video from day before latest
-func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
+// Test: GetLatestUploadDateVideoID returns the video with the latest upload_date
+func TestGetLatestUploadDateVideoID(t *testing.T) {
 	conn, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
 	// Import videos with different upload dates:
-	// 2025-12-18: bjeo13vJALg
-	// 2025-12-19: _vFHdnrgau4, lxJIbTLc-2w
+	// 2025-12-18T00:00:00Z: bjeo13vJALg
+	// 2025-12-19T00:00:00Z: _vFHdnrgau4
+	// 2025-12-19T06:00:00Z: lxJIbTLc-2w (latest)
 	videos := []VideoJSON{
 		{
 			VideoID:    "bjeo13vJALg",
@@ -412,7 +413,7 @@ func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
 		{
 			VideoID:    "lxJIbTLc-2w",
 			VideoTitle: "LIVE! | T4 | Day 2 | WTT Star Contender Chennai 2026 | Session 2",
-			UploadDate: "1766102400",
+			UploadDate: "1766124000",
 			Matches:    []MatchJSON{{Timestamp: 300, Player1: "P5", Player2: "P6"}},
 		},
 	}
@@ -424,13 +425,13 @@ func TestGetVideoIDBeforeLatestUploadDate(t *testing.T) {
 		}
 	}
 
-	// Should return bjeo13vJALg (from 2025-12-18, which is day before 2025-12-19)
-	videoID, err := GetVideoIDBeforeLatestUploadDateWithConn(ctx, conn)
+	// Should return lxJIbTLc-2w (the video with the latest upload_date)
+	videoID, err := GetLatestUploadDateVideoIDWithConn(ctx, conn)
 	if err != nil {
-		t.Fatalf("GetVideoIDBeforeLatestUploadDate failed: %v", err)
+		t.Fatalf("GetLatestUploadDateVideoID failed: %v", err)
 	}
-	if videoID != "bjeo13vJALg" {
-		t.Fatalf("expected bjeo13vJALg, got %s", videoID)
+	if videoID != "lxJIbTLc-2w" {
+		t.Fatalf("expected lxJIbTLc-2w, got %s", videoID)
 	}
 }
 

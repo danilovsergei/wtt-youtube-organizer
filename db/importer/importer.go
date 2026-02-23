@@ -195,10 +195,9 @@ func ParseVideoMetadataJSON(jsonFilePath string) ([]VideoJSON, error) {
 	return videos, nil
 }
 
-// GetVideoIDBeforeLatestUploadDate returns a youtube_id from the day before the latest upload_date.
+// GetLatestUploadDateVideoID returns the youtube_id of the video with the latest upload_date.
 // This is used as the starting point for --show_new_streams / --add_new_streams when no video_id is provided.
-// For example, if the latest upload_date is 2025-12-19, it returns a video_id from 2025-12-18.
-func GetVideoIDBeforeLatestUploadDate() (string, error) {
+func GetLatestUploadDateVideoID() (string, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return "", fmt.Errorf("DATABASE_URL environment variable is required")
@@ -210,21 +209,21 @@ func GetVideoIDBeforeLatestUploadDate() (string, error) {
 	}
 	defer conn.Close(context.Background())
 
-	return GetVideoIDBeforeLatestUploadDateWithConn(context.Background(), conn)
+	return GetLatestUploadDateVideoIDWithConn(context.Background(), conn)
 }
 
-// GetVideoIDBeforeLatestUploadDateWithConn is the testable version using a provided connection.
-func GetVideoIDBeforeLatestUploadDateWithConn(ctx context.Context, conn *pgx.Conn) (string, error) {
+// GetLatestUploadDateVideoIDWithConn is the testable version using a provided connection.
+func GetLatestUploadDateVideoIDWithConn(ctx context.Context, conn *pgx.Conn) (string, error) {
 	var videoID string
 	err := conn.QueryRow(ctx, `
 		SELECT youtube_id FROM videos
-		WHERE upload_date::date = (SELECT MAX(upload_date::date) - INTERVAL '1 day' FROM videos)
+		ORDER BY upload_date DESC
 		LIMIT 1`).Scan(&videoID)
 	if err == pgx.ErrNoRows {
-		return "", fmt.Errorf("no video found for the day before latest upload_date")
+		return "", fmt.Errorf("no videos found in database")
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to query video before latest upload date: %w", err)
+		return "", fmt.Errorf("failed to query latest video: %w", err)
 	}
 	return videoID, nil
 }

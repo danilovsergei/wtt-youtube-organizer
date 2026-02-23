@@ -155,11 +155,11 @@ func runMatchFinder(extraArgs []string) error {
 			logPrintf("Using provided video ID: %s\n", lastVideoID)
 		} else {
 			var err error
-			lastVideoID, err = importer.GetVideoIDBeforeLatestUploadDate()
+			lastVideoID, err = importer.GetLatestUploadDateVideoID()
 			if err != nil {
 				return fmt.Errorf("failed to get video ID from database: %w", err)
 			}
-			logPrintf("Using video ID from day before latest upload date: %s\n", lastVideoID)
+			logPrintf("Using latest video ID from database: %s\n", lastVideoID)
 		}
 
 		// Always use a temp output file to capture metadata JSON
@@ -287,12 +287,12 @@ func runMatchFinder(extraArgs []string) error {
 			// New queue with provided video_id
 			afterVideoID = providedVideoID
 		} else {
-			// New queue without video_id: use video from day before latest upload date
-			afterVideoID, err = importer.GetVideoIDBeforeLatestUploadDate()
+			// New queue without video_id: use latest video from database
+			afterVideoID, err = importer.GetLatestUploadDateVideoID()
 			if err != nil {
 				return fmt.Errorf("failed to get video ID from database: %w", err)
 			}
-			logPrintf("Using video ID from day before latest upload date: %s\n", afterVideoID)
+			logPrintf("Using latest video ID from database: %s\n", afterVideoID)
 		}
 
 		// Create docker-based stream fetcher
