@@ -42,36 +42,85 @@ func parseUploadDate(dateStr string) (time.Time, error) {
 	return time.Unix(ts, 0).UTC(), nil
 }
 
-// parseTournamentFromTitle extracts tournament name and year from video title.
-// Supports formats like:
-//   - "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Finals"
-//   - "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Singles SF & Mixed Doubles F"
-func parseTournamentFromTitle(title string) (string, int, error) {
-	parts := strings.Split(title, "|")
+// parseTournamentFromTitle extracts tournament name, year, and day from video title.
+// It splits the title by "|", trims each part, then:
+//   - Ignores parts equal to "LIVE!"
+//   - Ignores parts matching T<digit> (table number)
+//   - Extracts the "Day" part (any part containing "Day")
+//   - Finds the part with a 4-digit year; words before the year become the title
+//   - Combines day with the part after the title part (if present)
+//
+// Examples:
+//   - "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Finals" → ("WTT Star Contender Chennai", 2026, "Day 4 Finals")
+//   - "LIVE! | T4 | Q Day 1 | Singapore Smash 2026 Presented by Resorts World Sentosa | Session 2" → ("Singapore Smash", 2026, "Q Day 1 Session 2")
+func ParseTournamentFromTitle(title string) (string, int, string, error) {
+	rawParts := strings.Split(title, "|")
+	parts := make([]string, 0, len(rawParts))
+	for _, p := range rawParts {
+		parts = append(parts, strings.TrimSpace(p))
+	}
+
 	if len(parts) < 3 {
-		return "", 0, fmt.Errorf("title has %d pipe-separated parts, expected at least 3", len(parts))
+		return "", 0, "", fmt.Errorf("title has %d pipe-separated parts, expected at least 3", len(parts))
 	}
 
-	// Try each part (from index 1 onwards) to find one with a valid year
-	for i := 1; i < len(parts); i++ {
-		part := strings.TrimSpace(parts[i])
+	// Find the day part and the title part (containing a 4-digit year)
+	var dayPart string
+	titlePartIdx := -1
+	var tournamentName string
+	var year int
+
+	for i, part := range parts {
+		// Skip "LIVE!"
+		if part == "LIVE!" {
+			continue
+		}
+		// Skip table numbers like T1, T4, T12
+		if len(part) >= 2 && part[0] == 'T' {
+			if _, err := strconv.Atoi(part[1:]); err == nil {
+				continue
+			}
+		}
+		// Check if this part contains "Day"
+		if strings.Contains(part, "Day") {
+			dayPart = part
+			continue
+		}
+		// Check if this part contains a 4-digit year
 		words := strings.Fields(part)
-		if len(words) < 2 {
-			continue
+		for j, w := range words {
+			y, err := strconv.Atoi(w)
+			if err == nil && y >= 2020 && y <= 2100 {
+				tournamentName = strings.Join(words[:j], " ")
+				year = y
+				titlePartIdx = i
+				break
+			}
 		}
-
-		// Check if last word is a valid year (4-digit number starting with 20)
-		yearStr := words[len(words)-1]
-		year, err := strconv.Atoi(yearStr)
-		if err != nil || year < 2020 || year > 2100 {
-			continue
+		if titlePartIdx >= 0 {
+			break
 		}
-
-		tournamentName := strings.ToLower(strings.Join(words[:len(words)-1], " "))
-		return tournamentName, year, nil
 	}
 
-	return "", 0, fmt.Errorf("could not find tournament with year in title: %s", title)
+	if titlePartIdx < 0 {
+		return "", 0, "", fmt.Errorf("could not find tournament with year in title: %s", title)
+	}
+
+	// Build day string: combine day part with the part after the title part (if any)
+	var day string
+	afterTitle := ""
+	if titlePartIdx+1 < len(parts) {
+		afterTitle = strings.TrimSpace(parts[titlePartIdx+1])
+	}
+	if dayPart != "" && afterTitle != "" {
+		day = dayPart + " " + afterTitle
+	} else if dayPart != "" {
+		day = dayPart
+	} else if afterTitle != "" {
+		day = afterTitle
+	}
+
+	return tournamentName, year, day, nil
 }
 
 // parsePlayerName parses a player name and returns a slice of player names.
@@ -264,11 +313,12 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
 		fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
 
-		tournamentName, tournamentYear, err := parseTournamentFromTitle(videoJSON.VideoTitle)
+		tournamentName, tournamentYear, day, err := ParseTournamentFromTitle(videoJSON.VideoTitle)
 		if err != nil {
 			return fmt.Errorf("failed to parse tournament from title: %w", err)
 		}
 		fmt.Printf("Tournament: %s (%d)\n", tournamentName, tournamentYear)
+		fmt.Printf("Day: %s\n", day)
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -303,10 +353,10 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 		err = tx.QueryRow(ctx, "SELECT id FROM videos WHERE youtube_id=$1", videoJSON.VideoID).Scan(&videoID)
 		if err == pgx.ErrNoRows {
 			err = tx.QueryRow(ctx, `
-				INSERT INTO videos (youtube_id, title, upload_date)
-				VALUES ($1, $2, $3)
+				INSERT INTO videos (youtube_id, title, upload_date, day)
+				VALUES ($1, $2, $3, $4)
 				RETURNING id`,
-				videoJSON.VideoID, videoJSON.VideoTitle, uploadDate).Scan(&videoID)
+				videoJSON.VideoID, videoJSON.VideoTitle, uploadDate, day).Scan(&videoID)
 			if err != nil {
 				return fmt.Errorf("failed to create video: %w", err)
 			}
@@ -314,8 +364,8 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 		} else if err != nil {
 			return fmt.Errorf("failed to query video: %w", err)
 		} else {
-			_, err = tx.Exec(ctx, `UPDATE videos SET title=$1, upload_date=$2 WHERE id=$3`,
-				videoJSON.VideoTitle, uploadDate, videoID)
+			_, err = tx.Exec(ctx, `UPDATE videos SET title=$1, upload_date=$2, day=$3 WHERE id=$4`,
+				videoJSON.VideoTitle, uploadDate, day, videoID)
 			if err != nil {
 				return fmt.Errorf("failed to update video: %w", err)
 			}
@@ -363,14 +413,12 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 			teamA := parsePlayerName(matchJSON.Player1)
 			teamB := parsePlayerName(matchJSON.Player2)
 			isDoubles := len(teamA) > 1 || len(teamB) > 1
-			matchTime := uploadDate.Add(time.Duration(matchJSON.Timestamp) * time.Second)
-
 			var matchID int
 			err = tx.QueryRow(ctx, `
-				INSERT INTO matches (tournament_id, match_timestamp, is_doubles, video_id)
+				INSERT INTO matches (tournament_id, video_offset_seconds, is_doubles, video_id)
 				VALUES ($1, $2, $3, $4)
 				RETURNING id`,
-				tournamentID, matchTime, isDoubles, videoID).Scan(&matchID)
+				tournamentID, matchJSON.Timestamp, isDoubles, videoID).Scan(&matchID)
 			if err != nil {
 				return fmt.Errorf("failed to create match %d: %w", i+1, err)
 			}
