@@ -380,6 +380,13 @@ func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEnt
 		return nil, fmt.Errorf("docker container failed: %w", err)
 	}
 
+	// If the metadata JSON doesn't exist, Docker exited successfully but
+	// found no new videos (e.g., all streams are older than afterVideoID).
+	if _, err := os.Stat(metadataJSON); os.IsNotExist(err) {
+		logPrintln("No new streams found (metadata file not created).")
+		return []QueueEntry{}, nil
+	}
+
 	videos, err := importer.ParseVideoMetadataJSON(metadataJSON)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
@@ -411,21 +418,23 @@ func processQueueVideos(queuePath string) error {
 }
 
 // processQueueVideosWithDeps is the testable implementation of processQueueVideos.
+// Processes videos oldest-first: successful videos are removed from queue,
+// failed videos (docker error) are kept in queue for retry and processing continues.
 func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error {
-	for {
-		// Reload queue each iteration (in case of crash recovery)
-		queue, err := LoadQueue(queuePath)
-		if err != nil {
-			return fmt.Errorf("failed to load queue: %w", err)
-		}
+	queue, err := LoadQueue(queuePath)
+	if err != nil {
+		return fmt.Errorf("failed to load queue: %w", err)
+	}
 
-		if len(queue) == 0 {
-			logPrintln("\n=== Queue is empty. All videos processed! ===")
-			return nil
-		}
+	if len(queue) == 0 {
+		logPrintln("\n=== Queue is empty. All videos processed! ===")
+		return nil
+	}
 
-		// Process the last entry (oldest, since queue is newest-first)
-		entry := queue[len(queue)-1]
+	// Process from end (oldest) to start (newest)
+	failedCount := 0
+	for i := len(queue) - 1; i >= 0; i-- {
+		entry := queue[i]
 		logPrintf("\n=== Processing queue [%d remaining] ===\n", len(queue))
 		logPrintf("Video: %s (%s)\n", entry.VideoTitle, entry.VideoID)
 
@@ -449,12 +458,12 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
 			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
-			logPrintf("JSON file: %s\n", outputFile)
-			logPrintln("Docker failed, attempting import (JSON may contain error field)...")
+			logPrintf("Video %s kept in queue for retry. Continuing to next video...\n", entry.VideoID)
+			failedCount++
+			continue
 		}
 
-		// Import results to database (attempt even after docker error,
-		// since the Python script should always write output JSON with error field)
+		// Import results to database
 		logPrintln("\n=== Importing results to database ===")
 		if importErr := deps.importJSON(outputFile); importErr != nil {
 			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, importErr)
@@ -462,8 +471,8 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 			return fmt.Errorf("failed to import video %s: %w", entry.VideoID, importErr)
 		}
 
-		// Remove from queue only after successful import
-		queue = queue[:len(queue)-1]
+		// Remove from queue after successful docker + import
+		queue = append(queue[:i], queue[i+1:]...)
 		if err := SaveQueue(queuePath, queue); err != nil {
 			return fmt.Errorf("failed to update queue: %w", err)
 		}
@@ -471,6 +480,14 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 		logPrintf("Successfully processed and removed from queue: %s\n", entry.VideoID)
 		logPrintf("Remaining in queue: %d\n", len(queue))
 	}
+
+	if failedCount > 0 {
+		logPrintf("\n=== %d video(s) failed and remain in queue for retry ===\n", failedCount)
+	} else {
+		logPrintln("\n=== Queue is empty. All videos processed! ===")
+	}
+
+	return nil
 }
 
 // getLogWriter returns logWriter if available, otherwise os.Stdout

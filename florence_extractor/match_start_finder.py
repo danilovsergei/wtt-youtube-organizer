@@ -1268,6 +1268,10 @@ def main():
             print("No videos found newer than the specified video ID.")
             print("(Video ID may not exist or there are no newer "
                   "completed streams)")
+            if args.output_json_file:
+                with open(args.output_json_file, 'w') as f:
+                    json.dump([], f)
+                print(f"Empty JSON written to: {args.output_json_file}")
             sys.exit(0)
 
         print(f"\nFound {len(videos)} videos to process")

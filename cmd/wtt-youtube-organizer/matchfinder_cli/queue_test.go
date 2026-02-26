@@ -578,10 +578,11 @@ func contains(s, substr string) bool {
 	return false
 }
 
-func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
+func TestProcessQueue_SkipsDockerError_ContinuesProcessing(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
+	// Queue: C (newest) → B → A (oldest, processed first)
 	queue := []QueueEntry{
 		entry("C", "Video C", "1771200000"),
 		entry("B", "Video B", "1771113600"),
@@ -603,8 +604,7 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 					dockerCalls = append(dockerCalls, vid)
 
 					if vid == "B" {
-						jsonData := `{"video_id":"B","video_title":"Video B","upload_date":"1771113600","matches":[],"error":"No match starts found"}`
-						os.WriteFile(outputFile, []byte(jsonData), 0644)
+						// Docker fails for B
 						return fmt.Errorf("docker run failed: exit code 1")
 					}
 					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
@@ -628,11 +628,13 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 		},
 	}
 
+	// Should NOT return error (docker errors are skipped, processing continues)
 	err := processQueueVideosWithDeps(queuePath, deps)
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
 
+	// All 3 videos should have been attempted (oldest first: A, B, C)
 	if len(dockerCalls) != 3 {
 		t.Fatalf("expected 3 docker calls, got %d: %v", len(dockerCalls), dockerCalls)
 	}
@@ -640,20 +642,23 @@ func TestProcessQueue_ContinuesOnDockerError(t *testing.T) {
 		t.Fatalf("expected docker calls [A, B, C], got %v", dockerCalls)
 	}
 
-	if len(importCalls) != 3 {
-		t.Fatalf("expected 3 import calls, got %d: %v", len(importCalls), importCalls)
+	// Import should have been called for A and C only (B had docker error, skipped)
+	if len(importCalls) != 2 {
+		t.Fatalf("expected 2 import calls, got %d: %v", len(importCalls), importCalls)
 	}
 
+	// Only B should remain in queue (A and C succeeded)
 	remaining, _ := LoadQueue(queuePath)
-	if len(remaining) != 0 {
-		t.Fatalf("expected empty queue, got %d entries", len(remaining))
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 entry in queue (B kept for retry), got %d", len(remaining))
 	}
+	assertIDs(t, remaining, []string{"B"})
 }
 
-// TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue tests that when
-// the output JSON file is missing (a bug in the Python script), processing stops
-// with an error and the video remains in the queue.
-func TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue(t *testing.T) {
+// TestProcessQueue_DockerFailsForAll_AllRemainInQueue tests that when
+// docker fails for all videos, all remain in queue and no error is returned
+// (docker errors are skipped, not fatal).
+func TestProcessQueue_DockerFailsForAll_AllRemainInQueue(t *testing.T) {
 	tmpDir := t.TempDir()
 	queuePath := filepath.Join(tmpDir, "test_queue.json")
 
@@ -667,26 +672,22 @@ func TestProcessQueue_StopsOnMissingJSON_VideoRemainsInQueue(t *testing.T) {
 
 	deps := queueProcessorDeps{
 		runDocker: func(outputFile string, containerArgs []string) error {
-			// Docker fails and does NOT write JSON file
+			// Docker fails for every video
 			return fmt.Errorf("docker run failed: exit code 1")
 		},
 		importJSON: func(jsonFilePath string) error {
-			if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
-				return fmt.Errorf("failed to read JSON file: no such file or directory")
-			}
+			t.Fatal("importJSON should not be called when docker fails")
 			return nil
 		},
 	}
 
+	// Should NOT return error (docker errors are skipped)
 	err := processQueueVideosWithDeps(queuePath, deps)
-
-	if err == nil {
-		t.Fatal("expected error from processQueueVideos, got nil")
-	}
-	if !contains(err.Error(), "failed to import video A") {
-		t.Fatalf("expected import error for video A, got: %v", err)
+	if err != nil {
+		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
 
+	// Both videos should remain in queue
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 2 {
 		t.Fatalf("expected 2 entries still in queue, got %d", len(remaining))
