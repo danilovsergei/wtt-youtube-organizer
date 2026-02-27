@@ -81,6 +81,10 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 				continue
 			}
 		}
+		// Skip table/arena names containing "Infinity"
+		if strings.Contains(part, "Infinity") {
+			continue
+		}
 		// Check if this part contains "Day"
 		if strings.Contains(part, "Day") {
 			dayPart = part

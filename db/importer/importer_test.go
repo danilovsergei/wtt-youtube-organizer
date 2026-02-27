@@ -540,6 +540,13 @@ func TestParseTournamentFromTitle(t *testing.T) {
 			wantYear: 2026,
 			wantDay:  "Q Day 1 Session 2",
 		},
+		{
+			name:     "6 parts with Infinity Arena skipped",
+			title:    "LIVE! | Infinity∞Arena | Day 6 | Singapore Smash 2026 Presented by Resorts World Sentosa | Session 2 (fCfurYxiCjY)",
+			wantName: "Singapore Smash",
+			wantYear: 2026,
+			wantDay:  "Day 6 Session 2 (fCfurYxiCjY)",
+		},
 	}
 
 	for _, tt := range tests {
