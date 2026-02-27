@@ -46,21 +46,18 @@ func main() {
 		if len(record) == 0 {
 			continue
 		}
-		// CSV record[0] is the relative path found in logs (e.g. "subdir/image.jpg")
+		// relPath is e.g. "11dz3aCdet4/cropped_10620.0-a7d98c4e.jpg"
 		relPath := strings.TrimSpace(record[0])
 
 		// Construct full source path
 		srcPath := filepath.Join(srcRoot, relPath)
 
-		// Flatten path structure for destination filename to avoid overwrites/deep nesting
-		// Example: "folder/image.jpg" -> "folder_image.jpg"
-		cleanRel := filepath.Clean(relPath)
-		flatName := strings.ReplaceAll(cleanRel, string(os.PathSeparator), "_")
+		// FIX: Extract ONLY the filename (e.g., "cropped_10620.0-a7d98c4e.jpg")
+		// This removes the "11dz3aCdet4/" prefix from the destination name
+		fileName := filepath.Base(relPath)
 
-		// Basic sanitization for colons (Windows compatibility or just cleanliness)
-		flatName = strings.ReplaceAll(flatName, ":", "_")
-
-		destPath := filepath.Join(destDir, flatName)
+		// Construct destination path: destDir + fileName
+		destPath := filepath.Join(destDir, fileName)
 
 		err := copyFile(srcPath, destPath)
 		if err != nil {
@@ -86,5 +83,6 @@ func copyFile(src, dst string) error {
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, sourceFile)
+	fmt.Printf("Copied %s to %s\n", src, dst)
 	return err
 }
