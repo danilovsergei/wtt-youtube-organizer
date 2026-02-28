@@ -48,9 +48,8 @@ class TableTennisDataset(Dataset):
             labels = self.processor.tokenizer(
                 text=target_text,
                 return_tensors="pt",
-                padding="max_length",
-                max_length=128,
-                truncation=True
+                padding="longest",
+                truncation=False
             ).input_ids
 
         labels = labels.squeeze()
@@ -66,10 +65,19 @@ class TableTennisDataset(Dataset):
 
 def collate_fn(batch):
     batch = [item for item in batch if item is not None]
+
+    input_ids = [item["input_ids"] for item in batch]
+    pixel_values = torch.stack([item["pixel_values"] for item in batch])
+    labels = [item["labels"] for item in batch]
+
+    # Dynamically pad the input_ids and labels to the max length in this batch
+    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=0) # pad_token_id=0
+    labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100) # Ignore loss on padding
+
     return {
-        "input_ids": torch.stack([item["input_ids"] for item in batch]),
-        "pixel_values": torch.stack([item["pixel_values"] for item in batch]),
-        "labels": torch.stack([item["labels"] for item in batch])
+        "input_ids": input_ids,
+        "pixel_values": pixel_values,
+        "labels": labels
     }
 
 
@@ -116,7 +124,7 @@ def train(args):
 
     optimizer = AdamW(model.parameters(), lr=1e-5)
 
-    num_epochs = 5
+    num_epochs = 7
     num_training_steps = num_epochs * len(train_loader)
     lr_scheduler = get_scheduler(
         name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps

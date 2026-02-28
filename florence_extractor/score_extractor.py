@@ -9,17 +9,14 @@ import sys
 from pathlib import Path
 from PIL import Image
 from unittest.mock import MagicMock
-
-# Mock flash_attn to avoid installation requirement
-mock_flash_attn = MagicMock()
-mock_flash_attn.__spec__ = MagicMock()
-sys.modules["flash_attn"] = mock_flash_attn
+from PIL import Image
 
 # Add script directory to path for imports
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
+from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 
 # Configuration - Tune these values manually
 BOTTOM_PERCENT = 0.14  # Fraction of height to crop from the bottom
@@ -54,10 +51,6 @@ def load_expected_data(csv_path):
             if filename:
                 data[filename] = row
     return data
-
-
-def normalize_text(text):
-    return re.sub(r'[^A-Z0-9]', '', text.upper())
 
 
 def crop_images(input_dir, output_dir):
@@ -104,16 +97,40 @@ def crop_images(input_dir, output_dir):
     print(f"Finished cropping {len(image_files)} images.")
 
 
+import torch
+
+def get_device(args):
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+
+    num_devices = torch.cuda.device_count()
+
+    if getattr(args, "cuda_device_id", None) is not None:
+        if 0 <= args.cuda_device_id < num_devices:
+            return torch.device(f"cuda:{args.cuda_device_id}")
+        else:
+            print(f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
+            sys.exit(1)
+
+    if num_devices == 1:
+        return torch.device("cuda:0")
+
+    print("Multiple CUDA devices found. Please specify which one to use with --cuda_device_id <number>")
+    for i in range(num_devices):
+        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
+    sys.exit(1)
+
 class ScoreExtractor:
     """Handles score extraction using Florence-2 OCR model."""
 
-    def __init__(self, model_path: str, backend: str = None):
+    def __init__(self, model_path: str, backend: str = None, device: str = "cpu"):
         self.model_path = model_path
         self._backend = backend or get_default_backend()
         self.processor = None
         self.model = None
         self._ov_model = None
         self._initialized = False
+        self.device = device
 
     def initialize(self) -> bool:
         """Load the Florence-2 model using selected backend."""
@@ -127,13 +144,13 @@ class ScoreExtractor:
 
     def _initialize_pytorch(self) -> bool:
         """Initialize PyTorch backend."""
-        print("Loading Florence-2 model (PyTorch CPU)...")
+        print(f"Loading Florence-2 model (PyTorch on {self.device})...")
         try:
             self.processor = AutoProcessor.from_pretrained(
                 self.model_path, trust_remote_code=True)
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_path, trust_remote_code=True,
-                attn_implementation="eager").to("cpu")
+                attn_implementation="eager").to(self.device)
             self._initialized = True
             print("Model loaded successfully.")
             return True
@@ -176,7 +193,7 @@ class ScoreExtractor:
 
         prompt = "<OCR>"
         inputs = self.processor(
-            text=prompt, images=pil_image, return_tensors="pt")
+            text=prompt, images=pil_image, return_tensors="pt").to(self.device)
 
         if self._backend == BACKEND_OPENVINO:
             generated_ids = self._ov_model.generate(
@@ -187,7 +204,7 @@ class ScoreExtractor:
                 do_sample=False
             )
         else:
-            inputs = inputs.to("cpu")
+            inputs = inputs.to(self.device)
             generated_ids = self.model.generate(
                 input_ids=inputs["input_ids"],
                 pixel_values=inputs["pixel_values"],
@@ -199,43 +216,6 @@ class ScoreExtractor:
 
         return self.processor.batch_decode(
             generated_ids, skip_special_tokens=True)[0]
-
-
-def parse_ocr_output(generated_text):
-    """Parse Florence-2 output to extract player and score data."""
-    processed_rows = []
-    try:
-        pattern = (
-            r"row 1:\s*(.*?),\s*(\d+)(?:[,.\s/&-]+| and )(\d+)\s*"
-            r"row 2:\s*(.*?),\s*(\d+)(?:[,.\s/&-]+| and )(\d+)"
-        )
-        match = re.search(pattern, generated_text)
-
-        if match:
-            processed_rows.append({
-                'player': match.group(1).strip(),
-                'set': match.group(2).strip(),
-                'game': match.group(3).strip()
-            })
-            processed_rows.append({
-                'player': match.group(4).strip(),
-                'set': match.group(5).strip(),
-                'game': match.group(6).strip()
-            })
-        else:
-            print(f"  Warning: Could not parse: '{generated_text}'")
-            processed_rows = [
-                {'player': '', 'set': '', 'game': ''},
-                {'player': '', 'set': '', 'game': ''}
-            ]
-    except Exception as e:
-        print(f"  Error parsing output: {e}")
-        processed_rows = [
-            {'player': '', 'set': '', 'game': ''},
-            {'player': '', 'set': '', 'game': ''}
-        ]
-
-    return processed_rows
 
 
 def process_images(image_dir, csv_path, extractor, verify_mode=True):
@@ -260,7 +240,7 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
             continue
 
         generated_text = extractor.extract(pil_image)
-        processed_rows = parse_ocr_output(generated_text)
+        score_result = parse_score(generated_text)
 
         if verify_mode:
             expected = expected_data.get(filename)
@@ -269,14 +249,18 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
 
             if expected:
                 exp_p1 = expected.get('row 1 expected player', '')
-                exp_s1 = expected.get('row 1 set score', '')
-                exp_g1 = expected.get('row 1 game score', '')
+                exp_s1 = str(expected.get('row 1 set score', ''))
+                exp_g1 = str(expected.get('row 1 game score', ''))
 
-                act_p1 = processed_rows[0]['player'] if processed_rows else ""
-                act_s1 = processed_rows[0]['set'] if processed_rows else ""
-                act_g1 = processed_rows[0]['game'] if processed_rows else ""
+                act_p1 = score_result.player1 if score_result.success else ""
+                act_s1 = str(score_result.set1) if score_result.success else ""
+                act_g1 = str(score_result.game1) if score_result.success else ""
 
-                if normalize_text(exp_p1) != normalize_text(act_p1):
+                # Handle defaulting -1 (which means could not parse game) as empty string
+                if act_g1 == "-1":
+                    act_g1 = ""
+
+                if not is_similar(exp_p1, act_p1):
                     mismatch_details.append(
                         f"Row 1 Player: Exp '{exp_p1}' != Act '{act_p1}'")
                 if exp_s1 != act_s1:
@@ -287,17 +271,17 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
                         f"Row 1 Game: Exp '{exp_g1}' != Act '{act_g1}'")
 
                 exp_p2 = expected.get('row 2 expected player 2', '')
-                exp_s2 = expected.get('row 2 set score', '')
-                exp_g2 = expected.get('row 2 game score', '')
+                exp_s2 = str(expected.get('row 2 set score', ''))
+                exp_g2 = str(expected.get('row 2 game score', ''))
 
-                act_p2 = processed_rows[1]['player'] if len(
-                    processed_rows) > 1 else ""
-                act_s2 = processed_rows[1]['set'] if len(
-                    processed_rows) > 1 else ""
-                act_g2 = processed_rows[1]['game'] if len(
-                    processed_rows) > 1 else ""
+                act_p2 = score_result.player2 if score_result.success else ""
+                act_s2 = str(score_result.set2) if score_result.success else ""
+                act_g2 = str(score_result.game2) if score_result.success else ""
 
-                if normalize_text(exp_p2) != normalize_text(act_p2):
+                if act_g2 == "-1":
+                    act_g2 = ""
+
+                if not is_similar(exp_p2, act_p2):
                     mismatch_details.append(
                         f"Row 2 Player: Exp '{exp_p2}' != Act '{act_p2}'")
                 if exp_s2 != act_s2:
@@ -321,14 +305,13 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
             print("-" * 20)
         else:
             print(f"Image: {filename}")
-            if len(processed_rows) > 0:
-                p1 = processed_rows[0]
-                print(f"  Player 1: {p1['player']}, "
-                      f"Set: {p1['set']}, Game: {p1['game']}")
-            if len(processed_rows) > 1:
-                p2 = processed_rows[1]
-                print(f"  Player 2: {p2['player']}, "
-                      f"Set: {p2['set']}, Game: {p2['game']}")
+            if score_result.success:
+                print(f"  Player 1: {score_result.player1}, "
+                      f"Set: {score_result.set1}, Game: {score_result.game1 if score_result.game1 != -1 else ''}")
+                print(f"  Player 2: {score_result.player2}, "
+                      f"Set: {score_result.set2}, Game: {score_result.game2 if score_result.game2 != -1 else ''}")
+            else:
+                print(f"  Failed to parse: {score_result.error}")
             print("-" * 20)
 
 
@@ -337,6 +320,7 @@ def main():
         description='Extract scores from table tennis images using Florence-2')
     parser.add_argument('--images_dir', type=str, required=True,
                         help='Directory containing input images')
+    parser.add_argument('--cuda_device_id', type=int, default=None, help='The ID of the CUDA device to use for PyTorch (if multiple are available)')
     parser.add_argument('--backend', type=str, default=None,
                         choices=ALL_BACKENDS,
                         help='Inference backend: pytorch-cpu or openvino '
@@ -377,7 +361,8 @@ def main():
 
     # Initialize model
     model_path = os.path.join(script_dir, "florence2-tt-finetuned")
-    extractor = ScoreExtractor(model_path, backend=backend)
+    device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
+    extractor = ScoreExtractor(model_path, backend=backend, device=device)
 
     if not extractor.initialize():
         print("Failed to initialize model")
