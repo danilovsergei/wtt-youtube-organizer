@@ -490,6 +490,36 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 	return nil
 }
 
+// killStaleMatchFinderContainers finds and kills any running Docker containers
+// using the match-finder image. This prevents stale containers from accumulating
+// when previous runs didn't clean up properly.
+func killStaleMatchFinderContainers() {
+	// Find running containers using our image
+	cmd := exec.Command("docker", "ps", "-q", "--filter", fmt.Sprintf("ancestor=%s", imageName))
+	output, err := cmd.Output()
+	if err != nil {
+		return // silently ignore errors (docker might not be available)
+	}
+
+	containerIDs := strings.TrimSpace(string(output))
+	if containerIDs == "" {
+		return // no running containers
+	}
+
+	// Split by newline in case there are multiple containers
+	ids := strings.Fields(containerIDs)
+	logPrintf("Killing %d stale match-finder container(s)...\n", len(ids))
+
+	for _, id := range ids {
+		killCmd := exec.Command("docker", "kill", id)
+		if err := killCmd.Run(); err != nil {
+			logPrintf("Warning: failed to kill container %s: %v\n", id, err)
+		} else {
+			logPrintf("Killed stale container: %s\n", id)
+		}
+	}
+}
+
 // getLogWriter returns logWriter if available, otherwise os.Stdout
 func getLogWriter() io.Writer {
 	if logWriter != nil {
@@ -500,6 +530,8 @@ func getLogWriter() io.Writer {
 
 // runDockerContainerNoOutput runs the container without any output file (stdout only)
 func runDockerContainerNoOutput(containerArgs []string) error {
+	killStaleMatchFinderContainers()
+
 	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", "docker")
 
 	if !dockerImageExists(imageName) {
@@ -539,6 +571,8 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 }
 
 func runDockerContainer(absOutputJSON string, containerArgs []string) error {
+	killStaleMatchFinderContainers()
+
 	outputDir := filepath.Dir(absOutputJSON)
 	outputFilename := filepath.Base(absOutputJSON)
 
