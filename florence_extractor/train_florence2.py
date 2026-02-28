@@ -1,3 +1,5 @@
+import argparse
+import sys
 import os
 import pandas as pd
 from PIL import Image
@@ -71,8 +73,31 @@ def collate_fn(batch):
     }
 
 
-def train():
-    device = torch.device("cpu")
+def get_device(args):
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+
+    num_devices = torch.cuda.device_count()
+
+    if args.cuda_device_id is not None:
+        if 0 <= args.cuda_device_id < num_devices:
+            return torch.device(f"cuda:{args.cuda_device_id}")
+        else:
+            print(
+                f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
+            sys.exit(1)
+
+    if num_devices == 1:
+        return torch.device("cuda:0")
+
+    print("Multiple CUDA devices found. Please specify which one to use with --cuda_device_id <number>")
+    for i in range(num_devices):
+        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
+    sys.exit(1)
+
+
+def train(args):
+    device = get_device(args)
     model_id = "microsoft/Florence-2-base"
 
     print(f"Using device: {device}")
@@ -127,4 +152,10 @@ def train():
 
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser(
+        description="Train Florence-2 for Table Tennis OCR")
+    parser.add_argument("--cuda_device_id", type=int, default=None,
+                        help="The ID of the CUDA device to use for training (if multiple are available)")
+    args = parser.parse_args()
+
+    train(args)
