@@ -260,6 +260,10 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
                 if act_g1 == "-1":
                     act_g1 = ""
 
+                # Print warning if it matches fuzzily but NOT strictly
+                if normalize_text(exp_p1) != normalize_text(act_p1) and is_similar(exp_p1, act_p1):
+                    print(f"  [HARD-MINING] Row 1 Player strictly mismatched (but fuzzy passed): Exp '{exp_p1}' != Act '{act_p1}'")
+
                 if not is_similar(exp_p1, act_p1):
                     mismatch_details.append(
                         f"Row 1 Player: Exp '{exp_p1}' != Act '{act_p1}'")
@@ -280,6 +284,10 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
 
                 if act_g2 == "-1":
                     act_g2 = ""
+
+                # Print warning if it matches fuzzily but NOT strictly
+                if normalize_text(exp_p2) != normalize_text(act_p2) and is_similar(exp_p2, act_p2):
+                    print(f"  [HARD-MINING] Row 2 Player strictly mismatched (but fuzzy passed): Exp '{exp_p2}' != Act '{act_p2}'")
 
                 if not is_similar(exp_p2, act_p2):
                     mismatch_details.append(
