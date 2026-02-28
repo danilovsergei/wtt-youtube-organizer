@@ -39,10 +39,12 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 from unittest.mock import MagicMock
 
-# Mock flash_attn to avoid installation requirement
-mock_flash_attn = MagicMock()
-mock_flash_attn.__spec__ = MagicMock()
-sys.modules["flash_attn"] = mock_flash_attn
+# Add script directory to path for imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 
 
 # Configuration for cropping (same as score_extractor.py)
@@ -106,45 +108,6 @@ MIN_BREAK_DURATION = 300       # Minimum 5 minutes break between matches
 MAX_EARLY_GAME_POINTS = 15
 # Seconds per point for approximation (used to calculate offset)
 SECONDS_PER_POINT = 16
-
-
-@dataclass
-class ScoreResult:
-    """Represents the result of score extraction from a frame."""
-    success: bool
-    player1: str = ""
-    player2: str = ""
-    set1: int = -1
-    set2: int = -1
-    game1: int = -1
-    game2: int = -1
-    error: str = ""
-
-    def is_match_start(self) -> bool:
-        """Check if this is a match start (0:0 sets, 0:0 game)."""
-        return (self.success and
-                self.set1 == 0 and self.set2 == 0 and
-                self.game1 == 0 and self.game2 == 0)
-
-    def is_game_start(self) -> bool:
-        """Check if this is a game start (0:0 game, any set score)."""
-        return self.success and self.game1 == 0 and self.game2 == 0
-
-    def is_early_match(self) -> bool:
-        """Check if this is early in the first game (sets 0:0, few points)."""
-        if not self.success:
-            return False
-        # Sets must be 0:0 (first game of match)
-        if self.set1 != 0 or self.set2 != 0:
-            return False
-        # Total points must be low (1:0, 0:1, 2:0, 0:2, 1:1, 2:1, etc)
-        return self.total_points() <= MAX_EARLY_GAME_POINTS
-
-    def total_points(self) -> int:
-        """Return total points in current game."""
-        if not self.success:
-            return -1
-        return self.game1 + self.game2
 
 
 @dataclass
@@ -317,7 +280,7 @@ class ScoreExtractor:
             else:
                 generated_text = self._extract_pytorch(pil_image)
 
-            return self._parse_score(generated_text)
+            return parse_score(generated_text)
         except Exception as e:
             return ScoreResult(success=False, error=str(e))
 
@@ -354,25 +317,6 @@ class ScoreExtractor:
         )
         return self.processor.batch_decode(
             generated_ids, skip_special_tokens=True)[0]
-
-    def _parse_score(self, text: str) -> ScoreResult:
-        """Parse Florence-2 output to extract score data."""
-        # Pattern: row 1: PLAYER, SET, GAME row 2: PLAYER, SET, GAME
-        pattern = r"row 1:\s*(.*?),\s*(\d+)(?:[,.\s/&-]+| and )(\d+)\s*row 2:\s*(.*?),\s*(\d+)(?:[,.\s/&-]+| and )(\d+)"
-        match = re.search(pattern, text)
-
-        if match:
-            return ScoreResult(
-                success=True,
-                player1=match.group(1).strip(),
-                set1=int(match.group(2)),
-                game1=int(match.group(3)),
-                player2=match.group(4).strip(),
-                set2=int(match.group(5)),
-                game2=int(match.group(6))
-            )
-        else:
-            return ScoreResult(success=False, error=f"Could not parse: '{text}'")
 
 
 class MatchStartFinder:
@@ -801,18 +745,18 @@ class MatchStartFinder:
 
     def _is_duplicate(self, match: MatchStart) -> bool:
         """Check if match start already found (within MIN_BREAK_DURATION or same player pair)."""
-        def normalize(name: str) -> str:
-            return re.sub(r'[^A-Z0-9]', '', name.upper())
-
-        new_pair = frozenset(
-            {normalize(match.player1), normalize(match.player2)})
 
         for existing in self.found_matches:
             # Duplicate if same player pair (regardless of timestamp)
-            existing_pair = frozenset(
-                {normalize(existing.player1), normalize(existing.player2)})
-            if new_pair == existing_pair:
+            # Use is_similar to allow 1 character drop leniency in matching pairs
+            players_match_straight = (is_similar(match.player1, existing.player1) and 
+                                      is_similar(match.player2, existing.player2))
+            players_match_swapped = (is_similar(match.player1, existing.player2) and 
+                                     is_similar(match.player2, existing.player1))
+            
+            if players_match_straight or players_match_swapped:
                 return True
+            
             # Duplicate if too close in time
             if abs(existing.timestamp_seconds - match.timestamp_seconds) < MIN_BREAK_DURATION:
                 return True
@@ -820,14 +764,13 @@ class MatchStartFinder:
 
     def _players_changed(self, prev: ScoreResult, curr: ScoreResult) -> bool:
         """Check if players changed between two samples."""
-        def normalize(name: str) -> str:
-            return re.sub(r'[^A-Z0-9]', '', name.upper())
+        players_match_straight = (is_similar(prev.player1, curr.player1) and 
+                                  is_similar(prev.player2, curr.player2))
+        players_match_swapped = (is_similar(prev.player1, curr.player2) and 
+                                 is_similar(prev.player2, curr.player1))
 
-        prev_players = {normalize(prev.player1), normalize(prev.player2)}
-        curr_players = {normalize(curr.player1), normalize(curr.player2)}
-
-        # Players changed if the sets are different
-        return prev_players != curr_players
+        # Players changed if they don't match straight or swapped
+        return not (players_match_straight or players_match_swapped)
 
     def _score_reset_detected(self, prev: ScoreResult, curr: ScoreResult) -> bool:
         """Check if score was reset (new match started)."""
