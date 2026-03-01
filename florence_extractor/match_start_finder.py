@@ -1135,7 +1135,7 @@ def list_recent_streams(num_videos: int) -> None:
         print(f"Error fetching streams: {e}")
 
 
-def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
+def get_video_info(youtube_url: str, cookies_file: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Fetch video title and upload date from YouTube using yt-dlp.
 
@@ -1157,6 +1157,11 @@ def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
         'extractor_args': {'youtubetab': ['approximate_date']},
         'remote_components': ['ejs:github'],
     }
+    if cookies_file:
+        if os.path.exists(cookies_file):
+            ydl_opts['cookiefile'] = cookies_file
+        else:
+            raise FileNotFoundError(f"Could not find requested cookie file at: {cookies_file}")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1178,7 +1183,7 @@ def get_video_info(youtube_url: str) -> Tuple[Optional[str], Optional[str]]:
         return None, None
 
 
-def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
+def download_youtube_video(youtube_url: str, output_dir: str, cookies_file: Optional[str] = None) -> Optional[str]:
     """
     Download YouTube video at 480p (video only, no audio).
 
@@ -1208,6 +1213,11 @@ def download_youtube_video(youtube_url: str, output_dir: str) -> Optional[str]:
         'retries': 100,
         'remote_components': ['ejs:github'],
     }
+    if cookies_file:
+        if os.path.exists(cookies_file):
+            ydl_opts['cookiefile'] = cookies_file
+        else:
+            raise FileNotFoundError(f"Could not find requested cookie file at: {cookies_file}")
 
     print(f"Downloading YouTube video at 480p (video only)...")
     print(f"  URL: {youtube_url}")
@@ -1290,6 +1300,8 @@ def main():
     parser.add_argument('--only_extract_video_metadata', action='store_true',
                         help='Only extract video metadata (id, title, upload_date) '
                              'without running match detection')
+    parser.add_argument('--cookies_file', type=str, default=None,
+                        help='Path to a Netscape HTTP Cookie File for yt-dlp')
     args = parser.parse_args()
 
     # Determine backend
@@ -1491,15 +1503,30 @@ def main():
         print(f"Video ID: {video_id}")
 
         print("Fetching video info...")
-        video_title, upload_date = get_video_info(args.youtube_video)
-        if video_title:
-            print(f"Video Title: {video_title}")
-        else:
-            print("Warning: Could not fetch video title")
-        if upload_date:
-            print(f"Upload Date: {upload_date}")
-        else:
-            print("Warning: Could not fetch upload date")
+        try:
+            video_title, upload_date = get_video_info(args.youtube_video, args.cookies_file)
+            if video_title:
+                print(f"Video Title: {video_title}")
+            else:
+                print("Warning: Could not fetch video title")
+            if upload_date:
+                print(f"Upload Date: {upload_date}")
+            else:
+                print("Warning: Could not fetch upload date")
+        except FileNotFoundError as e:
+            print(str(e))
+            if args.output_json_file:
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": None,
+                    "upload_date": None,
+                    "matches": [],
+                    "error": str(e),
+                }
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                print(f"Error JSON written to: {args.output_json_file}")
+            sys.exit(1)
 
         # If only extracting metadata, output and exit early
         if args.only_extract_video_metadata:
@@ -1520,7 +1547,23 @@ def main():
             sys.exit(0)
 
         # Download YouTube video
-        video_path = download_youtube_video(args.youtube_video, args.output)
+        try:
+            video_path = download_youtube_video(args.youtube_video, args.output, args.cookies_file)
+        except FileNotFoundError as e:
+            print(str(e))
+            if args.output_json_file:
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": video_title,
+                    "upload_date": upload_date,
+                    "matches": [],
+                    "error": str(e),
+                }
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                print(f"Error JSON written to: {args.output_json_file}")
+            sys.exit(1)
+
         if not video_path:
             error_msg = "Failed to download YouTube video"
             print(f"{error_msg}.")

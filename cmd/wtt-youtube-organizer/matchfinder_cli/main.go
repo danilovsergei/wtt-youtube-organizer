@@ -102,6 +102,7 @@ var (
 	showNewStreams   bool
 	excludeProcessed bool
 	cudaDeviceID     int
+	getCookies       bool
 )
 
 
@@ -161,6 +162,43 @@ func hasNvidiaDocker() bool {
 	return false
 }
 
+
+func getCookiesPath(outputDir string) (string, error) {
+	if !getCookies {
+		return "", nil
+	}
+
+	cmdPath, err := exec.LookPath("ytdlp-rookie")
+	if err != nil {
+		// fallback to checking bin/ytdlp-rookie in current dir since users run it from the root of the project!
+		if _, err := os.Stat("bin/ytdlp-rookie"); err == nil {
+			cmdPath = "bin/ytdlp-rookie"
+		} else {
+			return "", fmt.Errorf("--get_cookies specified but ytdlp-rookie binary not found in PATH or bin/ytdlp-rookie")
+		}
+	}
+
+	if outputDir == "" {
+		outputDir = os.TempDir()
+	}
+	cookieFile := filepath.Join(outputDir, "yt_cookies.txt")
+	logPrintf("Extracting cookies using %s to %s...\n", cmdPath, cookieFile)
+
+	cmd := exec.Command(cmdPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to run ytdlp-rookie: %v\nOutput: %s", err, string(output))
+	}
+
+	if err := os.WriteFile(cookieFile, output, 0666); err != nil {
+		return "", fmt.Errorf("failed to write cookies to file: %w", err)
+	}
+	os.Chmod(cookieFile, 0777) // Force the file mask immediately regardless of umask
+
+	logPrintln("Cookies extracted successfully.")
+	return cookieFile, nil
+}
+
 func initDockerVars(extraArgs []string) {
 	if hasCUDA() {
 		if !hasNvidiaDocker() {
@@ -168,7 +206,7 @@ func initDockerVars(extraArgs []string) {
 			fmt.Println("To enable GPU acceleration in Docker, please run:")
 			fmt.Println("  sudo apt-get install -y nvidia-container-toolkit")
 			fmt.Println("  sudo nvidia-ctk runtime configure --runtime=docker")
-			fmt.Println("  sudo systemctl restart docker\n")
+			fmt.Println("  sudo systemctl restart docker")
 			os.Exit(1)
 		}
 		
@@ -189,7 +227,7 @@ func initDockerVars(extraArgs []string) {
 				for _, dev := range devices {
 					fmt.Printf("  %s\n", dev)
 				}
-				fmt.Println("\nPlease run the command again and append: --cuda_device_id <number>\n")
+				fmt.Println("\nPlease run the command again and append: --cuda_device_id <number>")
 				os.Exit(1)
 			}
 		}
@@ -235,6 +273,7 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.BoolVar(&showNewStreams, "show_new_streams", false, "Show new streams since day before latest upload date in database")
 	flags.BoolVar(&excludeProcessed, "exclude_processed", false, "When used with --show_new_streams, only show videos not yet processed")
 	flags.IntVar(&cudaDeviceID, "cuda_device_id", -1, "The ID of the CUDA device to use for PyTorch (if multiple are available)")
+	flags.BoolVar(&getCookies, "get_cookies", false, "Run ytdlp-rookie to extract browser cookies and pass them to yt-dlp")
 }
 
 func runMatchFinder(extraArgs []string) error {
@@ -648,6 +687,15 @@ func getLogWriter() io.Writer {
 
 // runDockerContainerNoOutput runs the container without any output file (stdout only)
 func runDockerContainerNoOutput(containerArgs []string) error {
+	cookieFile, err := getCookiesPath("")
+	if err != nil {
+		return err
+	}
+	if cookieFile != "" {
+		containerArgs = append(containerArgs, "--cookies_file", "/tmp/cookies.txt")
+		// chmod the temp file explicitly just in case
+		os.Chmod(cookieFile, 0666)
+	}
 	killStaleMatchFinderContainers()
 
 	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", dockerDir)
@@ -674,7 +722,8 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 	if dockerDir == "docker/cuda" { logPrintln("NVIDIA GPU: Using CUDA and --gpus all") } else { logPrintln("Intel GPU: Using container's built-in drivers") }
 	logPrintln()
 
-	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs)
+	
+	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs, cookieFile)
 
 	cmd := exec.Command("docker", args...)
 	cmd.Stdout = getLogWriter()
@@ -725,7 +774,17 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	logPrintf("Output file: %s\n\n", outputFilename)
 
 	fullContainerArgs := append(containerArgs, "--output_json_file", "/output/"+outputFilename)
-	args := buildDockerRunArgs(imageName, outputDir, videoGID, renderGID, fullContainerArgs)
+	
+	// Pass the exact same outputDir that is being bind-mounted to docker!
+	cookieFile, err := getCookiesPath(outputDir)
+	if err != nil {
+		return err
+	}
+	if cookieFile != "" {
+		fullContainerArgs = append(fullContainerArgs, "--cookies_file", "/output/yt_cookies.txt")
+	}
+	
+	args := buildDockerRunArgs(imageName, outputDir, videoGID, renderGID, fullContainerArgs, cookieFile)
 
 	cmd := exec.Command("docker", args...)
 	cmd.Stdout = getLogWriter()
@@ -806,7 +865,7 @@ func getCropLogDir() string {
 	return filepath.Join(config.GetProjectConfigDir(), "log")
 }
 
-func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, containerArgs []string) []string {
+func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, containerArgs []string, cookieFile string) []string {
 	args := []string{"run", "--rm"}
 
 	if dockerDir == "docker/cuda" {
@@ -828,9 +887,9 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 
 	args = append(args,
 		"-v", fmt.Sprintf("%s:/output", outputDir),
-		"-v", fmt.Sprintf("%s:/log", cropLogDir),
-		imageName,
-	)
+		"-v", fmt.Sprintf("%s:/log", cropLogDir))
+
+	args = append(args, imageName)
 
 	// Always pass --crop_output_dir so cropped images are saved
 	containerArgs = append(containerArgs, "--crop_output_dir", "/log")
@@ -840,7 +899,7 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 }
 
 // buildDockerRunArgsNoOutput builds docker run args without volume mount (no output file)
-func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, containerArgs []string) []string {
+func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, containerArgs []string, cookieFile string) []string {
 	args := []string{"run", "--rm"}
 
 	if dockerDir == "docker/cuda" {
