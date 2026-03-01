@@ -20,6 +20,8 @@ Usage:
     python match_start_finder.py --local_video "/path/to/video.mp4" --backend openvino
 """
 
+import torch
+from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 from transformers import AutoProcessor, AutoModelForCausalLM
 from PIL import Image
 import cv2
@@ -43,8 +45,6 @@ from unittest.mock import MagicMock
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
-
-from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 
 
 # Configuration for cropping (same as score_extractor.py)
@@ -183,7 +183,7 @@ def crop_image(image_path: str) -> Optional[Image.Image]:
 
 
 # Backend constants
-import torch
+
 
 def get_device(args):
     if not torch.cuda.is_available():
@@ -196,15 +196,18 @@ def get_device(args):
         target_name = args.cuda_device_name.strip()
         for i in range(num_devices):
             if torch.cuda.get_device_name(i).strip() == target_name:
-                print(f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
+                print(
+                    f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
                 return f"cuda:{i}"
-        print(f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
+        print(
+            f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
 
     if getattr(args, "cuda_device_id", None) is not None:
         if 0 <= args.cuda_device_id < num_devices:
             return f"cuda:{args.cuda_device_id}"
         else:
-            print(f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
+            print(
+                f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
             sys.exit(1)
 
     if num_devices == 1:
@@ -266,11 +269,12 @@ class ScoreExtractor:
                 if idx is None and ":" in str(self.device):
                     idx = int(str(self.device).split(":")[1])
                 elif idx is None:
-                    idx = 0 # Default to 0 if just 'cuda'
+                    idx = 0  # Default to 0 if just 'cuda'
                 dev_info = f" - {torch.cuda.get_device_name(idx)}"
             except Exception:
                 pass
-        print(f"Loading Florence-2 model (PyTorch on {self.device}{dev_info})...")
+        print(
+            f"Loading Florence-2 model (PyTorch on {self.device}{dev_info})...")
         try:
             self.processor = AutoProcessor.from_pretrained(
                 self._model_path, trust_remote_code=True)
@@ -485,7 +489,9 @@ class MatchStartFinder:
         shutil.copy2(temp_path, output_path)
         return output_path
 
-    def _binary_search_match_start(self, start_ts: float, end_ts: float) -> Optional[MatchStart]:
+    def _binary_search_match_start(self, start_ts: float, end_ts: float,
+                                   end_result: ScoreResult = None,
+                                   end_image: str = "") -> Optional[MatchStart]:
         """
         Binary search to find exact match start between two timestamps.
         If 0:0 is not found, falls back to early match scores (1:0, 0:1, etc.)
@@ -493,14 +499,20 @@ class MatchStartFinder:
 
         start_ts: Last known no-score or previous match timestamp
         end_ts: First known score visible timestamp
+        end_result: ScoreResult from the coarse scan at end_ts (used as fallback)
+        end_image: Image path from the coarse scan at end_ts
         """
         print(
             f"  Binary search between {format_timestamp(start_ts)} "
             f"and {format_timestamp(end_ts)}")
 
         best_match: Optional[MatchStart] = None
-        # Track earliest early match as fallback
+        # Track earliest early match as fallback.
+        # Seed with end-point coarse-scan score so the binary search always
+        # has a fallback even when the score region is extremely narrow.
         earliest_early_match: Optional[Tuple[float, ScoreResult, str]] = None
+        if end_result and end_result.success and end_result.is_early_match():
+            earliest_early_match = (end_ts, end_result, end_image)
 
         while (end_ts - start_ts) > BINARY_SEARCH_PRECISION:
             mid_ts = (start_ts + end_ts) / 2
@@ -728,7 +740,8 @@ class MatchStartFinder:
                       f"(break: {no_score_duration:.0f}s)")
 
                 match_start = self._binary_search_match_start(
-                    no_score_start, curr_ts)
+                    no_score_start, curr_ts,
+                    end_result=curr_result, end_image=curr_image)
                 if match_start and not self._is_duplicate(match_start):
                     saved_path = self._save_match_image(
                         match_start.image_path, match_start.timestamp_seconds,
@@ -746,7 +759,9 @@ class MatchStartFinder:
                       f"{format_timestamp(prev_ts)} and "
                       f"{format_timestamp(curr_ts)}")
 
-                match_start = self._binary_search_match_start(prev_ts, curr_ts)
+                match_start = self._binary_search_match_start(
+                    prev_ts, curr_ts,
+                    end_result=curr_result, end_image=curr_image)
                 if match_start and not self._is_duplicate(match_start):
                     saved_path = self._save_match_image(
                         match_start.image_path, match_start.timestamp_seconds,
@@ -763,7 +778,9 @@ class MatchStartFinder:
                 print(f"\nScore reset detected between {format_timestamp(prev_ts)} "
                       f"and {format_timestamp(curr_ts)}")
 
-                match_start = self._binary_search_match_start(prev_ts, curr_ts)
+                match_start = self._binary_search_match_start(
+                    prev_ts, curr_ts,
+                    end_result=curr_result, end_image=curr_image)
                 if match_start and not self._is_duplicate(match_start):
                     saved_path = self._save_match_image(
                         match_start.image_path, match_start.timestamp_seconds,
@@ -778,6 +795,35 @@ class MatchStartFinder:
 
         phase2_duration = time.time() - phase2_start
         print(f"Phase 2 completed in {phase2_duration:.1f} seconds")
+
+        # Collect all unique player pairs seen during coarse scan
+        seen_pairs: List[Tuple[str, str, str]] = []  # (p1, p2, timestamp)
+        for ts, result, _, _ in coarse_samples:
+            if not result.success:
+                continue
+            p1, p2 = result.player1, result.player2
+            # Check if this pair is already seen (using is_similar)
+            already_seen = False
+            for sp1, sp2, _ in seen_pairs:
+                if ((is_similar(p1, sp1) and is_similar(p2, sp2)) or
+                        (is_similar(p1, sp2) and is_similar(p2, sp1))):
+                    already_seen = True
+                    break
+            if not already_seen:
+                seen_pairs.append((p1, p2, format_timestamp(ts)))
+
+        # Check for skipped matches: pairs seen but not in found_matches
+        for sp1, sp2, first_seen_ts in seen_pairs:
+            found = False
+            for m in self.found_matches:
+                if ((is_similar(sp1, m.player1) and is_similar(sp2, m.player2)) or
+                        (is_similar(sp1, m.player2) and is_similar(sp2, m.player1))):
+                    found = True
+                    break
+            if not found:
+                print(f"[MATCH_SKIPPED_WARNING] Players '{sp1}' vs "
+                      f"'{sp2}' seen at {first_seen_ts} but no match "
+                      f"start found in output")
 
         total_duration = time.time() - total_start_time
         print("\n=== Summary ===")
@@ -795,14 +841,14 @@ class MatchStartFinder:
         for existing in self.found_matches:
             # Duplicate if same player pair (regardless of timestamp)
             # Use is_similar to allow 1 character drop leniency in matching pairs
-            players_match_straight = (is_similar(match.player1, existing.player1) and 
+            players_match_straight = (is_similar(match.player1, existing.player1) and
                                       is_similar(match.player2, existing.player2))
-            players_match_swapped = (is_similar(match.player1, existing.player2) and 
+            players_match_swapped = (is_similar(match.player1, existing.player2) and
                                      is_similar(match.player2, existing.player1))
-            
+
             if players_match_straight or players_match_swapped:
                 return True
-            
+
             # Duplicate if too close in time
             if abs(existing.timestamp_seconds - match.timestamp_seconds) < MIN_BREAK_DURATION:
                 return True
@@ -810,9 +856,9 @@ class MatchStartFinder:
 
     def _players_changed(self, prev: ScoreResult, curr: ScoreResult) -> bool:
         """Check if players changed between two samples."""
-        players_match_straight = (is_similar(prev.player1, curr.player1) and 
+        players_match_straight = (is_similar(prev.player1, curr.player1) and
                                   is_similar(prev.player2, curr.player2))
-        players_match_swapped = (is_similar(prev.player1, curr.player2) and 
+        players_match_swapped = (is_similar(prev.player1, curr.player2) and
                                  is_similar(prev.player2, curr.player1))
 
         # Players changed if they don't match straight or swapped
@@ -1226,8 +1272,10 @@ def main():
 
     parser.add_argument('--output', type=str, default='match_starts',
                         help='Output directory (default: match_starts)')
-    parser.add_argument('--cuda_device_id', type=int, default=None, help='The ID of the CUDA device to use for PyTorch (if multiple are available)')
-    parser.add_argument('--cuda_device_name', type=str, default=None, help='The exact string name of the GPU to map via PyTorch (prevents index mismatch between nvidia-smi and torch)')
+    parser.add_argument('--cuda_device_id', type=int, default=None,
+                        help='The ID of the CUDA device to use for PyTorch (if multiple are available)')
+    parser.add_argument('--cuda_device_name', type=str, default=None,
+                        help='The exact string name of the GPU to map via PyTorch (prevents index mismatch between nvidia-smi and torch)')
     parser.add_argument('--backend', type=str, default=None,
                         choices=ALL_BACKENDS,
                         help='Inference backend: pytorch-cpu or openvino')
@@ -1249,7 +1297,7 @@ def main():
     device = 'cpu'
     if not args.only_extract_video_metadata:
         device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
-    
+
     # Print the resolved device immediately
     dev_name_print = ""
     if str(device).startswith("cuda"):
@@ -1260,7 +1308,6 @@ def main():
         except Exception:
             pass
     print(f"Resolved execution device: {device}{dev_name_print}")
-
 
     # Handle --print_matches (standalone action)
     if args.print_matches:
@@ -1343,13 +1390,14 @@ def main():
 
             # Find matches
             device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
-            
+
             # Print the resolved device immediately
             dev_name_print = ""
             if str(device).startswith("cuda"):
                 try:
                     import torch
-                    idx = int(str(device).split(":")[1]) if ":" in str(device) else 0
+                    idx = int(str(device).split(":")[
+                              1]) if ":" in str(device) else 0
                     dev_name_print = f" ({torch.cuda.get_device_name(idx)})"
                 except Exception:
                     pass
