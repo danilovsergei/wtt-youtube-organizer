@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  wtt-stream-match-finder-cuda:
+    build:
+      context: ../../../
+      dockerfile: florence_extractor/docker/cuda/Dockerfile
+    image: geonix/wtt-stream-match-finder-cuda:latest
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      # Mount the videos directory to make locally downloaded videos available
+      - ../videos:/videos
+      # Mount outputs
+      - ../match_starts:/output
+      # Mount a temp directory for fast processing if needed
+      - /tmp:/tmp

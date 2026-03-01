@@ -1,0 +1,15 @@
+# Ignore everything
+**
+
+# Except what we explicitly need
+!florence_extractor/
+florence_extractor/cropped_images/
+florence_extractor/__pycache__/
+florence_extractor/venv/
+florence_extractor/.git/
+florence_extractor/testdata/
+florence_extractor/test_data_sample.csv
+florence_extractor/training.log
+
+# CUDA does not need the OpenVINO model
+florence_extractor/florence2-tt-finetuned/openvino/

@@ -191,6 +191,15 @@ def get_device(args):
 
     num_devices = torch.cuda.device_count()
 
+    # If the Go script passed the exact hardware name, use it to find the correct PyTorch internal ID!
+    if getattr(args, "cuda_device_name", None) is not None:
+        target_name = args.cuda_device_name.strip()
+        for i in range(num_devices):
+            if torch.cuda.get_device_name(i).strip() == target_name:
+                print(f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
+                return f"cuda:{i}"
+        print(f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
+
     if getattr(args, "cuda_device_id", None) is not None:
         if 0 <= args.cuda_device_id < num_devices:
             return f"cuda:{args.cuda_device_id}"
@@ -249,7 +258,19 @@ class ScoreExtractor:
 
     def _initialize_pytorch(self) -> bool:
         """Initialize PyTorch backend (original working code)."""
-        print(f"Loading Florence-2 model (PyTorch on {self.device})...")
+        import torch
+        dev_info = ""
+        if str(self.device).startswith("cuda"):
+            try:
+                idx = getattr(self.device, "index", None)
+                if idx is None and ":" in str(self.device):
+                    idx = int(str(self.device).split(":")[1])
+                elif idx is None:
+                    idx = 0 # Default to 0 if just 'cuda'
+                dev_info = f" - {torch.cuda.get_device_name(idx)}"
+            except Exception:
+                pass
+        print(f"Loading Florence-2 model (PyTorch on {self.device}{dev_info})...")
         try:
             self.processor = AutoProcessor.from_pretrained(
                 self._model_path, trust_remote_code=True)
@@ -1206,6 +1227,7 @@ def main():
     parser.add_argument('--output', type=str, default='match_starts',
                         help='Output directory (default: match_starts)')
     parser.add_argument('--cuda_device_id', type=int, default=None, help='The ID of the CUDA device to use for PyTorch (if multiple are available)')
+    parser.add_argument('--cuda_device_name', type=str, default=None, help='The exact string name of the GPU to map via PyTorch (prevents index mismatch between nvidia-smi and torch)')
     parser.add_argument('--backend', type=str, default=None,
                         choices=ALL_BACKENDS,
                         help='Inference backend: pytorch-cpu or openvino')
@@ -1221,6 +1243,24 @@ def main():
                         help='Only extract video metadata (id, title, upload_date) '
                              'without running match detection')
     args = parser.parse_args()
+
+    # Determine backend
+    backend = args.backend or get_default_backend()
+    device = 'cpu'
+    if not args.only_extract_video_metadata:
+        device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
+    
+    # Print the resolved device immediately
+    dev_name_print = ""
+    if str(device).startswith("cuda"):
+        try:
+            import torch
+            idx = int(str(device).split(":")[1]) if ":" in str(device) else 0
+            dev_name_print = f" ({torch.cuda.get_device_name(idx)})"
+        except Exception:
+            pass
+    print(f"Resolved execution device: {device}{dev_name_print}")
+
 
     # Handle --print_matches (standalone action)
     if args.print_matches:
@@ -1303,6 +1343,17 @@ def main():
 
             # Find matches
             device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
+            
+            # Print the resolved device immediately
+            dev_name_print = ""
+            if str(device).startswith("cuda"):
+                try:
+                    import torch
+                    idx = int(str(device).split(":")[1]) if ":" in str(device) else 0
+                    dev_name_print = f" ({torch.cuda.get_device_name(idx)})"
+                except Exception:
+                    pass
+            print(f"Resolved execution device: {device}{dev_name_print}")
             finder = MatchStartFinder(
                 video_path, args.output,
                 backend=backend, device=device,
@@ -1439,9 +1490,6 @@ def main():
                 print(f"Error JSON written to: {args.output_json_file}")
             sys.exit(1)
 
-    # Determine backend
-    backend = args.backend or get_default_backend()
-
     print(f"\n{'=' * 60}")
     print("Match Start Finder")
     print('=' * 60)
@@ -1456,7 +1504,6 @@ def main():
         crop_dir = os.path.join(
             args.crop_output_dir, video_id)
 
-    device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
     finder = MatchStartFinder(
         video_path, args.output, backend=backend, device=device,
         keep_cropped=args.keep_cropped,

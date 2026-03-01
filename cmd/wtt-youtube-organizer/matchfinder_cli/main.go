@@ -20,7 +20,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const imageName = "wtt-stream-match-finder-openvino"
+var (
+	imageName = "wtt-stream-match-finder-openvino"
+	dockerDir = "docker/openvino"
+)
 
 // logWriter is a multi-writer that writes to both console and log file
 var logWriter io.Writer
@@ -98,7 +101,103 @@ var (
 	processQueueName string
 	showNewStreams   bool
 	excludeProcessed bool
+	cudaDeviceID     int
 )
+
+
+func getCudaDevices() []string {
+	cmd := exec.Command("nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var devices []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			devices = append(devices, strings.TrimSpace(line))
+		}
+	}
+	return devices
+}
+
+func getCudaDeviceName(id int) string {
+	devices := getCudaDevices()
+	prefix := fmt.Sprintf("%d,", id)
+	for _, dev := range devices {
+		if strings.HasPrefix(strings.TrimSpace(dev), prefix) {
+			// Extract just the name
+			parts := strings.SplitN(dev, ",", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+func hasCUDA() bool {
+
+	err := exec.Command("nvidia-smi").Run()
+	return err == nil
+}
+
+func hasNvidiaDocker() bool {
+	// check if docker actually can mount gpus
+	cmd := exec.Command("docker", "run", "--rm", "--gpus", "all", "ubuntu", "nvidia-smi")
+	err := cmd.Run()
+	if err == nil {
+	    return true
+	}
+	
+	// If standard fails, check if privileged works
+	cmdPriv := exec.Command("docker", "run", "--rm", "--privileged", "--gpus", "all", "ubuntu", "nvidia-smi")
+	errPriv := cmdPriv.Run()
+	if errPriv == nil {
+	    return true
+	}
+	
+	return false
+}
+
+func initDockerVars(extraArgs []string) {
+	if hasCUDA() {
+		if !hasNvidiaDocker() {
+			fmt.Println("\nERROR: NVIDIA GPU detected, but Docker is missing the NVIDIA Container Toolkit.")
+			fmt.Println("To enable GPU acceleration in Docker, please run:")
+			fmt.Println("  sudo apt-get install -y nvidia-container-toolkit")
+			fmt.Println("  sudo nvidia-ctk runtime configure --runtime=docker")
+			fmt.Println("  sudo systemctl restart docker\n")
+			os.Exit(1)
+		}
+		
+		// Check for multiple GPUs and require explicit selection
+		devices := getCudaDevices()
+		if len(devices) > 1 {
+			// Check if the cobra flag was set, or if it was passed manually in extraArgs
+			hasDeviceFlag := cudaDeviceID >= 0
+			for _, arg := range extraArgs {
+				if strings.Contains(arg, "--cuda_device_id") {
+					hasDeviceFlag = true
+					break
+				}
+			}
+			if !hasDeviceFlag {
+				fmt.Println("\nERROR: Multiple NVIDIA GPUs detected. You must explicitly specify which one to use.")
+				fmt.Println("Available devices:")
+				for _, dev := range devices {
+					fmt.Printf("  %s\n", dev)
+				}
+				fmt.Println("\nPlease run the command again and append: --cuda_device_id <number>\n")
+				os.Exit(1)
+			}
+		}
+
+		imageName = "geonix/wtt-stream-match-finder-cuda:latest"
+		dockerDir = "docker/cuda"
+	}
+}
 
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -135,9 +234,18 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.StringVar(&processQueueName, "process", "", "Process videos from the specified queue file (e.g., latest_streams)")
 	flags.BoolVar(&showNewStreams, "show_new_streams", false, "Show new streams since day before latest upload date in database")
 	flags.BoolVar(&excludeProcessed, "exclude_processed", false, "When used with --show_new_streams, only show videos not yet processed")
+	flags.IntVar(&cudaDeviceID, "cuda_device_id", -1, "The ID of the CUDA device to use for PyTorch (if multiple are available)")
 }
 
 func runMatchFinder(extraArgs []string) error {
+	// We need to inject these directly into the global execution path later, but for now we put them in extraArgs
+	if cudaDeviceID >= 0 {
+		extraArgs = append(extraArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
+		if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
+			extraArgs = append(extraArgs, "--cuda_device_name", devName)
+		}
+	}
+	initDockerVars(extraArgs)
 	// Setup dual logging (console + file)
 	if err := setupLogging(); err != nil {
 		fmt.Printf("Warning: could not setup logging: %v\n", err)
@@ -178,6 +286,7 @@ func runMatchFinder(extraArgs []string) error {
 			"--only_extract_video_metadata",
 			"--process_all_matches_after", lastVideoID,
 		}
+		containerArgs = append(containerArgs, extraArgs...)
 
 		// Run docker to get metadata JSON
 		if err := runDockerContainer(metadataJSON, containerArgs); err != nil {
@@ -360,6 +469,7 @@ func (d *dbProcessedChecker) GetProcessedVideoIDs(youtubeIDs []string) (map[stri
 type dockerStreamFetcher struct{}
 
 func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEntry, error) {
+	initDockerVars([]string{})
 	// Create temp directory for metadata output
 	tmpDir, err := os.MkdirTemp("", "matchfinder-")
 	if err != nil {
@@ -454,6 +564,14 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 		containerArgs := []string{
 			"--youtube_video", youtubeURL,
 		}
+		
+		// Inject CUDA args if missing
+		if cudaDeviceID >= 0 && !strings.Contains(strings.Join(containerArgs, " "), "--cuda_device_id") {
+			containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
+			if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
+				containerArgs = append(containerArgs, "--cuda_device_name", devName)
+			}
+		}
 
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
@@ -532,7 +650,7 @@ func getLogWriter() io.Writer {
 func runDockerContainerNoOutput(containerArgs []string) error {
 	killStaleMatchFinderContainers()
 
-	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", "docker")
+	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", dockerDir)
 
 	if !dockerImageExists(imageName) {
 		logPrintf("Image '%s' not found. Building...\n", imageName)
@@ -553,7 +671,7 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 		logPrintln("  render GID: not found")
 	}
 
-	logPrintln("Intel GPU: Using container's built-in drivers")
+	if dockerDir == "docker/cuda" { logPrintln("NVIDIA GPU: Using CUDA and --gpus all") } else { logPrintln("Intel GPU: Using container's built-in drivers") }
 	logPrintln()
 
 	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs)
@@ -576,7 +694,7 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	outputDir := filepath.Dir(absOutputJSON)
 	outputFilename := filepath.Base(absOutputJSON)
 
-	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", "docker")
+	scriptDir := filepath.Join(getProjectRoot(), "florence_extractor", dockerDir)
 
 	if !dockerImageExists(imageName) {
 		logPrintf("Image '%s' not found. Building...\n", imageName)
@@ -597,7 +715,7 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 		logPrintln("  render GID: not found")
 	}
 
-	logPrintln("Intel GPU: Using container's built-in drivers")
+	if dockerDir == "docker/cuda" { logPrintln("NVIDIA GPU: Using CUDA and --gpus all") } else { logPrintln("Intel GPU: Using container's built-in drivers") }
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -654,7 +772,7 @@ func dockerImageExists(imageName string) bool {
 }
 
 func dockerComposeBuild(dir string) error {
-	cmd := exec.Command("docker-compose", "build")
+	cmd := exec.Command("docker", "compose", "build")
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -689,15 +807,20 @@ func getCropLogDir() string {
 }
 
 func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, containerArgs []string) []string {
-	args := []string{
-		"run", "--rm",
-		"--device", "/dev/dri:/dev/dri",
-		"--group-add", strconv.Itoa(videoGID),
+	args := []string{"run", "--rm"}
+
+	if dockerDir == "docker/cuda" {
+		// Modern gLinux / Debian environments often require --privileged 
+		// alongside --gpus all due to strict cgroups device isolation.
+		args = append(args, "--privileged", "--gpus", "all")
+	} else {
+		args = append(args, "--device", "/dev/dri:/dev/dri", "--group-add", strconv.Itoa(videoGID))
+		if renderGID > 0 {
+			args = append(args, "--group-add", strconv.Itoa(renderGID))
+		}
 	}
 
-	if renderGID > 0 {
-		args = append(args, "--group-add", strconv.Itoa(renderGID))
-	}
+
 
 	// Mount output dir and log dir for cropped images
 	cropLogDir := getCropLogDir()
@@ -718,15 +841,20 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 
 // buildDockerRunArgsNoOutput builds docker run args without volume mount (no output file)
 func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, containerArgs []string) []string {
-	args := []string{
-		"run", "--rm",
-		"--device", "/dev/dri:/dev/dri",
-		"--group-add", strconv.Itoa(videoGID),
+	args := []string{"run", "--rm"}
+
+	if dockerDir == "docker/cuda" {
+		// Modern gLinux / Debian environments often require --privileged 
+		// alongside --gpus all due to strict cgroups device isolation.
+		args = append(args, "--privileged", "--gpus", "all")
+	} else {
+		args = append(args, "--device", "/dev/dri:/dev/dri", "--group-add", strconv.Itoa(videoGID))
+		if renderGID > 0 {
+			args = append(args, "--group-add", strconv.Itoa(renderGID))
+		}
 	}
 
-	if renderGID > 0 {
-		args = append(args, "--group-add", strconv.Itoa(renderGID))
-	}
+
 
 	args = append(args, imageName)
 	args = append(args, containerArgs...)

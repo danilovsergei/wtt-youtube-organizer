@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "Building wtt-stream-match-finder-openvino Docker image..."
-docker-compose build
+docker compose build
 
 echo ""
 echo "Build complete!"

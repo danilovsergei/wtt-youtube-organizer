@@ -73,7 +73,7 @@ RUN pip3 install --no-cache-dir \
 RUN pip3 install --no-cache-dir nncf openvino-genai
 
 # Copy the florence_extractor code (including OpenVINO model)
-COPY . /app/florence_extractor/
+COPY florence_extractor /app/florence_extractor/
 
 # Ensure the OpenVINO model is bundled
 # The model should exist at: florence2-tt-finetuned/openvino/
@@ -84,7 +84,7 @@ RUN test -d /app/florence_extractor/florence2-tt-finetuned/openvino || \
 RUN mkdir -p /output
 
 # Copy and set up entrypoint
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY florence_extractor/docker/openvino/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Set working directory to project root
