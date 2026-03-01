@@ -1505,14 +1505,26 @@ def main():
         print("Fetching video info...")
         try:
             video_title, upload_date = get_video_info(args.youtube_video, args.cookies_file)
-            if video_title:
-                print(f"Video Title: {video_title}")
-            else:
-                print("Warning: Could not fetch video title")
-            if upload_date:
-                print(f"Upload Date: {upload_date}")
-            else:
-                print("Warning: Could not fetch upload date")
+            
+            if not video_title or not upload_date:
+                error_msg = "Failed to fetch video title or upload date (yt-dlp may be blocked or video unavailable)"
+                print(f"Error: {error_msg}")
+                if args.output_json_file:
+                    json_data = {
+                        "video_id": video_id,
+                        "video_title": video_title,
+                        "upload_date": upload_date,
+                        "matches": [],
+                        "error": error_msg,
+                    }
+                    import json
+                    with open(args.output_json_file, 'w') as f:
+                        json.dump(json_data, f, indent=2)
+                    print(f"Error JSON written to: {args.output_json_file}")
+                sys.exit(1)
+                
+            print(f"Video Title: {video_title}")
+            print(f"Upload Date: {upload_date}")
         except FileNotFoundError as e:
             print(str(e))
             if args.output_json_file:
