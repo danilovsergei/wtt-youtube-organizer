@@ -1,0 +1,233 @@
+[
+  {
+    "table_name": "match_participants",
+    "column_name": "match_id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "match_participants",
+    "column_name": "player_id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "match_participants",
+    "column_name": "side",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "matches",
+    "column_name": "id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "matches",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "matches",
+    "column_name": "tournament_id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "matches",
+    "column_name": "video_offset_seconds",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "matches",
+    "column_name": "is_doubles",
+    "data_type": "boolean",
+    "is_nullable": "NO",
+    "column_default": "false"
+  },
+  {
+    "table_name": "matches",
+    "column_name": "video_id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "players",
+    "column_name": "id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "players",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "players",
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": "''::character varying"
+  },
+  {
+    "table_name": "tournaments",
+    "column_name": "id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "tournaments",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "tournaments",
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": "''::character varying"
+  },
+  {
+    "table_name": "tournaments",
+    "column_name": "year",
+    "data_type": "smallint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "tournament",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "year",
+    "data_type": "smallint",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "video_offset_seconds",
+    "data_type": "bigint",
+    "is_nullable": "no",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "video_offset_seconds",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "upload_date",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "match_time",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "team_a",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "team_b",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "is_doubles",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "youtube_id",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "v_tournament_schedule",
+    "column_name": "video_title",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "videos",
+    "column_name": "id",
+    "data_type": "bigint",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "videos",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": "now()"
+  },
+  {
+    "table_name": "videos",
+    "column_name": "youtube_id",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "videos",
+    "column_name": "upload_date",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "videos",
+    "column_name": "title",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "table_name": "videos",
+    "column_name": "processing_error",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
