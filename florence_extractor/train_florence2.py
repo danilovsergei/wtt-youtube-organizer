@@ -154,8 +154,27 @@ def train(args):
 
     print("Training complete. Saving model...")
     output_dir = os.path.join(script_dir, "florence2-tt-finetuned")
+
+    # Fix generation warnings for num_beams=1 greedy search
+    if hasattr(model, "generation_config"):
+        model.generation_config.early_stopping = False
+    if hasattr(model.config, "early_stopping"):
+        model.config.early_stopping = False
+
     model.save_pretrained(output_dir)
     processor.save_pretrained(output_dir)
+    
+    # Double check to patch any rogue generation_config.json
+    import json
+    gen_config_path = os.path.join(output_dir, "generation_config.json")
+    if os.path.exists(gen_config_path):
+        with open(gen_config_path, "r") as f:
+            g_conf = json.load(f)
+        if g_conf.get("early_stopping") is True:
+            g_conf["early_stopping"] = False
+            with open(gen_config_path, "w") as f:
+                json.dump(g_conf, f, indent=2)
+
     print(f"Model saved to {output_dir}")
 
 
