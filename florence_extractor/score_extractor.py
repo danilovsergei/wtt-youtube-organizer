@@ -23,7 +23,7 @@ BOTTOM_PERCENT = 0.14  # Fraction of height to crop from the bottom
 LEFT_PERCENT = 0.40    # Fraction of width to crop from the left
 
 # Backend constants
-BACKEND_PYTORCH = "pytorch-cpu"
+BACKEND_PYTORCH = "pytorch"
 BACKEND_OPENVINO = "openvino"
 ALL_BACKENDS = [BACKEND_PYTORCH, BACKEND_OPENVINO]
 

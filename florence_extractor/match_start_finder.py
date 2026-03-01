@@ -183,7 +183,32 @@ def crop_image(image_path: str) -> Optional[Image.Image]:
 
 
 # Backend constants
-BACKEND_PYTORCH = "pytorch-cpu"
+import torch
+
+def get_device(args):
+    if not torch.cuda.is_available():
+        return "cpu"
+
+    num_devices = torch.cuda.device_count()
+
+    if getattr(args, "cuda_device_id", None) is not None:
+        if 0 <= args.cuda_device_id < num_devices:
+            return f"cuda:{args.cuda_device_id}"
+        else:
+            print(f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
+            sys.exit(1)
+
+    if num_devices == 1:
+        return "cuda:0"
+
+    print("Multiple CUDA devices found. Please specify which one to use with --cuda_device_id <number>")
+    for i in range(num_devices):
+        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
+    sys.exit(1)
+
+
+# Backend constants
+BACKEND_PYTORCH = "pytorch"
 BACKEND_OPENVINO = "openvino"
 ALL_BACKENDS = [BACKEND_PYTORCH, BACKEND_OPENVINO]
 
@@ -200,10 +225,10 @@ def get_default_backend() -> str:
 class ScoreExtractor:
     """Handles score extraction using Florence-2 OCR model."""
 
-    def __init__(self, backend: str = None):
+    def __init__(self, backend: str = None, device: str = "cpu"):
         self.model = None
         self.processor = None
-        self.device = "cpu"
+        self.device = device
         self._initialized = False
         self._backend = backend or get_default_backend()
         self._ov_model = None  # For OpenVINO backend
@@ -224,7 +249,7 @@ class ScoreExtractor:
 
     def _initialize_pytorch(self) -> bool:
         """Initialize PyTorch backend (original working code)."""
-        print("Loading Florence-2 model (PyTorch CPU)...")
+        print(f"Loading Florence-2 model (PyTorch on {self.device})...")
         try:
             self.processor = AutoProcessor.from_pretrained(
                 self._model_path, trust_remote_code=True)
@@ -322,11 +347,11 @@ class ScoreExtractor:
 class MatchStartFinder:
     """Main class implementing the multi-phase search strategy."""
 
-    def __init__(self, video_path: str, output_dir: str, backend: str = None,
+    def __init__(self, video_path: str, output_dir: str, backend: str = None, device: str = "cpu",
                  keep_cropped: bool = False, crop_output_dir: str = None):
         self.video_path = video_path
         self.output_dir = output_dir
-        self.extractor = ScoreExtractor(backend=backend)
+        self.extractor = ScoreExtractor(backend=backend, device=device)
         self.temp_dir = tempfile.mkdtemp(prefix="match_finder_")
         self.ocr_calls = 0
         self.found_matches: List[MatchStart] = []
@@ -1180,6 +1205,7 @@ def main():
 
     parser.add_argument('--output', type=str, default='match_starts',
                         help='Output directory (default: match_starts)')
+    parser.add_argument('--cuda_device_id', type=int, default=None, help='The ID of the CUDA device to use for PyTorch (if multiple are available)')
     parser.add_argument('--backend', type=str, default=None,
                         choices=ALL_BACKENDS,
                         help='Inference backend: pytorch-cpu or openvino')
@@ -1276,9 +1302,10 @@ def main():
                     args.crop_output_dir, vid)
 
             # Find matches
+            device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
             finder = MatchStartFinder(
                 video_path, args.output,
-                backend=backend,
+                backend=backend, device=device,
                 keep_cropped=args.keep_cropped,
                 crop_output_dir=crop_dir)
 
@@ -1429,8 +1456,9 @@ def main():
         crop_dir = os.path.join(
             args.crop_output_dir, video_id)
 
+    device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
     finder = MatchStartFinder(
-        video_path, args.output, backend=backend,
+        video_path, args.output, backend=backend, device=device,
         keep_cropped=args.keep_cropped,
         crop_output_dir=crop_dir)
 
