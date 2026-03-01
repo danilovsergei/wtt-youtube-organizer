@@ -1,0 +1,66 @@
+name: Flutter Web GitHub Pages
+
+on:
+  # Triggers the workflow on push events to the main branch
+  push:
+    branches:
+      - main
+    # Only run the workflow if something inside the frontend folder changes
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/flutter-pages.yml'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: flutter pub get
+
+      - name: Build Web App
+        working-directory: ./frontend
+        # --base-href is critical for GitHub Pages so it knows where to route assets!
+        # It MUST match the repository name exactly (with starting and trailing slashes)
+        run: flutter build web --release --base-href /wtt-youtube-organizer/
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the compiled build/web directory
+          path: 'frontend/build/web'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
