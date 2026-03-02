@@ -211,7 +211,7 @@ class ScoreExtractor:
         if not self._initialized:
             raise RuntimeError("Model not initialized")
 
-        prompt = "<OCR>"
+        prompt = "<WTT_SCORE>"
         inputs = self.processor(
             text=prompt, images=pil_image, return_tensors="pt").to(self.device)
 
@@ -328,6 +328,7 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
                 print(f"Image: {filename} - PASSED")
             else:
                 print(f"Image: {filename} - FAILED")
+                print(f"  Raw output: '{generated_text}'")
                 for detail in mismatch_details:
                     print(f"  {detail}")
             print("-" * 20)

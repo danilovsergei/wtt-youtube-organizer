@@ -38,7 +38,7 @@ class TableTennisDataset(Dataset):
             f"row 2: {row['row 2 expected player 2']}, {row['row 2 set score']}, {row['row 2 game score']}"
         )
 
-        prompt = "<OCR>"
+        prompt = "<WTT_SCORE>"
 
         # Florence-2 uses specific formatting
         inputs = self.processor(text=prompt, images=image, return_tensors="pt")
@@ -106,6 +106,9 @@ def get_device(args):
 
 def train(args):
     device = get_device(args)
+    # Start training from our current fine-tuned state so we don't lose the MAKSYM knowledge!
+    # Wait, the path to the model is:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     model_id = "microsoft/Florence-2-base"
 
     print(f"Using device: {device}")
@@ -114,7 +117,6 @@ def train(args):
     model = AutoModelForCausalLM.from_pretrained(
         model_id, trust_remote_code=True, attn_implementation="eager").to(device)
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(script_dir, "test_data_sample.csv")
     dataset = TableTennisDataset(csv_path, processor, script_dir)
     # Use a subset of 5 images for quick demo
