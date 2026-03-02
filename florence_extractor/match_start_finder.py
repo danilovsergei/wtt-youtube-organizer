@@ -1251,6 +1251,7 @@ def download_youtube_video(youtube_url: str, output_dir: str, cookies_file: Opti
 
 
 def main():
+    import json
     parser = argparse.ArgumentParser(
         description='Find match start timestamps in table tennis videos')
 
@@ -1517,7 +1518,6 @@ def main():
                         "matches": [],
                         "error": error_msg,
                     }
-                    import json
                     with open(args.output_json_file, 'w') as f:
                         json.dump(json_data, f, indent=2)
                     print(f"Error JSON written to: {args.output_json_file}")
