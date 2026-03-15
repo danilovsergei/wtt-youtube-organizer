@@ -43,7 +43,7 @@ for arg in "${SCRIPT_ARGS[@]}"; do
 done
 
 if [ "$HAS_BACKEND" = false ]; then
-    SCRIPT_ARGS+=("--backend" "pytorch")
+    SCRIPT_ARGS+=("--backend" "pytorch-cpu")
 fi
 
 # Execute the match_start_finder.py with provided arguments

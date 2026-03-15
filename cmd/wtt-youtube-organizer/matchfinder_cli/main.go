@@ -276,15 +276,40 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.BoolVar(&getCookies, "get_cookies", false, "Run ytdlp-rookie to extract browser cookies and pass them to yt-dlp")
 }
 
-func runMatchFinder(extraArgs []string) error {
-	// We need to inject these directly into the global execution path later, but for now we put them in extraArgs
-	if cudaDeviceID >= 0 {
-		extraArgs = append(extraArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
-		if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
-			extraArgs = append(extraArgs, "--cuda_device_name", devName)
+// buildContainerArgs constructs the additional arguments to be passed to the Docker container
+// based on CLI flags, without mutating the original positional arguments.
+func buildContainerArgs(deviceID int) []string {
+	var containerArgs []string
+	if deviceID >= 0 {
+		containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(deviceID))
+		if devName := getCudaDeviceName(deviceID); devName != "" {
+			containerArgs = append(containerArgs, "--cuda_device_name", devName)
 		}
 	}
-	initDockerVars(extraArgs)
+	return containerArgs
+}
+
+func getProvidedVideoID(extraArgs []string) string {
+	if len(extraArgs) > 0 {
+		return extraArgs[0]
+	}
+	return ""
+}
+
+func runMatchFinder(extraArgs []string) error {
+	// Keep the original extraArgs intact for positional argument parsing (like Video ID for add_new_streams)
+	// We will build a specific containerArgs slice when we actually execute the docker container.
+	var containerArgs []string
+	if cudaDeviceID >= 0 {
+		containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
+		if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
+			containerArgs = append(containerArgs, "--cuda_device_name", devName)
+		}
+	}
+	
+	// Temporarily inject into extraArgs strictly for initDockerVars to check --backend openvino
+	tempInitArgs := append(extraArgs, containerArgs...)
+	initDockerVars(tempInitArgs)
 	// Setup dual logging (console + file)
 	if err := setupLogging(); err != nil {
 		fmt.Printf("Warning: could not setup logging: %v\n", err)
@@ -494,7 +519,7 @@ func runMatchFinder(extraArgs []string) error {
 		return fmt.Errorf("invalid output path: %w", err)
 	}
 
-	return runDockerContainer(absOutputJSON, extraArgs)
+	return runDockerContainer(absOutputJSON, append(extraArgs, containerArgs...))
 }
 
 // dbProcessedChecker implements ProcessedChecker using the real database.
@@ -913,7 +938,9 @@ func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, conta
 		}
 	}
 
-
+	if cookieFile != "" {
+		args = append(args, "-v", cookieFile+":/tmp/cookies.txt")
+	}
 
 	args = append(args, imageName)
 	args = append(args, containerArgs...)
