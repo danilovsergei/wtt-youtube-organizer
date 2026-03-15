@@ -473,11 +473,18 @@ func runMatchFinder(extraArgs []string) error {
 		// Create docker-based stream fetcher
 		fetcher := &dockerStreamFetcher{extraArgs: containerArgs}
 
+		// Load settings for filter
+		settings, _ := config.LoadSettings()
+		filterTitle := ""
+		if settings != nil {
+			filterTitle = settings.AddNewStreamsFilter
+		}
+
 		// Always filter out already-processed videos
 		// (docker may return duplicates from the latest upload_date that are already in DB)
 		checker := &dbProcessedChecker{}
 		var count int
-		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, checker)
+		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker)
 		if err != nil {
 			return err
 		}
@@ -600,13 +607,18 @@ func defaultQueueDeps() queueProcessorDeps {
 // processQueueVideos processes videos from the queue one by one (oldest first).
 // After each video is successfully processed and imported, it's removed from the queue.
 func processQueueVideos(queuePath string, containerArgs []string) error {
-	return processQueueVideosWithDeps(queuePath, defaultQueueDeps(), containerArgs)
+	settings, _ := config.LoadSettings()
+	processFilter := ""
+	if settings != nil {
+		processFilter = settings.ProcessFilter
+	}
+	return processQueueVideosWithDeps(queuePath, defaultQueueDeps(), containerArgs, processFilter)
 }
 
 // processQueueVideosWithDeps is the testable implementation of processQueueVideos.
 // Processes videos oldest-first: successful videos are removed from queue,
 // failed videos (docker error) are kept in queue for retry and processing continues.
-func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string) error {
+func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string, processFilter string) error {
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		return fmt.Errorf("failed to load queue: %w", err)
@@ -621,9 +633,16 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 	failedCount := 0
 	for i := len(queue) - 1; i >= 0; i-- {
 		entry := queue[i]
+
+		// Apply process_filter
+		if processFilter != "" && !strings.Contains(entry.VideoTitle, processFilter) {
+			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))
+			logPrintf("Skipping video %s (%s) - Title does not contain process_filter: '%s'\n", entry.VideoTitle, entry.VideoID, processFilter)
+			continue
+		}
+
 		logPrintf("\n=== Processing queue [%d remaining] ===\n", len(queue))
 		logPrintf("Video: %s (%s)\n", entry.VideoTitle, entry.VideoID)
-
 		// Create temp directory for this video's output
 		tmpDir, err := os.MkdirTemp("", "matchfinder-")
 		if err != nil {
@@ -676,8 +695,12 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		logPrintf("Remaining in queue: %d\n", len(queue))
 	}
 
-	if failedCount > 0 {
-		logPrintf("\n=== %d video(s) failed and remain in queue for retry ===\n", failedCount)
+	if len(queue) > 0 {
+		if failedCount > 0 {
+			logPrintf("\n=== %d video(s) failed and remain in queue for retry ===\n", failedCount)
+		} else {
+			logPrintf("\n=== %d video(s) remain in queue (skipped by filter) ===\n", len(queue))
+		}
 	} else {
 		logPrintln("\n=== Queue is empty. All videos processed! ===")
 	}

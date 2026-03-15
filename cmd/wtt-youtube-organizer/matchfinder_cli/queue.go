@@ -2,6 +2,7 @@ package matchfinder_cli
 
 import (
 	"encoding/json"
+		"strings"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,9 +155,10 @@ func FilterUnprocessed(entries []QueueEntry, checker ProcessedChecker) ([]QueueE
 // AddNewStreams fetches new streams and adds them to the queue.
 // If the queue already exists and is non-empty, uses the top video ID as the cutoff.
 // If the queue is empty/new, uses the provided afterVideoID.
+// If filterTitle is not empty, only includes videos whose title contains filterTitle.
 // If checker is non-nil, filters out already-processed videos before adding.
 // Returns the number of new entries added.
-func AddNewStreams(queuePath string, afterVideoID string, fetcher StreamFetcher, checker ...ProcessedChecker) (int, error) {
+func AddNewStreams(queuePath string, afterVideoID string, fetcher StreamFetcher, filterTitle string, checker ...ProcessedChecker) (int, error) {
 	// Load existing queue
 	existingQueue, err := LoadQueue(queuePath)
 	if err != nil {
@@ -182,6 +184,22 @@ func AddNewStreams(queuePath string, afterVideoID string, fetcher StreamFetcher,
 
 	if len(newEntries) == 0 {
 		return 0, nil
+	}
+
+	// Apply title filter if provided
+	if filterTitle != "" {
+		var filteredEntries []QueueEntry
+		for _, entry := range newEntries {
+			if strings.Contains(entry.VideoTitle, filterTitle) {
+				filteredEntries = append(filteredEntries, entry)
+			} else {
+				logPrintf("Filtering out video %s (does not match add_new_streams_filter '%s')\n", entry.VideoID, filterTitle)
+			}
+		}
+		newEntries = filteredEntries
+		if len(newEntries) == 0 {
+			return 0, nil
+		}
 	}
 
 	// Filter out already-processed videos if checker is provided

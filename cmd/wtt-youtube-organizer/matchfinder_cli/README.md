@@ -57,3 +57,22 @@ The CLI automatically detects Intel GPU groups (`video`, `render`) and configure
 - Appropriate group permissions
 
 This enables OpenVINO GPU acceleration for the Florence2 OCR model.
+
+## Filtering & Settings
+
+You can automatically filter out unwanted videos (e.g. Youth Contenders or Feeder Series) by placing a `settings.json` file in your config directory: `~/.config/wtt-youtube-organizer/settings.json`.
+
+```json
+{
+  "add_new_streams_filter": "WTT Champions",
+  "process_filter": "WTT Champions Chongqing 2026"
+}
+```
+
+### `add_new_streams_filter`
+When running `--add_new_streams`, the CLI queries the WTT YouTube channel for new uploads. It will **only** add videos to your queue if their title contains this exact string. Any other videos are instantly dropped.
+
+### `process_filter`
+When running `--process_new_streams`, the CLI loops through your existing `latest_streams.json` queue. It will **only** launch the ML container for videos whose title contains this exact string.
+- If a video matches (e.g. *Day 1 | WTT Champions Chongqing 2026*), it is processed and added to the database.
+- If a video does **not** match (e.g. *Day 4 | WTT Champions Macao 2026*), it is safely skipped and **left in the queue** for the future.

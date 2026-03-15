@@ -113,7 +113,7 @@ func TestIntegration_ProcessQueue(t *testing.T) {
 		importJSON: mockImport,
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{})
+	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 		importJSON: mockImport,
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{})
+	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}

@@ -151,7 +151,7 @@ func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
 		},
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{})
+	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}

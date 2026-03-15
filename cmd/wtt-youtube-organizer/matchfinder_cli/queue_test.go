@@ -2,6 +2,7 @@ package matchfinder_cli
 
 import (
 	"fmt"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,7 +80,7 @@ func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher)
+	count, err := AddNewStreams(queuePath,  "DB_LAST",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestAddNewStreams_WithVideoID_CreatesNamedQueue(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath, "xyz789", fetcher)
+	count, err := AddNewStreams(queuePath,  "xyz789",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestAddNewStreams_EmptyQueue_UsesAfterVideoID(t *testing.T) {
 		},
 	}
 
-	_, err := AddNewStreams(queuePath, "DB_VIDEO_ID", fetcher)
+	_, err := AddNewStreams(queuePath,  "DB_VIDEO_ID",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -171,7 +172,7 @@ func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 		},
 	}
 
-	_, err := AddNewStreams(queuePath, "IGNORED_DB_ID", fetcher)
+	_, err := AddNewStreams(queuePath,  "IGNORED_DB_ID",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath, "", fetcher)
+	count, err := AddNewStreams(queuePath,  "",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -474,7 +475,7 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 		processedIDs: map[string]bool{"B": true},
 	}
 
-	count, err := AddNewStreams(queuePath, "xyz", fetcher, checker)
+	count, err := AddNewStreams(queuePath,   "xyz",   fetcher, "", checker)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -506,7 +507,7 @@ func TestAddNewStreams_WithChecker_AllProcessed_NothingAdded(t *testing.T) {
 		processedIDs: map[string]bool{"A": true, "B": true},
 	}
 
-	count, err := AddNewStreams(queuePath, "xyz", fetcher, checker)
+	count, err := AddNewStreams(queuePath,   "xyz",   fetcher, "", checker)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -530,7 +531,7 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher)
+	count, err := AddNewStreams(queuePath,  "DB_LAST",  fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -553,7 +554,7 @@ func TestAddNewStreams_NoNewStreams(t *testing.T) {
 		returnEntries: []QueueEntry{},
 	}
 
-	count, err := AddNewStreams(queuePath, "SOME_ID", fetcher)
+	count, err := AddNewStreams(queuePath,  "SOME_ID",  fetcher, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -597,9 +598,9 @@ func TestProcessQueue_SkipsDockerError_ContinuesProcessing(t *testing.T) {
 
 	deps := queueProcessorDeps{
 		runDocker: func(outputFile string, containerArgs []string) error {
-			for i, arg := range containerArgs {
-				if arg == "--youtube_video" && i+1 < len(containerArgs) {
-					url := containerArgs[i+1]
+			for _, arg := range containerArgs {
+				if strings.HasPrefix(arg, "--youtube_video=") {
+					url := strings.TrimPrefix(arg, "--youtube_video=")
 					vid := url[len("https://www.youtube.com/watch?v="):]
 					dockerCalls = append(dockerCalls, vid)
 
@@ -629,7 +630,7 @@ func TestProcessQueue_SkipsDockerError_ContinuesProcessing(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped, processing continues)
-	err := processQueueVideosWithDeps(queuePath, deps, nil)
+	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -682,7 +683,7 @@ func TestProcessQueue_DockerFailsForAll_AllRemainInQueue(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped)
-	err := processQueueVideosWithDeps(queuePath, deps, nil)
+	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -709,9 +710,9 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 
 	deps := queueProcessorDeps{
 		runDocker: func(outputFile string, containerArgs []string) error {
-			for i, arg := range containerArgs {
-				if arg == "--youtube_video" && i+1 < len(containerArgs) {
-					url := containerArgs[i+1]
+			for _, arg := range containerArgs {
+				if strings.HasPrefix(arg, "--youtube_video=") {
+					url := strings.TrimPrefix(arg, "--youtube_video=")
 					vid := url[len("https://www.youtube.com/watch?v="):]
 					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
@@ -729,7 +730,7 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath, deps, nil)
+	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
 
 	if err == nil {
 		t.Fatal("expected error from processQueueVideos, got nil")
@@ -759,9 +760,9 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 
 	deps := queueProcessorDeps{
 		runDocker: func(outputFile string, containerArgs []string) error {
-			for i, arg := range containerArgs {
-				if arg == "--youtube_video" && i+1 < len(containerArgs) {
-					url := containerArgs[i+1]
+			for _, arg := range containerArgs {
+				if strings.HasPrefix(arg, "--youtube_video=") {
+					url := strings.TrimPrefix(arg, "--youtube_video=")
 					vid := url[len("https://www.youtube.com/watch?v="):]
 					jsonData := fmt.Sprintf(`{"video_id":"%s","video_title":"Video %s","upload_date":"1771113600","matches":[{"timestamp":100,"player1":"P1","player2":"P2"}]}`, vid, vid)
 					os.WriteFile(outputFile, []byte(jsonData), 0644)
@@ -774,7 +775,7 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath, deps, nil)
+	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -782,5 +783,94 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 0 {
 		t.Fatalf("expected empty queue, got %d entries", len(remaining))
+	}
+}
+
+// --- Tests for Filtering AddNewStreams ---
+func TestAddNewStreams_WithFilter_FiltersOutNonMatching(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	// Set up a mock fetcher returning multiple streams
+	fetcher := &mockStreamFetcher{
+		returnEntries: []QueueEntry{
+			{VideoID: "1", VideoTitle: "WTT Champions Chongqing 2026 - Match 1"},
+			{VideoID: "2", VideoTitle: "WTT Star Contender 2026 - Match 2"},
+			{VideoID: "3", VideoTitle: "WTT Champions Chongqing 2026 - Match 3"},
+		},
+	}
+
+	filterTitle := "WTT Champions Chongqing 2026"
+	
+	// Execute AddNewStreams with the filter
+	count, err := AddNewStreams(queuePath, "dummy_id", fetcher, filterTitle, nil)
+	if err != nil {
+		t.Fatalf("AddNewStreams failed: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Expected 2 videos to be added, got %d", count)
+	}
+
+	// Verify only the matching videos were saved
+	queue, _ := LoadQueue(queuePath)
+	if len(queue) != 2 {
+		t.Fatalf("Expected 2 videos in queue, got %d", len(queue))
+	}
+	
+	if queue[0].VideoID != "1" || queue[1].VideoID != "3" {
+		t.Errorf("Incorrect videos in queue: %v", queue)
+	}
+}
+
+// --- Tests for Filtering ProcessQueueVideos ---
+func TestProcessQueue_WithFilter_SkipsNonMatching(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	entries := []QueueEntry{
+		{VideoID: "1", VideoTitle: "WTT Champions Chongqing 2026 - Match 1"},
+		{VideoID: "2", VideoTitle: "WTT Star Contender 2026 - Match 2"},
+		{VideoID: "3", VideoTitle: "WTT Champions Chongqing 2026 - Match 3"},
+	}
+	SaveQueue(queuePath, entries)
+
+	var processedIDs []string
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error { return nil },
+		importJSON: func(jsonFilePath string) error {
+			// Extract video ID from mock json file path to verify which ones ran
+			// (processQueueVideos creates matches-<videoID>-<timestamp>.json)
+			for _, id := range []string{"1", "2", "3"} {
+				if strings.Contains(jsonFilePath, "matches-"+id+"-") {
+					processedIDs = append(processedIDs, id)
+				}
+			}
+			return nil
+		},
+	}
+
+	processFilter := "WTT Champions Chongqing 2026"
+	err := processQueueVideosWithDeps(queuePath, deps, []string{}, processFilter)
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Verify that ONLY video 1 and 3 were processed
+	if len(processedIDs) != 2 {
+		t.Fatalf("Expected 2 videos to be processed, got %d: %v", len(processedIDs), processedIDs)
+	}
+	// Oldest first! So it processes the end of the array first.
+	if processedIDs[0] != "3" || processedIDs[1] != "1" { 
+		t.Errorf("Expected videos 3 and 1 to be processed, got %v", processedIDs)
+	}
+
+	// Verify that video 2 REMAINS in the queue because it was skipped
+	queue, _ := LoadQueue(queuePath)
+	if len(queue) != 1 {
+		t.Fatalf("Expected 1 video left in queue, got %d", len(queue))
+	}
+	if queue[0].VideoID != "2" {
+		t.Errorf("Expected video 2 to remain in queue, got %s", queue[0].VideoID)
 	}
 }
