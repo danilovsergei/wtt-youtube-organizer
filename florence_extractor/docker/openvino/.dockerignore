@@ -1,0 +1,12 @@
+# Exclude git and environments
+.git
+.venv
+venv
+__pycache__
+*.pyc
+
+# Exclude temporary outputs
+match_starts/
+
+# Exclude test datasets
+florence_extractor/testing/
