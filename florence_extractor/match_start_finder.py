@@ -20,17 +20,17 @@ Usage:
     python match_start_finder.py --local_video "/path/to/video.mp4" --backend openvino
 """
 
-import torch
 from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
-from transformers import AutoProcessor, AutoModelForCausalLM
-from PIL import Image
-import cv2
 import argparse
 import json
 import os
 import re
 import subprocess
 import sys
+from wtt_video_processor import WttVideoProcessor
+from prod_video_processor import ProdWttVideoProcessor
+from test_video_processor import TestWttVideoProcessor
+from prod_video_processor import ALL_BACKENDS, BACKEND_PYTORCH, BACKEND_OPENVINO, get_default_backend, get_device
 import tempfile
 import shutil
 import time
@@ -128,268 +128,15 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def get_video_duration(video_path: str) -> float:
-    """Get video duration in seconds using ffprobe."""
-    cmd = [
-        'ffprobe', '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1',
-        video_path
-    ]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, check=True)
-        return float(result.stdout.strip())
-    except (subprocess.CalledProcessError, ValueError) as e:
-        print(f"Error getting video duration: {e}")
-        return 0
-
-
-def extract_frame(video_path: str, timestamp_seconds: float, output_path: str) -> bool:
-    """Extract a single frame from video at given timestamp."""
-    timestamp_str = format_timestamp(timestamp_seconds)
-    cmd = [
-        'ffmpeg', '-y', '-ss', timestamp_str,
-        '-i', video_path,
-        '-frames:v', '1',
-        '-q:v', '2',
-        output_path
-    ]
-    try:
-        subprocess.run(cmd, capture_output=True, check=True)
-        return os.path.exists(output_path)
-    except subprocess.CalledProcessError:
-        return False
-
-
-def crop_image(image_path: str) -> Optional[Image.Image]:
-    """Crop the score region from an image (bottom-left corner)."""
-    try:
-        img = cv2.imread(image_path)
-        if img is None:
-            return None
-
-        h, w = img.shape[:2]
-        y_start = int(h * (1 - BOTTOM_PERCENT))
-        x_end = int(w * LEFT_PERCENT)
-
-        cropped = img[y_start:h, 0:x_end]
-        # Convert BGR to RGB for PIL
-        cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(cropped_rgb)
-    except Exception as e:
-        print(f"Error cropping image: {e}")
-        return None
-
-
-# Backend constants
-
-
-def get_device(args):
-    if not torch.cuda.is_available():
-        return "cpu"
-
-    num_devices = torch.cuda.device_count()
-
-    # If the Go script passed the exact hardware name, use it to find the correct PyTorch internal ID!
-    if getattr(args, "cuda_device_name", None) is not None:
-        target_name = args.cuda_device_name.strip()
-        for i in range(num_devices):
-            if torch.cuda.get_device_name(i).strip() == target_name:
-                print(
-                    f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
-                return f"cuda:{i}"
-        print(
-            f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
-
-    if getattr(args, "cuda_device_id", None) is not None:
-        if 0 <= args.cuda_device_id < num_devices:
-            return f"cuda:{args.cuda_device_id}"
-        else:
-            print(
-                f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
-            sys.exit(1)
-
-    if num_devices == 1:
-        return "cuda:0"
-
-    print("Multiple CUDA devices found. Please specify which one to use with --cuda_device_id <number>")
-    for i in range(num_devices):
-        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
-    sys.exit(1)
-
-
-# Backend constants
-BACKEND_PYTORCH = "pytorch"
-BACKEND_OPENVINO = "openvino"
-ALL_BACKENDS = [BACKEND_PYTORCH, BACKEND_OPENVINO]
-
-
-def get_default_backend() -> str:
-    """Get default backend - use openvino if available, else pytorch."""
-    try:
-        import openvino  # noqa: F401
-        return BACKEND_OPENVINO
-    except ImportError:
-        return BACKEND_PYTORCH
-
-
-class ScoreExtractor:
-    """Handles score extraction using Florence-2 OCR model."""
-
-    def __init__(self, backend: str = None, device: str = "cpu"):
-        self.model = None
-        self.processor = None
-        self.device = device
-        self._initialized = False
-        self._backend = backend or get_default_backend()
-        self._ov_model = None  # For OpenVINO backend
-
-    def initialize(self) -> bool:
-        """Load the Florence-2 model using selected backend."""
-        if self._initialized:
-            return True
-
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        self._model_path = os.path.join(
-            script_dir, "florence2-tt-finetuned")
-
-        if self._backend == BACKEND_OPENVINO:
-            return self._initialize_openvino()
-        else:
-            return self._initialize_pytorch()
-
-    def _initialize_pytorch(self) -> bool:
-        """Initialize PyTorch backend (original working code)."""
-        import torch
-        dev_info = ""
-        if str(self.device).startswith("cuda"):
-            try:
-                idx = getattr(self.device, "index", None)
-                if idx is None and ":" in str(self.device):
-                    idx = int(str(self.device).split(":")[1])
-                elif idx is None:
-                    idx = 0  # Default to 0 if just 'cuda'
-                dev_info = f" - {torch.cuda.get_device_name(idx)}"
-            except Exception:
-                pass
-        print(
-            f"Loading Florence-2 model (PyTorch on {self.device}{dev_info})...")
-        try:
-            self.processor = AutoProcessor.from_pretrained(
-                self._model_path, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self._model_path, trust_remote_code=True,
-                attn_implementation="eager").to(self.device)
-            self._initialized = True
-            print("Model loaded successfully.")
-            return True
-        except Exception as e:
-            print(f"Error loading Florence-2 model: {e}")
-            return False
-
-    def _initialize_openvino(self) -> bool:
-        """Initialize OpenVINO backend for GPU acceleration."""
-        print("Loading Florence-2 model (OpenVINO GPU)...")
-        try:
-            from backends.ov_florence2_helper import (
-                OVFlorence2Model
-            )
-            from pathlib import Path
-
-            ov_model_dir = Path(self._model_path) / "openvino"
-
-            # Load processor (same as PyTorch)
-            self.processor = AutoProcessor.from_pretrained(
-                ov_model_dir, trust_remote_code=True)
-
-            # Load OpenVINO model (raises FileNotFoundError if not converted)
-            self._ov_model = OVFlorence2Model(
-                ov_model_dir, device="GPU", ov_config={})
-
-            self._initialized = True
-            print("Model loaded successfully (OpenVINO GPU).")
-            return True
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            return False
-        except Exception as e:
-            print(f"Error loading OpenVINO model: {e}")
-            print("Falling back to PyTorch...")
-            self._backend = BACKEND_PYTORCH
-            return self._initialize_pytorch()
-
-    def extract_score(self, pil_image: Image.Image) -> ScoreResult:
-        """Extract score from a cropped PIL image."""
-        if not self._initialized:
-            return ScoreResult(success=False, error="Model not initialized")
-
-        try:
-            if self._backend == BACKEND_OPENVINO:
-                generated_text = self._extract_openvino(pil_image)
-            else:
-                generated_text = self._extract_pytorch(pil_image)
-
-            return parse_score(generated_text)
-        except Exception as e:
-            return ScoreResult(success=False, error=str(e))
-
-    def _extract_pytorch(self, pil_image: Image.Image) -> str:
-        """Extract text using PyTorch backend (original working code)."""
-        prompt = "<OCR>"
-        inputs = self.processor(
-            text=prompt, images=pil_image,
-            return_tensors="pt").to(self.device)
-
-        generated_ids = self.model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            num_beams=1,
-            do_sample=False,
-            use_cache=False
-        )
-        return self.processor.batch_decode(
-            generated_ids, skip_special_tokens=True)[0]
-
-    def _extract_openvino(self, pil_image: Image.Image) -> str:
-        """Extract text using OpenVINO backend (GPU accelerated)."""
-        prompt = "<OCR>"
-        inputs = self.processor(
-            text=prompt, images=pil_image, return_tensors="pt")
-
-        generated_ids = self._ov_model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            num_beams=1,
-            do_sample=False
-        )
-        return self.processor.batch_decode(
-            generated_ids, skip_special_tokens=True)[0]
-
-
 class MatchStartFinder:
     """Main class implementing the multi-phase search strategy."""
 
-    def __init__(self, video_path: str, output_dir: str, backend: str = None, device: str = "cpu",
-                 keep_cropped: bool = False, crop_output_dir: str = None):
+    def __init__(self, video_path: str, output_dir: str, processor: WttVideoProcessor):
         self.video_path = video_path
         self.output_dir = output_dir
-        self.extractor = ScoreExtractor(backend=backend, device=device)
+        self.processor = processor
         self.temp_dir = tempfile.mkdtemp(prefix="match_finder_")
-        self.ocr_calls = 0
         self.found_matches: List[MatchStart] = []
-        self.keep_cropped = keep_cropped
-        self.crop_output_dir = crop_output_dir
-        self.cropped_dir = None
-        if crop_output_dir:
-            # Use explicit crop output directory (e.g., log/<video_id>/)
-            self.cropped_dir = crop_output_dir
-            os.makedirs(self.cropped_dir, exist_ok=True)
-        elif keep_cropped:
-            self.cropped_dir = os.path.join(output_dir, "cropped_frames")
-            os.makedirs(self.cropped_dir, exist_ok=True)
 
     def cleanup(self):
         """Remove temporary directory."""
@@ -411,32 +158,11 @@ class MatchStartFinder:
         """
         actual_timestamp = timestamp + (retry * RETRY_OFFSET_SECONDS)
         image_path = self._get_temp_image_path(actual_timestamp)
-        cropped_path = ""
 
-        if not extract_frame(
-                self.video_path, actual_timestamp, image_path):
-            return (ScoreResult(
-                success=False,
-                error="Frame extraction failed"), "", "")
+        if not self.processor.extract_image(self.video_path, actual_timestamp, image_path):
+            return (ScoreResult(success=False, error="Frame extraction failed"), "", "")
 
-        cropped = crop_image(image_path)
-        if cropped is None:
-            return (ScoreResult(
-                success=False,
-                error="Image cropping failed"), "", "")
-
-        # Save cropped image when cropped_dir is configured
-        if self.cropped_dir:
-            unique_id = str(uuid.uuid4())
-            cropped_filename = (
-                f"cropped_{actual_timestamp:.1f}"
-                f"-{unique_id}.jpg")
-            cropped_path = os.path.join(
-                self.cropped_dir, cropped_filename)
-            cropped.save(cropped_path)
-
-        self.ocr_calls += 1
-        result = self.extractor.extract_score(cropped)
+        result, cropped_path = self.processor.get_scoreboard(image_path, actual_timestamp)
         return result, image_path, cropped_path
 
     def _analyze_with_retry(
@@ -602,11 +328,11 @@ class MatchStartFinder:
         """
         total_start_time = time.time()
 
-        if not self.extractor.initialize():
+        if not self.processor.initialize_scoreboard_model():
             print("Failed to initialize score extractor")
             return []
 
-        duration = get_video_duration(self.video_path)
+        duration = self.processor.get_video_duration(self.video_path)
         if duration <= 0:
             print("Could not determine video duration")
             return []
@@ -637,12 +363,10 @@ class MatchStartFinder:
             if result.success:
                 img_info = ""
                 if cropped_path:
-                    # Show <video_id>/filename
-                    parent = os.path.basename(
-                        os.path.dirname(cropped_path))
-                    fname = os.path.basename(
-                        cropped_path)
-                    img_info = f", {parent}/{fname}"
+                    # Always print the full absolute path so the user can easily inspect it manually
+                    import os
+                    full_path = os.path.abspath(cropped_path)
+                    img_info = f", {full_path}"
                 print(
                     f"Score: {result.player1} "
                     f"{result.set1}:{result.set2} "
@@ -827,7 +551,6 @@ class MatchStartFinder:
 
         total_duration = time.time() - total_start_time
         print("\n=== Summary ===")
-        print(f"Total OCR calls: {self.ocr_calls}")
         print(f"Phase 1 (Coarse Scan): {phase1_duration:.1f} seconds")
         print(f"Phase 2 (Binary Search): {phase2_duration:.1f} seconds")
         print(f"Total time: {total_duration:.1f} seconds")
@@ -892,362 +615,8 @@ def extract_video_id(youtube_url: str) -> str:
     elif '/live/' in youtube_url:
         video_id = youtube_url.split('/live/')[-1].split('?')[0]
     else:
-        # Fallback: try to get last path segment
         video_id = youtube_url.rstrip('/').split('/')[-1].split('?')[0]
-
     return video_id
-
-
-def validate_video_exists(video_id: str) -> bool:
-    """
-    Check if a YouTube video exists by fetching its info.
-
-    Args:
-        video_id: YouTube video ID to validate
-
-    Returns:
-        True if the video exists, False otherwise
-    """
-    try:
-        import yt_dlp
-    except ImportError:
-        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return False
-
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
-        'remote_components': ['ejs:github'],
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return info is not None
-    except Exception:
-        return False
-
-
-def get_videos_after(after_video_id: str,
-                     batch_size: int = 200,
-                     max_batches: int = 10) -> List[dict]:
-    """
-    Get all completed streams newer than the specified video_id.
-    Fetches playlist in batches, loading older videos if the
-    cutoff video_id is not found in the current batch.
-
-    Args:
-        after_video_id: Video ID to use as cutoff (exclusive)
-        batch_size: Number of videos per batch (default 100)
-        max_batches: Maximum number of batches to fetch
-                     (default 5 = up to 500 videos)
-
-    Returns:
-        List of video info dicts for videos newer than
-        after_video_id
-    """
-    try:
-        import yt_dlp
-        from datetime import datetime as dt
-    except ImportError:
-        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return []
-
-    # Validate video exists first
-    print(f"Validating video ID: {after_video_id}...")
-    if not validate_video_exists(after_video_id):
-        print(f"Error: Video '{after_video_id}' does not exist "
-              f"or is not accessible.")
-        return []
-
-    playlist_url = "https://www.youtube.com/@WTTGlobal/streams"
-
-    for batch_num in range(1, max_batches + 1):
-        total_videos = batch_size * batch_num
-        print(f"Fetching playlist (up to {total_videos} videos, "
-              f"batch {batch_num}/{max_batches})...")
-
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': 'in_playlist',
-            'playlistend': total_videos,
-            'extractor_args': {
-                'youtubetab': {'approximate_date': ['']}
-            },
-            'remote_components': ['ejs:github'],
-        }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(
-                    playlist_url, download=False)
-
-                if not info or 'entries' not in info:
-                    print("Error: Could not fetch playlist "
-                          "entries")
-                    return []
-
-                entries = list(info['entries'])
-                if not entries:
-                    return []
-
-                # Filter completed live streams and collect
-                # videos until we hit the after_video_id
-                newer_videos = []
-                found_cutoff = False
-
-                for entry in entries:
-                    if not entry:
-                        continue
-
-                    video_id = entry.get('id')
-
-                    # Stop when we reach the cutoff video
-                    if video_id == after_video_id:
-                        found_cutoff = True
-                        break
-
-                    # Only include completed streams
-                    if entry.get('live_status') == 'was_live':
-                        # Prefer timestamp as Unix UTC string
-                        ts = entry.get('timestamp')
-                        if ts is not None:
-                            entry['upload_date'] = str(
-                                int(ts))
-                        newer_videos.append(entry)
-
-                if found_cutoff:
-                    return newer_videos
-
-                # Video not found in this batch
-                if len(entries) < total_videos:
-                    # Reached end of playlist, video not found
-                    print(f"Video '{after_video_id}' not found "
-                          f"in playlist ({len(entries)} videos "
-                          f"checked)")
-                    return []
-
-                # Try next batch
-                print(f"Video not found in first "
-                      f"{total_videos} entries, "
-                      f"fetching more...")
-
-        except Exception as e:
-            print(f"Error fetching streams: {e}")
-            return []
-
-    print(f"Video '{after_video_id}' not found after "
-          f"checking {batch_size * max_batches} videos")
-    return []
-
-
-def list_recent_streams(num_videos: int) -> None:
-    """
-    Fetch and display recent WTT live streams from YouTube.
-
-    Args:
-        num_videos: Number of videos to fetch from the playlist
-    """
-    try:
-        import yt_dlp
-        from datetime import datetime as dt
-    except ImportError:
-        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return
-
-    playlist_url = "https://www.youtube.com/@WTTGlobal/streams"
-
-    # Use flat extraction with approximate_date extractor arg
-    # The arg enables timestamp extraction in YouTubeTabIE
-    # Format must match CLI: {'extractor': {'arg': ['value']}}
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': 'in_playlist',
-        'playlistend': num_videos,
-        'extractor_args': {'youtubetab': {'approximate_date': ['']}},
-        'remote_components': ['ejs:github'],
-    }
-
-    print(f"Fetching {num_videos} recent streams from WTT Global...")
-    print()
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(playlist_url, download=False)
-
-            if not info or 'entries' not in info:
-                print("Error: Could not fetch playlist entries")
-                return
-
-            entries = list(info['entries'])
-
-            if not entries:
-                print("No videos found.")
-                return
-
-            # Filter only completed live streams (was_live)
-            was_live_videos = [e for e in entries if e and
-                               e.get('live_status') == 'was_live']
-
-            if not was_live_videos:
-                print("No completed live streams found.")
-                return
-
-            # Print header
-            print(f"{'UPLOAD_DATE':<12} {'URL':<45} TITLE")
-            print("-" * 120)
-
-            for entry in was_live_videos:
-                video_url = entry.get('url', entry.get('webpage_url', 'N/A'))
-                title = entry.get('title', 'N/A')
-
-                # Get upload_date - try upload_date first, then convert from
-                # timestamp (which is set by approximate_date extractor arg)
-                upload_date = entry.get('upload_date')
-                if not upload_date:
-                    timestamp = entry.get('timestamp')
-                    if timestamp:
-                        try:
-                            upload_date = dt.fromtimestamp(
-                                timestamp).strftime('%Y%m%d')
-                        except (ValueError, OSError):
-                            pass
-
-                if not upload_date:
-                    upload_date = 'N/A'
-
-                # Format date from YYYYMMDD to YYYY-MM-DD
-                if upload_date and upload_date != 'N/A':
-                    if len(upload_date) == 8:
-                        upload_date = (f"{upload_date[:4]}-"
-                                       f"{upload_date[4:6]}-{upload_date[6:]}")
-
-                print(f"{upload_date:<12} {video_url:<45} {title}")
-
-            print(f"\nFound {len(was_live_videos)} completed streams "
-                  f"out of {len(entries)} videos")
-
-    except Exception as e:
-        print(f"Error fetching streams: {e}")
-
-
-def get_video_info(youtube_url: str, cookies_file: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Fetch video title and upload date from YouTube using yt-dlp.
-
-    Returns:
-        Tuple of (title, upload_date) where upload_date is a Unix UTC
-        timestamp string (e.g., '1747745671') from release_timestamp.
-        Either value can be None if fetch failed.
-    """
-    try:
-        import yt_dlp
-    except ImportError:
-        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return None, None
-
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
-        'extractor_args': {'youtubetab': ['approximate_date']},
-        'remote_components': ['ejs:github'],
-    }
-    if cookies_file:
-        if os.path.exists(cookies_file):
-            ydl_opts['cookiefile'] = cookies_file
-        else:
-            raise FileNotFoundError(f"Could not find requested cookie file at: {cookies_file}")
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            title = info.get('title')
-            # Use release_timestamp or timestamp (UTC)
-            release_ts = info.get('release_timestamp')
-            if release_ts is not None:
-                upload_date = str(int(release_ts))
-            else:
-                ts = info.get('timestamp')
-                if ts is not None:
-                    upload_date = str(int(ts))
-                else:
-                    upload_date = None
-            return title, upload_date
-    except Exception as e:
-        print(f"Warning: Could not fetch video info: {e}")
-        return None, None
-
-
-def download_youtube_video(youtube_url: str, output_dir: str, cookies_file: Optional[str] = None) -> Optional[str]:
-    """
-    Download YouTube video at 480p (video only, no audio).
-
-    Returns:
-        Path to downloaded video file, or None if failed.
-    """
-    try:
-        import yt_dlp
-    except ImportError:
-        print("Error: yt-dlp not installed. Run: pip install yt-dlp")
-        return None
-
-    # Extract video ID for filename
-    video_id = extract_video_id(youtube_url)
-    video_path = os.path.join(output_dir, f"{video_id}.webm")
-
-    # Skip if already downloaded
-    if os.path.exists(video_path):
-        print(f"Video already downloaded: {video_path}")
-        return video_path
-
-    ydl_opts = {
-        'format': 'bv*[height<=480]',  # Video only, no audio
-        'outtmpl': video_path,
-        'quiet': False,
-        'no_warnings': False,
-        'retries': 100,
-        'remote_components': ['ejs:github'],
-    }
-    if cookies_file:
-        if os.path.exists(cookies_file):
-            ydl_opts['cookiefile'] = cookies_file
-        else:
-            raise FileNotFoundError(f"Could not find requested cookie file at: {cookies_file}")
-
-    print(f"Downloading YouTube video at 480p (video only)...")
-    print(f"  URL: {youtube_url}")
-    start_time = time.time()
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([youtube_url])
-
-        download_time = time.time() - start_time
-
-        if os.path.exists(video_path):
-            file_size = os.path.getsize(video_path) / (1024 * 1024)
-            print(f"Download complete: {video_path}")
-            print(f"  Size: {file_size:.1f} MB")
-            print(f"  Time: {download_time:.1f}s")
-            return video_path
-        else:
-            # Check for alternative extension
-            for ext in ['.mp4', '.mkv', '.webm']:
-                alt_path = video_path.rsplit('.', 1)[0] + ext
-                if os.path.exists(alt_path):
-                    return alt_path
-            print("Error: Video file not found after download.")
-            return None
-
-    except Exception as e:
-        print(f"Error downloading video: {e}")
-        traceback.print_exc()
-        return None
 
 
 def main():
@@ -1290,6 +659,8 @@ def main():
     parser.add_argument('--backend', type=str, default=None,
                         choices=ALL_BACKENDS,
                         help='Inference backend: pytorch-cpu or openvino')
+    parser.add_argument('--test_golden_dataset', type=str, default=None,
+                        help='Path to a golden JSON dataset for pure hermetic testing (skips all downloading and ML)')
     parser.add_argument('--keep_cropped', action='store_true',
                         help='Save cropped score images to cropped_frames/')
     parser.add_argument('--output_json_file', type=str, default=None,
@@ -1309,29 +680,38 @@ def main():
     backend = args.backend or get_default_backend()
     device = 'cpu'
     if not args.only_extract_video_metadata:
-        device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
+        device = 'cpu' if args.test_golden_dataset else (get_device(args) if backend == BACKEND_PYTORCH else 'cpu')
 
     # Print the resolved device immediately
     dev_name_print = ""
     if str(device).startswith("cuda"):
         try:
-            import torch
             idx = int(str(device).split(":")[1]) if ":" in str(device) else 0
             dev_name_print = f" ({torch.cuda.get_device_name(idx)})"
         except Exception:
             pass
     print(f"Resolved execution device: {device}{dev_name_print}")
 
+    # Initialize processor
+    crop_dir = args.crop_output_dir if args.crop_output_dir else (os.path.join(args.output, "cropped_frames") if args.keep_cropped else None)
+    if crop_dir:
+        os.makedirs(crop_dir, exist_ok=True)
+    if args.test_golden_dataset:
+        print(f"Running in HERMETIC MODE using golden dataset: {args.test_golden_dataset}")
+        processor = TestWttVideoProcessor(args.test_golden_dataset)
+    else:
+        processor = ProdWttVideoProcessor(backend=backend, device=device, cropped_dir=crop_dir)
+
     # Handle --print_matches (standalone action)
     if args.print_matches:
-        list_recent_streams(args.print_matches)
+        processor.list_recent_streams(args.print_matches)
         sys.exit(0)
 
     # Handle --process_all_matches_after (batch processing)
     if args.process_all_matches_after:
         print(
             f"Fetching videos newer than {args.process_all_matches_after}...")
-        videos = get_videos_after(args.process_all_matches_after)
+        videos = processor.get_videos_after(args.process_all_matches_after)
 
         if not videos:
             print("No videos found newer than the specified video ID.")
@@ -1396,30 +776,31 @@ def main():
             backend = args.backend or get_default_backend()
 
             # Determine crop output dir for this video
-            crop_dir = None
-            if args.crop_output_dir:
-                crop_dir = os.path.join(
-                    args.crop_output_dir, vid)
+            crop_dir = args.crop_output_dir if args.crop_output_dir else (os.path.join(args.output, "cropped_frames") if args.keep_cropped else None)
+            if crop_dir and args.crop_output_dir:
+                crop_dir = os.path.join(args.crop_output_dir, vid)
+            if crop_dir:
+                os.makedirs(crop_dir, exist_ok=True)
 
             # Find matches
-            device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
+            device = 'cpu' if args.test_golden_dataset else (get_device(args) if backend == BACKEND_PYTORCH else 'cpu')
 
             # Print the resolved device immediately
             dev_name_print = ""
             if str(device).startswith("cuda"):
                 try:
-                    import torch
-                    idx = int(str(device).split(":")[
-                              1]) if ":" in str(device) else 0
+                    idx = int(str(device).split(":")[1]) if ":" in str(device) else 0
                     dev_name_print = f" ({torch.cuda.get_device_name(idx)})"
                 except Exception:
                     pass
             print(f"Resolved execution device: {device}{dev_name_print}")
+            if hasattr(processor, 'cropped_dir'):
+                processor.cropped_dir = crop_dir
             finder = MatchStartFinder(
-                video_path, args.output,
-                backend=backend, device=device,
-                keep_cropped=args.keep_cropped,
-                crop_output_dir=crop_dir)
+                video_path=video_path,
+                output_dir=args.output,
+                processor=processor
+            )
 
             try:
                 matches = finder.find_match_starts()
@@ -1505,7 +886,7 @@ def main():
 
         print("Fetching video info...")
         try:
-            video_title, upload_date = get_video_info(args.youtube_video, args.cookies_file)
+            video_title, upload_date = processor.fetch_video_info(args.youtube_video, args.cookies_file)
             
             if not video_title or not upload_date:
                 error_msg = "Failed to fetch video title or upload date (yt-dlp may be blocked or video unavailable)"
@@ -1560,7 +941,7 @@ def main():
 
         # Download YouTube video
         try:
-            video_path = download_youtube_video(args.youtube_video, args.output, args.cookies_file)
+            video_path = processor.download_video(args.youtube_video, args.output, args.cookies_file)
         except FileNotFoundError as e:
             print(str(e))
             if args.output_json_file:
@@ -1602,15 +983,18 @@ def main():
     print('=' * 60)
 
     # Determine crop output dir for single video
-    crop_dir = None
-    if args.crop_output_dir and video_id:
-        crop_dir = os.path.join(
-            args.crop_output_dir, video_id)
+    crop_dir = args.crop_output_dir if args.crop_output_dir else (os.path.join(args.output, "cropped_frames") if args.keep_cropped else None)
+    if crop_dir and video_id and args.crop_output_dir: # only append video_id if they passed crop_output_dir directly, otherwise stick to output/cropped_frames/
+        crop_dir = os.path.join(args.crop_output_dir, video_id)
+        
+    if crop_dir:
+        os.makedirs(crop_dir, exist_ok=True)
 
+    if hasattr(processor, 'cropped_dir'):
+        processor.cropped_dir = crop_dir
     finder = MatchStartFinder(
-        video_path, args.output, backend=backend, device=device,
-        keep_cropped=args.keep_cropped,
-        crop_output_dir=crop_dir)
+        video_path=video_path, output_dir=args.output, processor=processor
+    )
 
     try:
         matches = finder.find_match_starts()

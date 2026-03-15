@@ -97,7 +97,37 @@ python match_start_finder.py --youtube_video "..." --backend openvino
 python match_start_finder.py --youtube_video "..." --backend pytorch-cpu
 ```
 
+
+## Hermetic Testing (No ML / No Video Downloads)
+
+To instantly test changes to the match-finding logic (binary search, gap ignoring, phase transitions) without the heavy overhead of downloading videos or running `Florence-2` / PyTorch, you can use the hermetic testing mode with a pre-extracted "golden dataset".
+
+**Run the CLI hermetically:**
+```bash
+python match_start_finder.py \
+    --youtube_video hJXfBULLDro \
+    --test_golden_dataset testing/frames_hJXfBULLDro/hJXfBULLDro_golden.json \
+    --output_json_file hermetic_output.json
+```
+*Note: The script will fake the video download and feed the ML engine instant, cached OCR results from the golden JSON for every second sampled.*
+
+### Running Unit Tests
+
+To run the automated test suite (which uses the hermetic testing mode to instantly verify the core match-finding logic against golden datasets):
+
+```bash
+cd florence_extractor
+
+# Run the specific match finder tests:
+python -m unittest match_start_finder_test.py
+
+# Or discover and run all tests in the project:
+python -m unittest discover -p "*_test.py"
+```
+*For details on how to generate new golden datasets for other videos, see `testing/README.md`.*
+
 ## Add new Test Data to Retrain the model
+
 
 ### 1. Get Cropped Images
 

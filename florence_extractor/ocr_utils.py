@@ -91,6 +91,12 @@ def parse_score(generated_text: str) -> ScoreResult:
         set2 = int(p2_set) if p2_set else 0
         game2 = int(p2_game) if p2_game else -1
         
+        # Reject parsing if we didn't find all required score numbers
+        # Valid scoreboards MUST have game points. If they only had one number, it gets assigned to sets,
+        # leaving game as -1. This means it's not a real scoreboard.
+        if game1 == -1 or game2 == -1:
+            return ScoreResult(success=False, error="Incomplete score digits found")
+            
         return ScoreResult(
             success=True,
             player1=p1_name,
