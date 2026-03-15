@@ -64,5 +64,65 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         self.assertEqual(m2.player1, "WANG CHUQIN")
         self.assertEqual(m2.player2, "LIN YUN-JU")
 
+
+    def test_tjmjcro8t94_golden_dataset(self):
+        # 1. Resolve path to the golden dataset
+        golden_json_path = os.path.join(
+            os.path.dirname(__file__), 
+            "testing/frames_tJMjCRO8t94/tJMjCRO8t94_golden.json"
+        )
+        
+        # Verify the file exists
+        self.assertTrue(
+            os.path.exists(golden_json_path), 
+            f"Golden dataset not found at {golden_json_path}"
+        )
+        
+        # 2. Initialize the hermetic test processor
+        processor = TestWttVideoProcessor(golden_json_path)
+        
+        # 3. Simulate downloading the video
+        video_path = processor.download_video("tJMjCRO8t94", self.test_dir)
+        
+        # 4. Initialize the MatchStartFinder with our mocked processor
+        finder = MatchStartFinder(
+            video_path=video_path,
+            output_dir=self.test_dir,
+            processor=processor
+        )
+        
+        # 5. Run the core algorithm
+        try:
+            matches = finder.find_match_starts()
+        finally:
+            finder.cleanup()
+        
+        # 6. Assertions based on the known golden data output
+        self.assertEqual(len(matches), 4)
+        
+        # Match 1: SABINE WINTER vs WANG MANYU at 00:13:50 (830 seconds)
+        m1 = matches[0]
+        self.assertEqual(int(m1.timestamp_seconds), 830)
+        self.assertEqual(m1.player1, "SABINE WINTER")
+        self.assertEqual(m1.player2, "WANG MANYU")
+        
+        # Match 2: SUN YINGSHA vs CHEN YI at 01:11:44 (4304 seconds)
+        m2 = matches[1]
+        self.assertEqual(int(m2.timestamp_seconds), 4304)
+        self.assertEqual(m2.player1, "SUN YINGSHA")
+        self.assertEqual(m2.player2, "CHEN YI")
+
+        # Match 3: LIN YUN-JU vs TRULS MOREGARD at 02:16:47 (8207 seconds)
+        m3 = matches[2]
+        self.assertEqual(int(m3.timestamp_seconds), 8207)
+        self.assertEqual(m3.player1, "LIN YUN-JU")
+        self.assertEqual(m3.player2, "TRULS MOREGARD")
+
+        # Match 4: WANG CHUQIN vs FELIX LEBRUN at 03:22:41 (12161 seconds)
+        m4 = matches[3]
+        self.assertEqual(int(m4.timestamp_seconds), 12161)
+        self.assertEqual(m4.player1, "WANG CHUQIN")
+        self.assertEqual(m4.player2, "FELIX LEBRUN")
+
 if __name__ == '__main__':
     unittest.main()
