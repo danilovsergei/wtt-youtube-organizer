@@ -3,6 +3,7 @@ package matchfinder_cli
 import (
 	"reflect"
 	"testing"
+	"os"
 )
 
 func TestBuildContainerArgs_NoCuda(t *testing.T) {
@@ -77,5 +78,96 @@ func TestContainerArgsSeparation_BugRegression(t *testing.T) {
 	// We check the prefix because getCudaDeviceName might append more
 	if !reflect.DeepEqual(finalArgs[:2], expected) {
 		t.Errorf("Expected final args to start with %v, got %v", expected, finalArgs)
+	}
+}
+
+func TestHyphenatedVideoID_AddNewStreams(t *testing.T) {
+	// This tests a regression where video IDs starting with hyphens (e.g. "-8NJu5XO23U")
+	// were interpreted by Python's argparse as command line flags instead of values.
+	
+	var capturedArgs []string
+	
+	fetcher := &dockerStreamFetcher{
+		extraArgs: []string{},
+		runDocker: func(outputFile string, args []string) error {
+			capturedArgs = args
+			// Write empty JSON to satisfy the Go JSON parser
+			return os.WriteFile(outputFile, []byte("[]"), 0644)
+		},
+	}
+	
+	_, err := fetcher.FetchStreamsAfter("-8NJu5XO23U")
+	if err != nil {
+		t.Fatalf("FetchStreamsAfter failed: %v", err)
+	}
+	
+	// Assert the arguments use the "=" syntax
+	foundCorrectSyntax := false
+	for _, arg := range capturedArgs {
+		if arg == "--process_all_matches_after=-8NJu5XO23U" {
+			foundCorrectSyntax = true
+		}
+		if arg == "--process_all_matches_after" {
+			t.Errorf("Found separated flag '--process_all_matches_after', which breaks Python argparse for hyphenated IDs!")
+		}
+	}
+	
+	if !foundCorrectSyntax {
+		t.Errorf("Expected to find '--process_all_matches_after=-8NJu5XO23U' in args, got: %v", capturedArgs)
+	}
+}
+
+func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
+	// This tests the same regression but for the --process command
+	
+	queueFile, err := os.CreateTemp("", "hyphen_queue_*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp queue file: %v", err)
+	}
+	defer os.Remove(queueFile.Name())
+
+	entries := []QueueEntry{
+		{
+			VideoID:    "-8NJu5XO23U",
+			VideoTitle: "Test Hyphen Video",
+			UploadDate: "2026-01-01",
+		},
+	}
+	
+	if err := SaveQueue(queueFile.Name(), entries); err != nil {
+		t.Fatalf("failed to save temp queue: %v", err)
+	}
+
+	var capturedArgs []string
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error {
+			capturedArgs = args
+			// Write a dummy result to satisfy the Go JSON importer
+			dummyResult := `{"video_id": "-8NJu5XO23U", "matches": []}`
+			return os.WriteFile(outputFile, []byte(dummyResult), 0644)
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{})
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Assert the arguments use the "=" syntax
+	foundCorrectSyntax := false
+	for _, arg := range capturedArgs {
+		if arg == "--youtube_video=https://www.youtube.com/watch?v=-8NJu5XO23U" {
+			foundCorrectSyntax = true
+		}
+		if arg == "--youtube_video" {
+			t.Errorf("Found separated flag '--youtube_video', which breaks Python argparse for hyphenated URLs/IDs!")
+		}
+	}
+	
+	if !foundCorrectSyntax {
+		t.Errorf("Expected to find '--youtube_video=https://www.youtube.com/watch?v=-8NJu5XO23U' in args, got: %v", capturedArgs)
 	}
 }

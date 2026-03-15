@@ -552,7 +552,8 @@ func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEnt
 
 	containerArgs := []string{
 		"--only_extract_video_metadata",
-		"--process_all_matches_after", afterVideoID,
+		// Use = syntax so Python's argparse doesn't confuse video IDs starting with hyphens (e.g. -8NJu5XO23U) as flags
+		"--process_all_matches_after=" + afterVideoID,
 	}
 	containerArgs = append(containerArgs, d.extraArgs...)
 
@@ -637,7 +638,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		// Run docker to process this single video
 		youtubeURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID)
 		containerArgs := []string{
-			"--youtube_video", youtubeURL,
+			"--youtube_video=" + youtubeURL,
 		}
 		
 		// Inject CUDA args if missing
