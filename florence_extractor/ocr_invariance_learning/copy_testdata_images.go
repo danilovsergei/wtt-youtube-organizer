@@ -1,4 +1,4 @@
-package main
+package script
 
 import (
 	"encoding/csv"
@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func main() {
+func CopyImagesMain() {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: go run copy_images.go <path_to_testdata.csv> <source_images_root> <destination_folder>")
 		os.Exit(1)

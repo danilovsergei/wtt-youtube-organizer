@@ -629,7 +629,7 @@ func TestProcessQueue_SkipsDockerError_ContinuesProcessing(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped, processing continues)
-	err := processQueueVideosWithDeps(queuePath, deps)
+	err := processQueueVideosWithDeps(queuePath, deps, nil)
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -682,7 +682,7 @@ func TestProcessQueue_DockerFailsForAll_AllRemainInQueue(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped)
-	err := processQueueVideosWithDeps(queuePath, deps)
+	err := processQueueVideosWithDeps(queuePath, deps, nil)
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -729,7 +729,7 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath, deps)
+	err := processQueueVideosWithDeps(queuePath, deps, nil)
 
 	if err == nil {
 		t.Fatal("expected error from processQueueVideos, got nil")
@@ -774,7 +774,7 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath, deps)
+	err := processQueueVideosWithDeps(queuePath, deps, nil)
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}

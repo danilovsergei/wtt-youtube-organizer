@@ -54,7 +54,8 @@ class TestWttVideoProcessor(WttVideoProcessor):
         return ('Test Video Title', '1704067200') # Jan 1 2024
 
     def get_videos_after(self, after_video_id: str, max_videos: int=200, cookies_file: Optional[str]=None) -> List[dict]:
-        return []
+        # Return a mock video so the CLI can queue it up during integration testing
+        return [{"id": "hJXfBULLDro", "title": "Test Golden Video", "upload_date": "1704067200"}]
 
     def extract_image(self, video_path: str, timestamp_seconds: float, output_path: str) -> bool:
         # Hermetic mode: just touch the file so code doesn't crash if it checks for existence

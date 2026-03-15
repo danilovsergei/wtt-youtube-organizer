@@ -139,7 +139,9 @@ func getCudaDeviceName(id int) string {
 }
 
 func hasCUDA() bool {
-
+	if os.Getenv("FORCE_OPENVINO") == "1" {
+		return false
+	}
 	err := exec.Command("nvidia-smi").Run()
 	return err == nil
 }
@@ -469,7 +471,7 @@ func runMatchFinder(extraArgs []string) error {
 		}
 
 		// Create docker-based stream fetcher
-		fetcher := &dockerStreamFetcher{}
+		fetcher := &dockerStreamFetcher{extraArgs: containerArgs}
 
 		// Always filter out already-processed videos
 		// (docker may return duplicates from the latest upload_date that are already in DB)
@@ -501,7 +503,7 @@ func runMatchFinder(extraArgs []string) error {
 		queuePath := QueueFilePath(queueName)
 
 		logPrintf("Processing queue: %s\n", queuePath)
-		return processQueueVideos(queuePath)
+		return processQueueVideos(queuePath, containerArgs)
 	}
 
 	// Standard mode - require --output_json and pass extra args to container
@@ -530,10 +532,13 @@ func (d *dbProcessedChecker) GetProcessedVideoIDs(youtubeIDs []string) (map[stri
 }
 
 // dockerStreamFetcher implements StreamFetcher using the Docker container.
-type dockerStreamFetcher struct{}
+type dockerStreamFetcher struct {
+	extraArgs []string
+	runDocker func(outputFile string, containerArgs []string) error
+}
 
 func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEntry, error) {
-	initDockerVars([]string{})
+	initDockerVars(d.extraArgs)
 	// Create temp directory for metadata output
 	tmpDir, err := os.MkdirTemp("", "matchfinder-")
 	if err != nil {
@@ -549,8 +554,14 @@ func (d *dockerStreamFetcher) FetchStreamsAfter(afterVideoID string) ([]QueueEnt
 		"--only_extract_video_metadata",
 		"--process_all_matches_after", afterVideoID,
 	}
+	containerArgs = append(containerArgs, d.extraArgs...)
 
-	if err := runDockerContainer(metadataJSON, containerArgs); err != nil {
+	runner := d.runDocker
+	if runner == nil {
+		runner = runDockerContainer
+	}
+
+	if err := runner(metadataJSON, containerArgs); err != nil {
 		return nil, fmt.Errorf("docker container failed: %w", err)
 	}
 
@@ -587,14 +598,14 @@ func defaultQueueDeps() queueProcessorDeps {
 
 // processQueueVideos processes videos from the queue one by one (oldest first).
 // After each video is successfully processed and imported, it's removed from the queue.
-func processQueueVideos(queuePath string) error {
-	return processQueueVideosWithDeps(queuePath, defaultQueueDeps())
+func processQueueVideos(queuePath string, containerArgs []string) error {
+	return processQueueVideosWithDeps(queuePath, defaultQueueDeps(), containerArgs)
 }
 
 // processQueueVideosWithDeps is the testable implementation of processQueueVideos.
 // Processes videos oldest-first: successful videos are removed from queue,
 // failed videos (docker error) are kept in queue for retry and processing continues.
-func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error {
+func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string) error {
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		return fmt.Errorf("failed to load queue: %w", err)
@@ -637,6 +648,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps) error
 			}
 		}
 
+			containerArgs = append(containerArgs, extraArgs...)
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
 			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)

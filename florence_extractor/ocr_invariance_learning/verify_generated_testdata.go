@@ -1,4 +1,4 @@
-package main
+package script
 
 import (
 	"bufio"
@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func main() {
+func VerifyDataMain() {
 	// Open the CSV file
 	csvFile, err := os.Open("testdata.csv")
 	if err != nil {
