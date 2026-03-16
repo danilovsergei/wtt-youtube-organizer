@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
+
+var sessionRe = regexp.MustCompile(`(?i)\s*session\s*\d+`)
 
 // VideoJSON represents the structure of the match.json file
 type VideoJSON struct {
@@ -42,17 +45,19 @@ func parseUploadDate(dateStr string) (time.Time, error) {
 	return time.Unix(ts, 0).UTC(), nil
 }
 
-// parseTournamentFromTitle extracts tournament name, year, and day from video title.
+// ParseTournamentFromTitle extracts tournament name, year, and day from video title.
 // It splits the title by "|", trims each part, then:
-//   - Ignores parts equal to "LIVE!"
+//   - Ignores parts equal to "LIVE!" or containing "Infinity"
 //   - Ignores parts matching T<digit> (table number)
 //   - Extracts the "Day" part (any part containing "Day")
+//   - Extracts the "finals" part (any part containing "finals" case-insensitive)
+//     and strips out phrases like "Session 1", "Session 2"
 //   - Finds the part with a 4-digit year; words before the year become the title
-//   - Combines day with the part after the title part (if present)
+//   - Combines the day part, finals part, and the part after the title part (if present)
 //
 // Examples:
-//   - "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Finals" → ("WTT Star Contender Chennai", 2026, "Day 4 Finals")
-//   - "LIVE! | T4 | Q Day 1 | Singapore Smash 2026 Presented by Resorts World Sentosa | Session 2" → ("Singapore Smash", 2026, "Q Day 1 Session 2")
+//   - "LIVE! | Quarterfinals | Day 4 | WTT Star Contender Chennai 2026" → ("WTT Star Contender Chennai", 2026, "Day 4 Quarterfinals")
+//   - "LIVE! | WTT Champions Chongqing 2026 Presented by AITO | Day 5 | Quarterfinals I Session 1" → ("WTT Champions Chongqing", 2026, "Day 5 Quarterfinals I")
 func ParseTournamentFromTitle(title string) (string, int, string, error) {
 	rawParts := strings.Split(title, "|")
 	parts := make([]string, 0, len(rawParts))
@@ -64,33 +69,26 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 		return "", 0, "", fmt.Errorf("title has %d pipe-separated parts, expected at least 3", len(parts))
 	}
 
-	// Find the day part and the title part (containing a 4-digit year)
-	var dayPart string
+	// Filter out unwanted parts
+	var filteredParts []string
+	for _, p := range parts {
+		if p == "LIVE!" || strings.Contains(p, "Infinity") {
+			continue
+		}
+		if len(p) >= 2 && p[0] == 'T' {
+			if _, err := strconv.Atoi(p[1:]); err == nil {
+				continue
+			}
+		}
+		filteredParts = append(filteredParts, p)
+	}
+
 	titlePartIdx := -1
 	var tournamentName string
 	var year int
 
-	for i, part := range parts {
-		// Skip "LIVE!"
-		if part == "LIVE!" {
-			continue
-		}
-		// Skip table numbers like T1, T4, T12
-		if len(part) >= 2 && part[0] == 'T' {
-			if _, err := strconv.Atoi(part[1:]); err == nil {
-				continue
-			}
-		}
-		// Skip table/arena names containing "Infinity"
-		if strings.Contains(part, "Infinity") {
-			continue
-		}
-		// Check if this part contains "Day"
-		if strings.Contains(part, "Day") {
-			dayPart = part
-			continue
-		}
-		// Check if this part contains a 4-digit year
+	// First pass: Find the title part (first one with a 4-digit year)
+	for i, part := range filteredParts {
 		words := strings.Fields(part)
 		for j, w := range words {
 			y, err := strconv.Atoi(w)
@@ -110,19 +108,58 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 		return "", 0, "", fmt.Errorf("could not find tournament with year in title: %s", title)
 	}
 
-	// Build day string: combine day part with the part after the title part (if any)
+	var dayPart string
+	var finalsPart string
+	dayPartIdx := -1
+	finalsPartIdx := -1
+
+	// Second pass: Find day and finals markers (excluding the title itself)
+	for i, part := range filteredParts {
+		if i == titlePartIdx {
+			continue // Don't use the title part as day or finals part
+		}
+		if strings.Contains(part, "Day") {
+			dayPart = part
+			dayPartIdx = i
+		}
+		lowerPart := strings.ToLower(part)
+		if strings.Contains(lowerPart, "finals") {
+			finalsPart = sessionRe.ReplaceAllString(part, "")
+			finalsPart = strings.TrimSpace(finalsPart)
+			finalsPartIdx = i
+		}
+	}
+
 	var day string
 	afterTitle := ""
-	if titlePartIdx+1 < len(parts) {
-		afterTitle = strings.TrimSpace(parts[titlePartIdx+1])
+	afterTitleIdx := -1
+	if titlePartIdx+1 < len(filteredParts) {
+		afterTitle = filteredParts[titlePartIdx+1]
+		afterTitleIdx = titlePartIdx + 1
 	}
-	if dayPart != "" && afterTitle != "" {
-		day = dayPart + " " + afterTitle
-	} else if dayPart != "" {
-		day = dayPart
-	} else if afterTitle != "" {
-		day = afterTitle
+
+	// Build the day string components uniquely
+	var dayComponents []string
+	if dayPart != "" {
+		if dayPartIdx == finalsPartIdx {
+			dayComponents = append(dayComponents, finalsPart) // the stripped one
+		} else {
+			dayComponents = append(dayComponents, dayPart)
+		}
 	}
+	if finalsPart != "" && finalsPartIdx != dayPartIdx {
+		dayComponents = append(dayComponents, finalsPart)
+	}
+	if afterTitle != "" && afterTitleIdx != dayPartIdx && afterTitleIdx != finalsPartIdx {
+		dayComponents = append(dayComponents, afterTitle)
+	}
+
+	// Fallback: If no components matched "Day" or "Finals", just use the afterTitle part if it exists
+	if len(dayComponents) == 0 && afterTitle != "" {
+		dayComponents = append(dayComponents, afterTitle)
+	}
+
+	day = strings.Join(dayComponents, " ")
 
 	return tournamentName, year, day, nil
 }
