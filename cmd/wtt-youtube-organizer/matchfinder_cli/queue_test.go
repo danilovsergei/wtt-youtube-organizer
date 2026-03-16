@@ -823,6 +823,40 @@ func TestAddNewStreams_WithFilter_FiltersOutNonMatching(t *testing.T) {
 	}
 }
 
+func TestAddNewStreams_SkipsCeremonyAndShowExceptFinals(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	fetcher := &mockStreamFetcher{
+		returnEntries: []QueueEntry{
+			{VideoID: "1", VideoTitle: "LIVE! | Opening Ceremony | WTT Singapore Smash"}, // Should skip
+			{VideoID: "2", VideoTitle: "LIVE! | WTT Singapore Smash | Pre-Show"},         // Should skip
+			{VideoID: "3", VideoTitle: "LIVE! | WTT Singapore Smash | Semi-Finals"},      // Should keep
+			{VideoID: "4", VideoTitle: "LIVE! | WTT Singapore Smash | Finals & Closing Ceremony"}, // Should keep
+			{VideoID: "5", VideoTitle: "LIVE! | Award Ceremony for Finals"},              // Should keep
+		},
+	}
+
+	// Execute AddNewStreams without an explicit text filter
+	count, err := AddNewStreams(queuePath, "dummy_id", fetcher, "", nil)
+	if err != nil {
+		t.Fatalf("AddNewStreams failed: %v", err)
+	}
+
+	if count != 3 {
+		t.Errorf("Expected 3 videos to be added, got %d", count)
+	}
+
+	// Verify the correct ones were saved
+	queue, _ := LoadQueue(queuePath)
+	if len(queue) != 3 {
+		t.Fatalf("Expected 3 videos in queue, got %d", len(queue))
+	}
+
+	expectedIDs := []string{"3", "4", "5"}
+	assertIDs(t, queue, expectedIDs)
+}
+
 // --- Tests for Filtering ProcessQueueVideos ---
 func TestProcessQueue_WithFilter_SkipsNonMatching(t *testing.T) {
 	tmpDir := t.TempDir()

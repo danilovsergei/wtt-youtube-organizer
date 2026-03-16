@@ -186,20 +186,28 @@ func AddNewStreams(queuePath string, afterVideoID string, fetcher StreamFetcher,
 		return 0, nil
 	}
 
-	// Apply title filter if provided
-	if filterTitle != "" {
-		var filteredEntries []QueueEntry
-		for _, entry := range newEntries {
-			if strings.Contains(entry.VideoTitle, filterTitle) {
-				filteredEntries = append(filteredEntries, entry)
-			} else {
-				logPrintf("Filtering out video %s (does not match add_new_streams_filter '%s')\n", entry.VideoID, filterTitle)
-			}
+	// Apply filters (title matching and skipping ceremonies)
+	var validEntries []QueueEntry
+	for _, entry := range newEntries {
+		lowerTitle := strings.ToLower(entry.VideoTitle)
+		hasCeremonyOrShow := strings.Contains(lowerTitle, "ceremony") || strings.Contains(lowerTitle, "show")
+		hasFinals := strings.Contains(lowerTitle, "finals")
+
+		if hasCeremonyOrShow && !hasFinals {
+			logPrintf("Skipping video %s (title contains ceremony/show but not finals: '%s')\n", entry.VideoID, entry.VideoTitle)
+			continue
 		}
-		newEntries = filteredEntries
-		if len(newEntries) == 0 {
-			return 0, nil
+
+		if filterTitle != "" && !strings.Contains(entry.VideoTitle, filterTitle) {
+			logPrintf("Filtering out video %s (does not match add_new_streams_filter '%s')\n", entry.VideoID, filterTitle)
+			continue
 		}
+
+		validEntries = append(validEntries, entry)
+	}
+	newEntries = validEntries
+	if len(newEntries) == 0 {
+		return 0, nil
 	}
 
 	// Filter out already-processed videos if checker is provided
