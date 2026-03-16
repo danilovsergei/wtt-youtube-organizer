@@ -145,12 +145,13 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
     prompt = """
     You are an expert OCR system specializing in World Table Tennis (WTT) scoreboards.
     
-    Examine the provided image carefully. A valid WTT scoreboard ALWAYS has exactly TWO distinct rows. Each row MUST contain BOTH a player name AND a score.
+    Examine the provided image carefully. A valid WTT LIVE IN-GAME scoreboard ALWAYS has exactly TWO distinct rows for the current matchup. Each row MUST contain BOTH a player name AND two numbers: their sets won AND their current points.
 
     CRITICAL RULES:
     1. Do NOT hallucinate or guess names from blurry shapes.
     2. If the image is just a blurry background, arena lights, or people, return the empty format.
-    3. You MUST detect BOTH player names AND their scores. If only one player is visible, or if the text is partially obscured/missing, return the empty format.
+    3. REJECT TOURNAMENT BRACKETS AND PATHS. If the image shows a tournament bracket, player path, or summary (often with multiple matchups, connecting lines, arrows, or names severely truncated to an initial, and only showing one number per player representing sets won), return the empty format.
+    4. You MUST detect BOTH player names AND both scores (sets AND points). If only one score number is visible per player, it is NOT a live scoreboard.
     
     The empty format is strictly:
     {
@@ -162,7 +163,7 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
       "p2_points": 0
     }
 
-    Only if you clearly see two full rows (both player names and both scores are fully visible and legible), format the output strictly as JSON with this structure:
+    Only if you clearly see two full rows (both player names and both sets and points are fully visible and legible for a single match), format the output strictly as JSON with this structure:
     {
       "player1": "NAME 1",
       "player2": "NAME 2",
@@ -179,33 +180,50 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
         if not os.path.exists(img_path):
             continue
 
-        try:
-            myfile = client.files.upload(file=img_path)
-            response = client.models.generate_content(
-                model='gemini-3.1-flash-lite-preview',
-                contents=[myfile, prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0
-                )
-            )
-            
+        retries = 5
+        success = False
+        while retries > 0 and not success:
             try:
-                data = json.loads(response.text)
-                results[frame_name] = data
-            except json.JSONDecodeError:
-                results[frame_name] = {}
-            
-            # Save state frequently
-            with open(state_file, "w") as f:
-                json.dump(results, f, indent=2)
+                from PIL import Image
+                img = Image.open(img_path)
                 
-            # Avoid aggressive rate limiting just in case
-            time.sleep(0.5)
-            
-        except Exception as e:
-            print(f"Error processing {frame_name}: {e}")
-            break # Stop on API error so user can resume later
+                response = client.models.generate_content(
+                    model='gemini-3.1-flash-lite-preview',
+                    contents=[img, prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.0
+                    )
+                )
+                
+                try:
+                    data = json.loads(response.text)
+                    results[frame_name] = data
+                except json.JSONDecodeError:
+                    results[frame_name] = {}
+                
+                # Save state frequently
+                with open(state_file, "w") as f:
+                    json.dump(results, f, indent=2)
+                    
+                # Avoid aggressive rate limiting just in case
+                time.sleep(0.5)
+                success = True
+                
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(err in err_str for err in ["429", "too many requests", "503", "quota", "104", "connection", "timeout", "broken pipe"]):
+                    wait_time = (6 - retries) * 10
+                    print(f"\nNetwork/API error hit. Waiting {wait_time}s before retry... ({retries} retries left) - {e}")
+                    time.sleep(wait_time)
+                    retries -= 1
+                else:
+                    print(f"\nError processing {frame_name}: {e}")
+                    break # Stop on non-retryable API error
+
+        if not success:
+            print(f"Failed to process {frame_name} after retries or due to fatal error. Stopping.")
+            break
 
     generate_final_output(mapping, results, output_file)
 
