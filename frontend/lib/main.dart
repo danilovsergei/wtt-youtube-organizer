@@ -419,8 +419,12 @@ class _MainScreenState extends State<MainScreen> {
 
         return Scaffold(
           drawer: !isDesktop
-              ? const Drawer(
-                  backgroundColor: Colors.transparent, child: Sidebar())
+              ? PointerInterceptor(
+                  child: const Drawer(
+                    backgroundColor: Colors.transparent,
+                    child: Sidebar(),
+                  ),
+                )
               : null,
           body: Stack(
             children: [
