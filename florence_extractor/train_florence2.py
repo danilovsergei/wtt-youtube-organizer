@@ -71,8 +71,10 @@ def collate_fn(batch):
     labels = [item["labels"] for item in batch]
 
     # Dynamically pad the input_ids and labels to the max length in this batch
-    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=0) # pad_token_id=0
-    labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100) # Ignore loss on padding
+    input_ids = torch.nn.utils.rnn.pad_sequence(
+        input_ids, batch_first=True, padding_value=0)  # pad_token_id=0
+    labels = torch.nn.utils.rnn.pad_sequence(
+        labels, batch_first=True, padding_value=-100)  # Ignore loss on padding
 
     return {
         "input_ids": input_ids,
@@ -109,13 +111,17 @@ def train(args):
     # Start training from our current fine-tuned state so we don't lose the MAKSYM knowledge!
     # Wait, the path to the model is:
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    model_id = "microsoft/Florence-2-base"
+    model_id = "microsoft/Florence-2-large"
 
     print(f"Using device: {device}")
     print(f"Loading model {model_id}...")
     processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, trust_remote_code=True, attn_implementation="eager").to(device)
+        model_id,
+        trust_remote_code=True,
+        attn_implementation="eager",
+        torch_dtype=torch.bfloat16,).to(device)
+    model.gradient_checkpointing_enable()
 
     csv_path = os.path.join(script_dir, "test_data_sample.csv")
     dataset = TableTennisDataset(csv_path, processor, script_dir)
@@ -140,7 +146,8 @@ def train(args):
             optimizer.zero_grad()
 
             input_ids = batch["input_ids"].to(device)
-            pixel_values = batch["pixel_values"].to(device)
+            pixel_values = batch["pixel_values"].to(
+                device, dtype=torch.bfloat16)
             labels = batch["labels"].to(device)
 
             outputs = model(input_ids=input_ids,
@@ -165,7 +172,7 @@ def train(args):
 
     model.save_pretrained(output_dir)
     processor.save_pretrained(output_dir)
-    
+
     # Double check to patch any rogue generation_config.json
     import json
     gen_config_path = os.path.join(output_dir, "generation_config.json")

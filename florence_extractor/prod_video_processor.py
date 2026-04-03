@@ -30,25 +30,31 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
+
 def _global_get_video_duration(video_path: str) -> float:
     """Get video duration in seconds using ffprobe."""
-    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+           '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True)
         return float(result.stdout.strip())
     except (subprocess.CalledProcessError, ValueError) as e:
         print(f'Error getting video duration: {e}')
         return 0
 
+
 def _global_extract_frame(video_path: str, timestamp_seconds: float, output_path: str) -> bool:
     """Extract a single frame from video at given timestamp."""
     timestamp_str = format_timestamp(timestamp_seconds)
-    cmd = ['ffmpeg', '-y', '-ss', timestamp_str, '-i', video_path, '-frames:v', '1', '-q:v', '2', output_path]
+    cmd = ['ffmpeg', '-y', '-ss', timestamp_str, '-i',
+           video_path, '-frames:v', '1', '-q:v', '2', output_path]
     try:
         subprocess.run(cmd, capture_output=True, check=True)
         return os.path.exists(output_path)
     except subprocess.CalledProcessError:
         return False
+
 
 def crop_image(image_path: str) -> Optional[Image.Image]:
     """Crop the score region from an image (bottom-left corner)."""
@@ -66,6 +72,7 @@ def crop_image(image_path: str) -> Optional[Image.Image]:
         print(f'Error cropping image: {e}')
         return None
 
+
 def get_device(args):
     if not torch.cuda.is_available():
         return 'cpu'
@@ -74,14 +81,17 @@ def get_device(args):
         target_name = args.cuda_device_name.strip()
         for i in range(num_devices):
             if torch.cuda.get_device_name(i).strip() == target_name:
-                print(f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
+                print(
+                    f"Mapped hardware '{target_name}' to PyTorch index cuda:{i}")
                 return f'cuda:{i}'
-        print(f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
+        print(
+            f"Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
     if getattr(args, 'cuda_device_id', None) is not None:
         if 0 <= args.cuda_device_id < num_devices:
             return f'cuda:{args.cuda_device_id}'
         else:
-            print(f'Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.')
+            print(
+                f'Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.')
             sys.exit(1)
     if num_devices == 1:
         return 'cuda:0'
@@ -89,6 +99,7 @@ def get_device(args):
     for i in range(num_devices):
         print(f'  Device {i}: {torch.cuda.get_device_name(i)}')
     sys.exit(1)
+
 
 def get_default_backend() -> str:
     """Get default backend - use openvino if available, else pytorch."""
@@ -98,10 +109,11 @@ def get_default_backend() -> str:
     except ImportError:
         return BACKEND_PYTORCH
 
+
 class ScoreExtractor:
     """Handles score extraction using Florence-2 OCR model."""
 
-    def __init__(self, backend: str=None, device: str='cpu'):
+    def __init__(self, backend: str = None, device: str = 'cpu'):
         self.model = None
         self.processor = None
         self.device = device
@@ -121,7 +133,7 @@ class ScoreExtractor:
             return self._initialize_pytorch()
 
     def _initialize_pytorch(self) -> bool:
-        """Initialize PyTorch backend (original working code)."""
+        """Initialize PyTorch backend."""
         import torch
         dev_info = ''
         if str(self.device).startswith('cuda'):
@@ -134,10 +146,17 @@ class ScoreExtractor:
                 dev_info = f' - {torch.cuda.get_device_name(idx)}'
             except Exception:
                 pass
-        print(f'Loading Florence-2 model (PyTorch on {self.device}{dev_info})...')
+        print(
+            f'Loading Florence-2 model (PyTorch on {self.device}{dev_info})...')
         try:
-            self.processor = AutoProcessor.from_pretrained(self._model_path, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(self._model_path, trust_remote_code=True, attn_implementation='eager').to(self.device)
+            self.processor = AutoProcessor.from_pretrained(
+                self._model_path, trust_remote_code=True)
+            # Use bfloat16 for better performance on 5070 Ti
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self._model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.bfloat16,
+                attn_implementation='eager').to(self.device)
             self._initialized = True
             print('Model loaded successfully.')
             return True
@@ -152,25 +171,31 @@ class ScoreExtractor:
             from backends.ov_florence2_helper import OVFlorence2Model
             from pathlib import Path
             ov_model_dir = Path(self._model_path) / 'openvino'
-            self.processor = AutoProcessor.from_pretrained(ov_model_dir, trust_remote_code=True)
-            self._ov_model = OVFlorence2Model(ov_model_dir, device='GPU', ov_config={})
+            self.processor = AutoProcessor.from_pretrained(
+                ov_model_dir, trust_remote_code=True)
+            self._ov_model = OVFlorence2Model(
+                ov_model_dir, device='GPU', ov_config={})
             self._initialized = True
             print('Model loaded successfully (OpenVINO GPU).')
             return True
-        except FileNotFoundError as e:
-            print(f'Error: {e}')
-            return False
         except Exception as e:
-            print(f'Error loading OpenVINO model: {e}')
-            print('Falling back to PyTorch...')
+            print(
+                f'Error loading OpenVINO model: {e}. Falling back to PyTorch...')
             self._backend = BACKEND_PYTORCH
             return self._initialize_pytorch()
 
     def extract_score(self, pil_image: Image.Image) -> ScoreResult:
-        """Extract score from a cropped PIL image."""
+        """Extract score with black-frame skipping."""
         if not self._initialized:
             return ScoreResult(success=False, error='Model not initialized')
         try:
+            # Skip if image is too dark (0 is black, 255 is white)
+            import numpy as np
+            grayscale = pil_image.convert("L")
+            avg_brightness = np.mean(np.array(grayscale))
+            if avg_brightness < 15:
+                return ScoreResult(success=False, error='Frame too dark/empty')
+
             if self._backend == BACKEND_OPENVINO:
                 generated_text = self._extract_openvino(pil_image)
             else:
@@ -180,26 +205,51 @@ class ScoreExtractor:
             return ScoreResult(success=False, error=str(e))
 
     def _extract_pytorch(self, pil_image: Image.Image) -> str:
-        """Extract text using PyTorch backend (original working code)."""
+        """Extract text using PyTorch with optimized generation."""
         prompt = '<WTT_SCORE>'
-        inputs = self.processor(text=prompt, images=pil_image, return_tensors='pt').to(self.device)
-        generated_ids = self.model.generate(input_ids=inputs['input_ids'], pixel_values=inputs['pixel_values'], max_new_tokens=1024, num_beams=1, do_sample=False, early_stopping=False, use_cache=False)
+        inputs = self.processor(
+            text=prompt, images=pil_image, return_tensors='pt').to(self.device)
+
+        # Ensure pixel values match model's bfloat16 type
+        if self.model.dtype == torch.bfloat16:
+            inputs['pixel_values'] = inputs['pixel_values'].to(torch.bfloat16)
+
+        generated_ids = self.model.generate(
+            input_ids=inputs['input_ids'],
+            pixel_values=inputs['pixel_values'],
+            max_new_tokens=64,
+            num_beams=1,
+            do_sample=False,
+            early_stopping=False,
+            repetition_penalty=1.2,
+            use_cache=True
+        )
         return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
     def _extract_openvino(self, pil_image: Image.Image) -> str:
-        """Extract text using OpenVINO backend (GPU accelerated)."""
+        """Extract text using OpenVINO with optimized generation."""
         prompt = '<WTT_SCORE>'
-        inputs = self.processor(text=prompt, images=pil_image, return_tensors='pt')
-        generated_ids = self._ov_model.generate(input_ids=inputs['input_ids'], pixel_values=inputs['pixel_values'], max_new_tokens=1024, num_beams=1, do_sample=False, early_stopping=False)
+        inputs = self.processor(
+            text=prompt, images=pil_image, return_tensors='pt')
+        generated_ids = self._ov_model.generate(
+            input_ids=inputs['input_ids'],
+            pixel_values=inputs['pixel_values'],
+            max_new_tokens=64,
+            num_beams=1,
+            do_sample=False,
+            early_stopping=False,
+            repetition_penalty=1.2
+        )
         return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
 
 class ProdWttVideoProcessor(WttVideoProcessor):
 
-    def __init__(self, backend: str=None, device: str='cpu', cropped_dir: str=None):
+    def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None):
         self.extractor = ScoreExtractor(backend=backend, device=device)
         self.cropped_dir = cropped_dir
 
-    def fetch_video_info(self, youtube_url: str, cookies_file: Optional[str]=None) -> Tuple[Optional[str], Optional[str]]:
+    def fetch_video_info(self, youtube_url: str, cookies_file: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
         """
         Fetch video title and upload date from YouTube using yt-dlp.
 
@@ -213,12 +263,14 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         except ImportError:
             print('Error: yt-dlp not installed. Run: pip install yt-dlp')
             return (None, None)
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extractor_args': {'youtubetab': ['approximate_date']}, 'remote_components': ['ejs:github']}
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extractor_args': {
+            'youtubetab': ['approximate_date']}, 'remote_components': ['ejs:github']}
         if cookies_file:
             if os.path.exists(cookies_file):
                 ydl_opts['cookiefile'] = cookies_file
             else:
-                raise FileNotFoundError(f'Could not find requested cookie file at: {cookies_file}')
+                raise FileNotFoundError(
+                    f'Could not find requested cookie file at: {cookies_file}')
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
@@ -237,7 +289,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             print(f'Warning: Could not fetch video info: {e}')
             return (None, None)
 
-    def download_video(self, youtube_url: str, output_dir: str, cookies_file: Optional[str]=None) -> Optional[str]:
+    def download_video(self, youtube_url: str, output_dir: str, cookies_file: Optional[str] = None) -> Optional[str]:
         """
         Download YouTube video at 480p (video only, no audio).
 
@@ -258,16 +310,30 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             video_id = youtube_url.split('/live/')[-1].split('?')[0]
         else:
             video_id = youtube_url.rstrip('/').split('/')[-1].split('?')[0]
-        video_path = os.path.join(output_dir, f'{video_id}.webm')
+        video_path = os.path.join(output_dir, f'{video_id}.%(ext)s')
         if os.path.exists(video_path):
             print(f'Video already downloaded: {video_path}')
             return video_path
-        ydl_opts = {'format': 'bv*[height<=480]', 'outtmpl': video_path, 'quiet': False, 'no_warnings': False, 'retries': 100, 'remote_components': ['ejs:github']}
+        ydl_opts = {
+            'format': 'bv*[height<=480]',
+            'outtmpl': video_path,
+            'quiet': False,
+            'no_warnings': False,
+            'remote_components': ['ejs:github'],
+            'retries': 10,
+            'skip_unavailable_fragments': True,
+            'continuedl': True,
+            'verbose': True,
+            'file_access_retries': 3,
+            'fragment_retries': 10,
+            'extractor_retries': 3,
+        }
         if cookies_file:
             if os.path.exists(cookies_file):
                 ydl_opts['cookiefile'] = cookies_file
             else:
-                raise FileNotFoundError(f'Could not find requested cookie file at: {cookies_file}')
+                raise FileNotFoundError(
+                    f'Could not find requested cookie file at: {cookies_file}')
         print(f'Downloading YouTube video at 480p (video only)...')
         print(f'  URL: {youtube_url}')
         start_time = time.time()
@@ -293,18 +359,16 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             traceback.print_exc()
             return None
 
-
-    
     def extract_image(self, video_path: str, timestamp_seconds: float, output_path: str) -> bool:
         return _global_extract_frame(video_path, timestamp_seconds, output_path)
 
-    def get_scoreboard(self, image_path: str, actual_timestamp: float=0.0) -> Tuple[ScoreResult, str]:
+    def get_scoreboard(self, image_path: str, actual_timestamp: float = 0.0) -> Tuple[ScoreResult, str]:
         import os
         cropped = crop_image(image_path)
         cropped_path = ''
         if cropped is None:
             return (ScoreResult(success=False, error='Image cropping failed'), '')
-            
+
         if self.cropped_dir:
             import uuid
             unique_id = str(uuid.uuid4())
@@ -315,11 +379,10 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             dir_name = os.path.dirname(image_path)
             base_name = os.path.basename(image_path)
             cropped_path = os.path.join(dir_name, "cropped_" + base_name)
-            
+
         cropped.save(cropped_path)
         return (self.extractor.extract_score(cropped), cropped_path)
 
-    
     def initialize_scoreboard_model(self) -> bool:
         return self.extractor.initialize()
 
@@ -328,19 +391,18 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         title, _ = self.fetch_video_info(url)
         return title is not None
 
-
-    def get_videos_after(self, after_video_id: str, batch_size: int=200, max_batches: int=10) -> List[dict]:
+    def get_videos_after(self, after_video_id: str, batch_size: int = 200, max_batches: int = 10) -> List[dict]:
         """
         Get all completed streams newer than the specified video_id.
         Fetches playlist in batches, loading older videos if the
         cutoff video_id is not found in the current batch.
-    
+
         Args:
             after_video_id: Video ID to use as cutoff (exclusive)
             batch_size: Number of videos per batch (default 100)
             max_batches: Maximum number of batches to fetch
                          (default 5 = up to 500 videos)
-    
+
         Returns:
             List of video info dicts for videos newer than
             after_video_id
@@ -353,13 +415,16 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             return []
         print(f'Validating video ID: {after_video_id}...')
         if not self.validate_video_exists(after_video_id):
-            print(f"Error: Video '{after_video_id}' does not exist or is not accessible.")
+            print(
+                f"Error: Video '{after_video_id}' does not exist or is not accessible.")
             return []
         playlist_url = 'https://www.youtube.com/@WTTGlobal/streams'
         for batch_num in range(1, max_batches + 1):
             total_videos = batch_size * batch_num
-            print(f'Fetching playlist (up to {total_videos} videos, batch {batch_num}/{max_batches})...')
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist', 'playlistend': total_videos, 'extractor_args': {'youtubetab': {'approximate_date': ['']}}, 'remote_components': ['ejs:github']}
+            print(
+                f'Fetching playlist (up to {total_videos} videos, batch {batch_num}/{max_batches})...')
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist', 'playlistend': total_videos,
+                        'extractor_args': {'youtubetab': {'approximate_date': ['']}}, 'remote_components': ['ejs:github']}
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(playlist_url, download=False)
@@ -386,20 +451,25 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                     if found_cutoff:
                         return newer_videos
                     if len(entries) < total_videos:
-                        print(f"Video '{after_video_id}' not found in playlist ({len(entries)} videos checked)")
+                        print(
+                            f"Video '{after_video_id}' not found in playlist ({len(entries)} videos checked)")
                         return []
-                    print(f'Video not found in first {total_videos} entries, fetching more...')
+                    print(
+                        f'Video not found in first {total_videos} entries, fetching more...')
             except Exception as e:
                 print(f'Error fetching streams: {e}')
                 return []
-        print(f"Video '{after_video_id}' not found after checking {batch_size * max_batches} videos")
+        print(
+            f"Video '{after_video_id}' not found after checking {batch_size * max_batches} videos")
         return []
 
     def get_video_duration(self, video_path: str) -> float:
         """Get video duration in seconds using ffprobe."""
-        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+               '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True)
             return float(result.stdout.strip())
         except (subprocess.CalledProcessError, ValueError) as e:
             print(f'Error getting video duration: {e}')
