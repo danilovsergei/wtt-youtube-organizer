@@ -556,7 +556,7 @@ func TestParseTournamentFromTitle(t *testing.T) {
 			title:    "LIVE! | Day 4 | WTT Star Contender Chennai 2026 | Singles SF & Mixed Doubles F",
 			wantName: "WTT Star Contender Chennai",
 			wantYear: 2026,
-			wantDay:  "Day 4 Singles SF & Mixed Doubles F",
+			wantDay:  "Day 4",
 		},
 		{
 			name:     "3 parts without Day prefix",
@@ -570,7 +570,7 @@ func TestParseTournamentFromTitle(t *testing.T) {
 			title:    "LIVE! | T1 | Q Day 1 | WTT Contender Muscat 2026 | Session 1",
 			wantName: "WTT Contender Muscat",
 			wantYear: 2026,
-			wantDay:  "Q Day 1 Session 1",
+			wantDay:  "Q Day 1",
 		},
 		{
 			name:    "too few parts",
@@ -587,14 +587,14 @@ func TestParseTournamentFromTitle(t *testing.T) {
 			title:    "LIVE! | T4 | Q Day 1 | Singapore Smash 2026 Presented by Resorts World Sentosa | Session 2",
 			wantName: "Singapore Smash",
 			wantYear: 2026,
-			wantDay:  "Q Day 1 Session 2",
+			wantDay:  "Q Day 1",
 		},
 		{
 			name:     "6 parts with Infinity Arena skipped",
 			title:    "LIVE! | Infinity∞Arena | Day 6 | Singapore Smash 2026 Presented by Resorts World Sentosa | Session 2 (fCfurYxiCjY)",
 			wantName: "Singapore Smash",
 			wantYear: 2026,
-			wantDay:  "Day 6 Session 2 (fCfurYxiCjY)",
+			wantDay:  "Day 6",
 		},
 	}
 
@@ -654,8 +654,8 @@ func TestImport_SavesDayToVideos(t *testing.T) {
 	if day == nil {
 		t.Fatal("expected day to be set, got NULL")
 	}
-	if *day != "Day 1 Session 1" {
-		t.Fatalf("expected 'Day 1 Session 1', got %q", *day)
+	if *day != "Day 1" {
+		t.Fatalf("expected 'Day 1', got %q", *day)
 	}
 
 	// Re-import with different day (should update)

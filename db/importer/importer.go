@@ -132,10 +132,8 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 
 	var day string
 	afterTitle := ""
-	afterTitleIdx := -1
 	if titlePartIdx+1 < len(filteredParts) {
 		afterTitle = filteredParts[titlePartIdx+1]
-		afterTitleIdx = titlePartIdx + 1
 	}
 
 	// Build the day string components uniquely
@@ -149,9 +147,6 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 	}
 	if finalsPart != "" && finalsPartIdx != dayPartIdx {
 		dayComponents = append(dayComponents, finalsPart)
-	}
-	if afterTitle != "" && afterTitleIdx != dayPartIdx && afterTitleIdx != finalsPartIdx {
-		dayComponents = append(dayComponents, afterTitle)
 	}
 
 	// Fallback: If no components matched "Day" or "Finals", just use the afterTitle part if it exists
