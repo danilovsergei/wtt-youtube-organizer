@@ -103,6 +103,8 @@ class Match {
   final DateTime? uploadDate;
   final String? youtubeId;
   final int? offsetSeconds;
+  final int? session;
+  final DateTime? effectiveTimestamp;
 
   const Match({
     required this.id,
@@ -117,6 +119,8 @@ class Match {
     this.uploadDate,
     this.youtubeId,
     this.offsetSeconds,
+    this.session,
+    this.effectiveTimestamp,
   });
 }
 
@@ -244,7 +248,11 @@ class FilterController extends ChangeNotifier {
         final uploadDate = row['upload_date'] != null
             ? DateTime.tryParse(row['upload_date'] as String)
             : null;
+        final effectiveTimestamp = row['effective_timestamp'] != null
+            ? DateTime.tryParse(row['effective_timestamp'] as String)
+            : uploadDate;
         final offsetSeconds = row['video_offset_seconds'] as int?;
+        final session = row['session'] as int?;
 
         matches.add(Match(
           id: 'm_${matchCounter++}',
@@ -260,6 +268,8 @@ class FilterController extends ChangeNotifier {
           uploadDate: uploadDate,
           youtubeId: youtubeId,
           offsetSeconds: offsetSeconds,
+          session: session,
+          effectiveTimestamp: effectiveTimestamp,
         ));
       }
 
@@ -901,13 +911,14 @@ class Sidebar extends StatelessWidget {
                                     )
                                     .toList();
 
-                            // Group matches by day
+                            // Group matches by day and session
                             final Map<String, List<Match>> matchesByDay = {};
                             for (var m in matches) {
-                              matchesByDay.putIfAbsent(m.day, () => []).add(m);
+                              final groupKey = m.session != null ? '${m.day} - Round ${m.session}' : m.day;
+                              matchesByDay.putIfAbsent(groupKey, () => []).add(m);
                             }
                             
-                            // Sort days by max uploadDate (descending)
+                            // Sort groups by effectiveTimestamp (descending) then by session (descending)
                             final sortedDays = matchesByDay.keys.toList()
                               ..sort((a, b) {
                                 final matchesA = matchesByDay[a]!;
@@ -915,7 +926,7 @@ class Sidebar extends StatelessWidget {
 
                                 DateTime? getMaxDate(List<Match> mList) {
                                   final dates = mList
-                                      .map((m) => m.uploadDate)
+                                      .map((m) => m.effectiveTimestamp)
                                       .whereType<DateTime>();
                                   if (dates.isEmpty) return null;
                                   return dates.reduce((curr, next) =>
@@ -925,12 +936,21 @@ class Sidebar extends StatelessWidget {
                                 final dateA = getMaxDate(matchesA);
                                 final dateB = getMaxDate(matchesB);
 
-                                if (dateA == null && dateB == null) {
-                                  return a.compareTo(b);
+                                int dateCompare = 0;
+                                if (dateA != null && dateB != null) {
+                                  dateCompare = dateB.compareTo(dateA);
+                                } else if (dateA == null && dateB != null) {
+                                  dateCompare = 1;
+                                } else if (dateB == null && dateA != null) {
+                                  dateCompare = -1;
                                 }
-                                if (dateA == null) return 1;
-                                if (dateB == null) return -1;
-                                return dateB.compareTo(dateA);
+                                
+                                if (dateCompare != 0) return dateCompare;
+
+                                final sessionA = matchesA.first.session ?? 0;
+                                final sessionB = matchesB.first.session ?? 0;
+                                
+                                return sessionB.compareTo(sessionA);
                               });
 
                             return Padding(
@@ -1019,12 +1039,15 @@ class Sidebar extends StatelessWidget {
                                                   color: Colors.grey[500],
                                                 ),
                                                 const SizedBox(width: 8),
-                                                Text(
-                                                  day,
-                                                  style: TextStyle(
-                                                    color: Colors.grey[400],
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.bold,
+                                                Expanded(
+                                                  child: Text(
+                                                    day,
+                                                    style: TextStyle(
+                                                      color: Colors.grey[400],
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                               ],
