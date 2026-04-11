@@ -23,23 +23,21 @@ func getGoldenDataset(t *testing.T) string {
 func injectGoldenToDocker(outputFile string, containerArgs []string, hostGoldenPath string) error {
 	outputDir := filepath.Dir(outputFile)
 	destGolden := filepath.Join(outputDir, "hJXfBULLDro_golden.json")
-	
+
 	data, err := os.ReadFile(hostGoldenPath)
 	if err != nil {
 		return err
 	}
-	
+
 	if err := os.WriteFile(destGolden, data, 0666); err != nil {
 		return err
 	}
-	
 
 	// Add the container-relative path to the arguments
 	containerArgs = append(containerArgs, "--test_golden_dataset", "/output/hJXfBULLDro_golden.json")
-	
+
 	fmt.Printf("DEBUG INJECTED CONTAINER ARGS: %v\n", containerArgs)
 
-	
 	return runDockerContainer(outputFile, containerArgs)
 }
 
@@ -51,23 +49,23 @@ func TestIntegration_AddNewStreams(t *testing.T) {
 	goldenPath := getGoldenDataset(t)
 	dockerDir = "docker/cuda"
 	imageName = "geonix/wtt-stream-match-finder-cuda:latest"
-	
+
 	fetcher := &dockerStreamFetcher{
 		extraArgs: []string{},
 		runDocker: func(outputFile string, args []string) error {
 			return injectGoldenToDocker(outputFile, args, goldenPath)
 		},
 	}
-	
+
 	videos, err := fetcher.FetchStreamsAfter("dummy_id")
 	if err != nil {
 		t.Fatalf("dockerStreamFetcher failed to fetch streams: %v", err)
 	}
-	
+
 	if len(videos) == 0 {
 		t.Fatalf("Expected at least 1 video from the golden TestWttVideoProcessor, got 0")
 	}
-	
+
 	if videos[0].VideoID != "hJXfBULLDro" {
 		t.Errorf("Expected video ID 'hJXfBULLDro', got '%s'", videos[0].VideoID)
 	}
@@ -95,7 +93,7 @@ func TestIntegration_ProcessQueue(t *testing.T) {
 			UploadDate: "2026-01-01",
 		},
 	}
-	
+
 	if err := SaveQueue(queueFile.Name(), entries); err != nil {
 		t.Fatalf("failed to save temp queue: %v", err)
 	}
@@ -113,7 +111,7 @@ func TestIntegration_ProcessQueue(t *testing.T) {
 		importJSON: mockImport,
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
+	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}
@@ -143,11 +141,11 @@ func TestIntegration_ProcessQueue(t *testing.T) {
 	if len(result.Matches) != 2 {
 		t.Fatalf("Expected exactly 2 matches, got %d", len(result.Matches))
 	}
-	
+
 	if result.Matches[0].Player1 != "SUN YINGSHA" || result.Matches[0].Player2 != "WANG MANYU" {
 		t.Errorf("Match 1 players incorrect: %s vs %s", result.Matches[0].Player1, result.Matches[0].Player2)
 	}
-	
+
 	if result.Matches[1].Player1 != "WANG CHUQIN" || result.Matches[1].Player2 != "LIN YUN-JU" {
 		t.Errorf("Match 2 players incorrect: %s vs %s", result.Matches[1].Player1, result.Matches[1].Player2)
 	}
@@ -162,23 +160,23 @@ func TestIntegration_AddNewStreams_OpenVINO(t *testing.T) {
 	imageName = "wtt-stream-match-finder-openvino:latest"
 	os.Setenv("FORCE_OPENVINO", "1")
 	defer os.Unsetenv("FORCE_OPENVINO")
-	
+
 	fetcher := &dockerStreamFetcher{
 		extraArgs: []string{},
 		runDocker: func(outputFile string, args []string) error {
 			return injectGoldenToDocker(outputFile, args, goldenPath)
 		},
 	}
-	
+
 	videos, err := fetcher.FetchStreamsAfter("dummy_id")
 	if err != nil {
 		t.Fatalf("dockerStreamFetcher failed to fetch streams: %v", err)
 	}
-	
+
 	if len(videos) == 0 {
 		t.Fatalf("Expected at least 1 video from the golden TestWttVideoProcessor, got 0")
 	}
-	
+
 	if videos[0].VideoID != "hJXfBULLDro" {
 		t.Errorf("Expected video ID 'hJXfBULLDro', got '%s'", videos[0].VideoID)
 	}
@@ -208,7 +206,7 @@ func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 			UploadDate: "2026-01-01",
 		},
 	}
-	
+
 	if err := SaveQueue(queueFile.Name(), entries); err != nil {
 		t.Fatalf("failed to save temp queue: %v", err)
 	}
@@ -226,7 +224,7 @@ func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 		importJSON: mockImport,
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
+	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}
@@ -256,11 +254,11 @@ func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 	if len(result.Matches) != 2 {
 		t.Fatalf("Expected exactly 2 matches, got %d", len(result.Matches))
 	}
-	
+
 	if result.Matches[0].Player1 != "SUN YINGSHA" || result.Matches[0].Player2 != "WANG MANYU" {
 		t.Errorf("Match 1 players incorrect: %s vs %s", result.Matches[0].Player1, result.Matches[0].Player2)
 	}
-	
+
 	if result.Matches[1].Player1 != "WANG CHUQIN" || result.Matches[1].Player2 != "LIN YUN-JU" {
 		t.Errorf("Match 2 players incorrect: %s vs %s", result.Matches[1].Player1, result.Matches[1].Player2)
 	}

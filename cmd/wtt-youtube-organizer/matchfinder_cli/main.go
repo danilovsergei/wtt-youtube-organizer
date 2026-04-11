@@ -105,14 +105,13 @@ var (
 	getCookies       bool
 )
 
-
 func getCudaDevices() []string {
 	cmd := exec.Command("nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
-	
+
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	var devices []string
 	for _, line := range lines {
@@ -151,19 +150,18 @@ func hasNvidiaDocker() bool {
 	cmd := exec.Command("docker", "run", "--rm", "--gpus", "all", "ubuntu", "nvidia-smi")
 	err := cmd.Run()
 	if err == nil {
-	    return true
+		return true
 	}
-	
+
 	// If standard fails, check if privileged works
 	cmdPriv := exec.Command("docker", "run", "--rm", "--privileged", "--gpus", "all", "ubuntu", "nvidia-smi")
 	errPriv := cmdPriv.Run()
 	if errPriv == nil {
-	    return true
+		return true
 	}
-	
+
 	return false
 }
-
 
 func getCookiesPath(outputDir string) (string, error) {
 	if !getCookies {
@@ -211,7 +209,7 @@ func initDockerVars(extraArgs []string) {
 			fmt.Println("  sudo systemctl restart docker")
 			os.Exit(1)
 		}
-		
+
 		// Check for multiple GPUs and require explicit selection
 		devices := getCudaDevices()
 		if len(devices) > 1 {
@@ -308,7 +306,7 @@ func runMatchFinder(extraArgs []string) error {
 			containerArgs = append(containerArgs, "--cuda_device_name", devName)
 		}
 	}
-	
+
 	// Temporarily inject into extraArgs strictly for initDockerVars to check --backend openvino
 	tempInitArgs := append(extraArgs, containerArgs...)
 	initDockerVars(tempInitArgs)
@@ -659,7 +657,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		containerArgs := []string{
 			"--youtube_video=" + youtubeURL,
 		}
-		
+
 		// Inject CUDA args if missing
 		if cudaDeviceID >= 0 && !strings.Contains(strings.Join(containerArgs, " "), "--cuda_device_id") {
 			containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
@@ -668,7 +666,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 			}
 		}
 
-			containerArgs = append(containerArgs, extraArgs...)
+		containerArgs = append(containerArgs, extraArgs...)
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
 			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
@@ -780,10 +778,13 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 		logPrintln("  render GID: not found")
 	}
 
-	if dockerDir == "docker/cuda" { logPrintln("NVIDIA GPU: Using CUDA and --gpus all") } else { logPrintln("Intel GPU: Using container's built-in drivers") }
+	if dockerDir == "docker/cuda" {
+		logPrintln("NVIDIA GPU: Using CUDA and --gpus all")
+	} else {
+		logPrintln("Intel GPU: Using container's built-in drivers")
+	}
 	logPrintln()
 
-	
 	args := buildDockerRunArgsNoOutput(imageName, videoGID, renderGID, containerArgs, cookieFile)
 
 	cmd := exec.Command("docker", args...)
@@ -825,7 +826,11 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 		logPrintln("  render GID: not found")
 	}
 
-	if dockerDir == "docker/cuda" { logPrintln("NVIDIA GPU: Using CUDA and --gpus all") } else { logPrintln("Intel GPU: Using container's built-in drivers") }
+	if dockerDir == "docker/cuda" {
+		logPrintln("NVIDIA GPU: Using CUDA and --gpus all")
+	} else {
+		logPrintln("Intel GPU: Using container's built-in drivers")
+	}
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -835,7 +840,7 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	logPrintf("Output file: %s\n\n", outputFilename)
 
 	fullContainerArgs := append(containerArgs, "--output_json_file", "/output/"+outputFilename)
-	
+
 	// Pass the exact same outputDir that is being bind-mounted to docker!
 	cookieFile, err := getCookiesPath(outputDir)
 	if err != nil {
@@ -844,7 +849,7 @@ func runDockerContainer(absOutputJSON string, containerArgs []string) error {
 	if cookieFile != "" {
 		fullContainerArgs = append(fullContainerArgs, "--cookies_file", "/output/yt_cookies.txt")
 	}
-	
+
 	args := buildDockerRunArgs(imageName, outputDir, videoGID, renderGID, fullContainerArgs, cookieFile)
 
 	cmd := exec.Command("docker", args...)
@@ -930,7 +935,7 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 	args := []string{"run", "--rm"}
 
 	if dockerDir == "docker/cuda" {
-		// Modern gLinux / Debian environments often require --privileged 
+		// Modern gLinux / Debian environments often require --privileged
 		// alongside --gpus all due to strict cgroups device isolation.
 		args = append(args, "--privileged", "--gpus", "all")
 	} else {
@@ -939,8 +944,6 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 			args = append(args, "--group-add", strconv.Itoa(renderGID))
 		}
 	}
-
-
 
 	// Mount output dir and log dir for cropped images
 	cropLogDir := getCropLogDir()
@@ -964,7 +967,7 @@ func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, conta
 	args := []string{"run", "--rm"}
 
 	if dockerDir == "docker/cuda" {
-		// Modern gLinux / Debian environments often require --privileged 
+		// Modern gLinux / Debian environments often require --privileged
 		// alongside --gpus all due to strict cgroups device isolation.
 		args = append(args, "--privileged", "--gpus", "all")
 	} else {

@@ -2,10 +2,10 @@ package matchfinder_cli
 
 import (
 	"encoding/json"
-		"strings"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"wtt-youtube-organizer/config"
 	"wtt-youtube-organizer/db/importer"
 )

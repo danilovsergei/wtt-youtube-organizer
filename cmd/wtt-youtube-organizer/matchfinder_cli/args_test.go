@@ -1,9 +1,9 @@
 package matchfinder_cli
 
 import (
+	"os"
 	"reflect"
 	"testing"
-	"os"
 )
 
 func TestBuildContainerArgs_NoCuda(t *testing.T) {
@@ -19,11 +19,11 @@ func TestBuildContainerArgs_WithCuda(t *testing.T) {
 	// NOTE: getCudaDeviceName(1) might return "" in tests depending on the environment,
 	// so we mainly verify that "--cuda_device_id" and "1" are present.
 	args := buildContainerArgs(1)
-	
+
 	if len(args) < 2 {
 		t.Fatalf("Expected at least 2 args for cudaDeviceID=1, got %d: %v", len(args), args)
 	}
-	
+
 	if args[0] != "--cuda_device_id" || args[1] != "1" {
 		t.Errorf("Expected ['--cuda_device_id', '1'], got %v", args)
 	}
@@ -50,31 +50,31 @@ func TestGetProvidedVideoID_Provided(t *testing.T) {
 func TestContainerArgsSeparation_BugRegression(t *testing.T) {
 	// This specifically tests the regression that broke --add_new_streams.
 	// Cobra passes us the exact un-parsed positional arguments.
-	// If the user runs `matchfinder --add_new_streams --cuda_device_id 1`, 
+	// If the user runs `matchfinder --add_new_streams --cuda_device_id 1`,
 	// Cobra will process the flags and pass us empty positional arguments!
 	cobraPositionalArgs := []string{}
-	
+
 	// We simulate extracting the video ID from what Cobra gave us
 	vid := getProvidedVideoID(cobraPositionalArgs)
 	if vid != "" {
 		t.Errorf("Regression: providedVideoID should be empty, but got '%s'", vid)
 	}
-	
+
 	// We simulate building the internal container arguments from the global flags
 	containerArgs := buildContainerArgs(1)
 	if len(containerArgs) < 2 || containerArgs[0] != "--cuda_device_id" || containerArgs[1] != "1" {
 		t.Errorf("Regression: containerArgs should contain CUDA flags independently")
 	}
-	
+
 	// We verify that the original positional arguments are completely unmodified
 	if len(cobraPositionalArgs) != 0 {
 		t.Errorf("Regression: cobraPositionalArgs slice was modified!")
 	}
-	
+
 	// Ensure that appending them together (as runDockerContainer does) works
 	finalArgs := append(cobraPositionalArgs, containerArgs...)
 	expected := []string{"--cuda_device_id", "1"}
-	
+
 	// We check the prefix because getCudaDeviceName might append more
 	if !reflect.DeepEqual(finalArgs[:2], expected) {
 		t.Errorf("Expected final args to start with %v, got %v", expected, finalArgs)
@@ -84,9 +84,9 @@ func TestContainerArgsSeparation_BugRegression(t *testing.T) {
 func TestHyphenatedVideoID_AddNewStreams(t *testing.T) {
 	// This tests a regression where video IDs starting with hyphens (e.g. "-8NJu5XO23U")
 	// were interpreted by Python's argparse as command line flags instead of values.
-	
+
 	var capturedArgs []string
-	
+
 	fetcher := &dockerStreamFetcher{
 		extraArgs: []string{},
 		runDocker: func(outputFile string, args []string) error {
@@ -95,12 +95,12 @@ func TestHyphenatedVideoID_AddNewStreams(t *testing.T) {
 			return os.WriteFile(outputFile, []byte("[]"), 0644)
 		},
 	}
-	
+
 	_, err := fetcher.FetchStreamsAfter("-8NJu5XO23U")
 	if err != nil {
 		t.Fatalf("FetchStreamsAfter failed: %v", err)
 	}
-	
+
 	// Assert the arguments use the "=" syntax
 	foundCorrectSyntax := false
 	for _, arg := range capturedArgs {
@@ -111,7 +111,7 @@ func TestHyphenatedVideoID_AddNewStreams(t *testing.T) {
 			t.Errorf("Found separated flag '--process_all_matches_after', which breaks Python argparse for hyphenated IDs!")
 		}
 	}
-	
+
 	if !foundCorrectSyntax {
 		t.Errorf("Expected to find '--process_all_matches_after=-8NJu5XO23U' in args, got: %v", capturedArgs)
 	}
@@ -119,7 +119,7 @@ func TestHyphenatedVideoID_AddNewStreams(t *testing.T) {
 
 func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
 	// This tests the same regression but for the --process command
-	
+
 	queueFile, err := os.CreateTemp("", "hyphen_queue_*.json")
 	if err != nil {
 		t.Fatalf("failed to create temp queue file: %v", err)
@@ -133,7 +133,7 @@ func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
 			UploadDate: "2026-01-01",
 		},
 	}
-	
+
 	if err := SaveQueue(queueFile.Name(), entries); err != nil {
 		t.Fatalf("failed to save temp queue: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
 		},
 	}
 
-	err = processQueueVideosWithDeps(queueFile.Name(),  deps,  []string{}, "")
+	err = processQueueVideosWithDeps(queueFile.Name(), deps, []string{}, "")
 	if err != nil {
 		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestHyphenatedVideoID_ProcessQueue(t *testing.T) {
 			t.Errorf("Found separated flag '--youtube_video', which breaks Python argparse for hyphenated URLs/IDs!")
 		}
 	}
-	
+
 	if !foundCorrectSyntax {
 		t.Errorf("Expected to find '--youtube_video=https://www.youtube.com/watch?v=-8NJu5XO23U' in args, got: %v", capturedArgs)
 	}

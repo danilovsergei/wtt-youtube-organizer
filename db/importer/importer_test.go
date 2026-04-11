@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS matches (
 	tournament_id BIGINT NOT NULL REFERENCES tournaments(id),
 	video_offset_seconds INTEGER NOT NULL DEFAULT 0,
 	is_doubles BOOLEAN NOT NULL DEFAULT false,
-	video_id BIGINT NOT NULL REFERENCES videos(id)
+	video_id BIGINT NOT NULL REFERENCES videos(id),
+	session INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS match_participants (

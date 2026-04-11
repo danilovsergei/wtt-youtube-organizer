@@ -498,6 +498,10 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 				i+1, matchJSON.Player1, matchJSON.Player2, matchType, matchJSON.Timestamp)
 		}
 
+		if err := updateSessionsForDay(ctx, tx, tournamentID, day); err != nil {
+			return fmt.Errorf("failed to update sessions: %w", err)
+		}
+
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to commit: %w", err)
 		}
@@ -506,5 +510,77 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 
 	fmt.Printf("\n=== Summary ===\n")
 	fmt.Printf("Processed %d video(s) from JSON file\n", len(videos))
+	return nil
+}
+
+func updateSessionsForDay(ctx context.Context, tx pgx.Tx, tournamentID int, day string) error {
+	// 1. Fetch all matches for this tournament and day, sorted chronologically
+	rows, err := tx.Query(ctx, `
+		SELECT m.id 
+		FROM matches m
+		JOIN videos v ON m.video_id = v.id
+		WHERE m.tournament_id = $1 AND v.day = $2
+		ORDER BY FLOOR(EXTRACT(EPOCH FROM (v.upload_date - (SELECT MIN(upload_date) FROM videos WHERE tournament_id = $1 AND day = $2))) / 1800) ASC, m.video_offset_seconds ASC
+	`, tournamentID, day)
+	if err != nil {
+		return fmt.Errorf("failed to query matches for session update: %w", err)
+	}
+
+	var matchIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		matchIDs = append(matchIDs, id)
+	}
+	rows.Close()
+
+	if len(matchIDs) == 0 {
+		return nil
+	}
+
+	// 2. Fetch participants for these matches
+	participantRows, err := tx.Query(ctx, `
+		SELECT match_id, player_id
+		FROM match_participants
+		WHERE match_id = ANY($1)
+	`, matchIDs)
+	if err != nil {
+		return fmt.Errorf("failed to query participants for session update: %w", err)
+	}
+
+	matchPlayers := make(map[int][]int)
+	for participantRows.Next() {
+		var matchID, playerID int
+		if err := participantRows.Scan(&matchID, &playerID); err != nil {
+			return err
+		}
+		matchPlayers[matchID] = append(matchPlayers[matchID], playerID)
+	}
+	participantRows.Close()
+
+	// 3. Assign sessions
+	playerMatchCount := make(map[int]int)
+	for _, matchID := range matchIDs {
+		session := 1
+		players := matchPlayers[matchID]
+		for _, playerID := range players {
+			if count := playerMatchCount[playerID]; count+1 > session {
+				session = count + 1
+			}
+		}
+
+		for _, playerID := range players {
+			playerMatchCount[playerID] = session
+		}
+
+		// Update the match in the DB
+		_, err := tx.Exec(ctx, "UPDATE matches SET session = $1 WHERE id = $2", session, matchID)
+		if err != nil {
+			return fmt.Errorf("failed to update session for match %d: %w", matchID, err)
+		}
+	}
+
 	return nil
 }

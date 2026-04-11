@@ -2,9 +2,9 @@ package matchfinder_cli
 
 import (
 	"fmt"
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,7 +80,7 @@ func TestAddNewStreams_NoVideoID_CreatesLatestStreams(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath,  "DB_LAST",  fetcher, "")
+	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestAddNewStreams_WithVideoID_CreatesNamedQueue(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath,  "xyz789",  fetcher, "")
+	count, err := AddNewStreams(queuePath, "xyz789", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAddNewStreams_EmptyQueue_UsesAfterVideoID(t *testing.T) {
 		},
 	}
 
-	_, err := AddNewStreams(queuePath,  "DB_VIDEO_ID",  fetcher, "")
+	_, err := AddNewStreams(queuePath, "DB_VIDEO_ID", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestAddNewStreams_ExistingQueue_UsesTopVideoID(t *testing.T) {
 		},
 	}
 
-	_, err := AddNewStreams(queuePath,  "IGNORED_DB_ID",  fetcher, "")
+	_, err := AddNewStreams(queuePath, "IGNORED_DB_ID", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestAddNewStreams_PrependsToTopOfQueue(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath,  "",  fetcher, "")
+	count, err := AddNewStreams(queuePath, "", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -475,7 +475,7 @@ func TestAddNewStreams_WithChecker_FiltersProcessed(t *testing.T) {
 		processedIDs: map[string]bool{"B": true},
 	}
 
-	count, err := AddNewStreams(queuePath,   "xyz",   fetcher, "", checker)
+	count, err := AddNewStreams(queuePath, "xyz", fetcher, "", checker)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestAddNewStreams_WithChecker_AllProcessed_NothingAdded(t *testing.T) {
 		processedIDs: map[string]bool{"A": true, "B": true},
 	}
 
-	count, err := AddNewStreams(queuePath,   "xyz",   fetcher, "", checker)
+	count, err := AddNewStreams(queuePath, "xyz", fetcher, "", checker)
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -531,7 +531,7 @@ func TestAddNewStreams_WithoutChecker_NoFiltering(t *testing.T) {
 		},
 	}
 
-	count, err := AddNewStreams(queuePath,  "DB_LAST",  fetcher, "")
+	count, err := AddNewStreams(queuePath, "DB_LAST", fetcher, "")
 	if err != nil {
 		t.Fatalf("AddNewStreams failed: %v", err)
 	}
@@ -554,7 +554,7 @@ func TestAddNewStreams_NoNewStreams(t *testing.T) {
 		returnEntries: []QueueEntry{},
 	}
 
-	count, err := AddNewStreams(queuePath,  "SOME_ID",  fetcher, "")
+	count, err := AddNewStreams(queuePath, "SOME_ID", fetcher, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestProcessQueue_SkipsDockerError_ContinuesProcessing(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped, processing continues)
-	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestProcessQueue_DockerFailsForAll_AllRemainInQueue(t *testing.T) {
 	}
 
 	// Should NOT return error (docker errors are skipped)
-	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -730,7 +730,7 @@ func TestProcessQueue_StopsOnImportError_VideoRemainsInQueue(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
 
 	if err == nil {
 		t.Fatal("expected error from processQueueVideos, got nil")
@@ -775,7 +775,7 @@ func TestProcessQueue_RemovesVideoOnSuccessfulImport(t *testing.T) {
 		},
 	}
 
-	err := processQueueVideosWithDeps(queuePath,  deps,  nil, "")
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
 	if err != nil {
 		t.Fatalf("processQueueVideos should not fail: %v", err)
 	}
@@ -801,7 +801,7 @@ func TestAddNewStreams_WithFilter_FiltersOutNonMatching(t *testing.T) {
 	}
 
 	filterTitle := "WTT Champions Chongqing 2026"
-	
+
 	// Execute AddNewStreams with the filter
 	count, err := AddNewStreams(queuePath, "dummy_id", fetcher, filterTitle, nil)
 	if err != nil {
@@ -817,7 +817,7 @@ func TestAddNewStreams_WithFilter_FiltersOutNonMatching(t *testing.T) {
 	if len(queue) != 2 {
 		t.Fatalf("Expected 2 videos in queue, got %d", len(queue))
 	}
-	
+
 	if queue[0].VideoID != "1" || queue[1].VideoID != "3" {
 		t.Errorf("Incorrect videos in queue: %v", queue)
 	}
@@ -829,11 +829,11 @@ func TestAddNewStreams_SkipsCeremonyAndShowExceptFinals(t *testing.T) {
 
 	fetcher := &mockStreamFetcher{
 		returnEntries: []QueueEntry{
-			{VideoID: "1", VideoTitle: "LIVE! | Opening Ceremony | WTT Singapore Smash"}, // Should skip
-			{VideoID: "2", VideoTitle: "LIVE! | WTT Singapore Smash | Pre-Show"},         // Should skip
-			{VideoID: "3", VideoTitle: "LIVE! | WTT Singapore Smash | Semi-Finals"},      // Should keep
+			{VideoID: "1", VideoTitle: "LIVE! | Opening Ceremony | WTT Singapore Smash"},          // Should skip
+			{VideoID: "2", VideoTitle: "LIVE! | WTT Singapore Smash | Pre-Show"},                  // Should skip
+			{VideoID: "3", VideoTitle: "LIVE! | WTT Singapore Smash | Semi-Finals"},               // Should keep
 			{VideoID: "4", VideoTitle: "LIVE! | WTT Singapore Smash | Finals & Closing Ceremony"}, // Should keep
-			{VideoID: "5", VideoTitle: "LIVE! | Award Ceremony for Finals"},              // Should keep
+			{VideoID: "5", VideoTitle: "LIVE! | Award Ceremony for Finals"},                       // Should keep
 		},
 	}
 
@@ -895,7 +895,7 @@ func TestProcessQueue_WithFilter_SkipsNonMatching(t *testing.T) {
 		t.Fatalf("Expected 2 videos to be processed, got %d: %v", len(processedIDs), processedIDs)
 	}
 	// Oldest first! So it processes the end of the array first.
-	if processedIDs[0] != "3" || processedIDs[1] != "1" { 
+	if processedIDs[0] != "3" || processedIDs[1] != "1" {
 		t.Errorf("Expected videos 3 and 1 to be processed, got %v", processedIDs)
 	}
 
