@@ -713,10 +713,12 @@ def main():
             f"Fetching videos newer than {args.process_all_matches_after}...")
         videos = processor.get_videos_after(args.process_all_matches_after)
 
-        if not videos:
+        if videos is None:
+            print(f"Video ID '{args.process_all_matches_after}' does not exist or was deleted.")
+            sys.exit(2)
+        elif len(videos) == 0:
             print("No videos found newer than the specified video ID.")
-            print("(Video ID may not exist or there are no newer "
-                  "completed streams)")
+            print("(There are no newer completed streams)")
             if args.output_json_file:
                 with open(args.output_json_file, 'w') as f:
                     json.dump([], f)

@@ -4,6 +4,7 @@ package matchfinder_cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -442,30 +443,27 @@ func runMatchFinder(extraArgs []string) error {
 		queueName := QueueFileName(providedVideoID)
 		queuePath := QueueFilePath(queueName)
 
-		// Determine afterVideoID for the docker container
-		var afterVideoID string
-
 		// Check if queue already exists
 		existingQueue, err := LoadQueue(queuePath)
 		if err != nil {
 			return fmt.Errorf("failed to load queue: %w", err)
 		}
 
+		var candidateVideoIDs []string
 		if len(existingQueue) > 0 {
 			// Queue exists: use top entry (newest) as cutoff
-			afterVideoID = existingQueue[0].VideoID
+			candidateVideoIDs = []string{existingQueue[0].VideoID}
 			logPrintf("Queue exists with %d entries. Using top video ID: %s\n",
-				len(existingQueue), afterVideoID)
+				len(existingQueue), candidateVideoIDs[0])
 		} else if providedVideoID != "" {
 			// New queue with provided video_id
-			afterVideoID = providedVideoID
+			candidateVideoIDs = []string{providedVideoID}
 		} else {
-			// New queue without video_id: use latest video from database
-			afterVideoID, err = importer.GetLatestUploadDateVideoID()
+			// New queue without video_id: use latest videos from database
+			candidateVideoIDs, err = importer.GetRecentUploadDateVideoIDs(10)
 			if err != nil {
-				return fmt.Errorf("failed to get video ID from database: %w", err)
+				return fmt.Errorf("failed to get recent video IDs from database: %w", err)
 			}
-			logPrintf("Using latest video ID from database: %s\n", afterVideoID)
 		}
 
 		// Create docker-based stream fetcher
@@ -482,9 +480,22 @@ func runMatchFinder(extraArgs []string) error {
 		// (docker may return duplicates from the latest upload_date that are already in DB)
 		checker := &dbProcessedChecker{}
 		var count int
-		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker)
-		if err != nil {
-			return err
+		var afterVideoID string
+		
+		for _, vid := range candidateVideoIDs {
+			afterVideoID = vid
+			logPrintf("Using video ID as cutoff: %s\n", afterVideoID)
+			
+			count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker)
+			if err != nil {
+				var exitErr *exec.ExitError
+				if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+					logPrintf("Video %s is unavailable (likely deleted). Trying next oldest video...\n", afterVideoID)
+					continue
+				}
+				return err
+			}
+			break // Success
 		}
 
 		logPrintf("\n=== Queue Update ===\n")

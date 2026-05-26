@@ -22,20 +22,7 @@ from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 BOTTOM_PERCENT = 0.14  # Fraction of height to crop from the bottom
 LEFT_PERCENT = 0.40    # Fraction of width to crop from the left
 
-# Backend constants
-BACKEND_PYTORCH = "pytorch"
-BACKEND_OPENVINO = "openvino"
-ALL_BACKENDS = [BACKEND_PYTORCH, BACKEND_OPENVINO]
-
-
-def get_default_backend() -> str:
-    """Get default backend - use openvino if available, else pytorch."""
-    try:
-        import openvino  # noqa: F401
-        return BACKEND_OPENVINO
-    except ImportError:
-        return BACKEND_PYTORCH
-
+from prod_video_processor import ScoreExtractor, get_device, get_default_backend, BACKEND_PYTORCH, BACKEND_OPENVINO, ALL_BACKENDS
 
 def load_expected_data(csv_path):
     data = {}
@@ -51,7 +38,6 @@ def load_expected_data(csv_path):
             if filename:
                 data[filename] = row
     return data
-
 
 def crop_images(input_dir, output_dir):
     print(f"--- Cropping Images from {input_dir} ---")
@@ -96,147 +82,63 @@ def crop_images(input_dir, output_dir):
 
     print(f"Finished cropping {len(image_files)} images.")
 
+def load_expected_data(csv_path):
+    data = {}
+    if not os.path.exists(csv_path):
+        print(f"Warning: CSV file not found at {csv_path}")
+        return data
 
-import torch
+    with open(csv_path, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            path = row.get('image path', '')
+            filename = os.path.basename(path)
+            if filename:
+                data[filename] = row
+    return data
 
-def get_device(args):
-    if not torch.cuda.is_available():
-        return torch.device("cpu")
+def crop_images(input_dir, output_dir):
+    print(f"--- Cropping Images from {input_dir} ---")
 
-    num_devices = torch.cuda.device_count()
+    if not os.path.exists(input_dir):
+        print(f"Error: Input directory not found at {input_dir}")
+        return
 
-    if getattr(args, "cuda_device_name", None) is not None:
-        target_name = args.cuda_device_name.strip()
-        for i in range(num_devices):
-            if torch.cuda.get_device_name(i).strip() == target_name:
-                print(f"\n[DEVICE INFO] Successfully mapped hardware name '{target_name}' to internal PyTorch index 'cuda:{i}'")
-                return torch.device(f"cuda:{i}")
-        print(f"\n[DEVICE INFO] Warning: Could not find GPU matching name '{target_name}'. Falling back to ID.")
+    if os.path.exists(output_dir):
+        old_files = glob.glob(os.path.join(output_dir, '*.jpg'))
+        if old_files:
+            print(f"Cleaning {len(old_files)} old images from {output_dir}")
+            for f in old_files:
+                os.remove(f)
+    else:
+        os.makedirs(output_dir)
+        print(f"Created output directory at {output_dir}")
 
-    if getattr(args, "cuda_device_id", None) is not None:
-        if 0 <= args.cuda_device_id < num_devices:
-            return torch.device(f"cuda:{args.cuda_device_id}")
-        else:
-            print(f"Error: Specified --cuda_device_id {args.cuda_device_id} is out of range. Available devices: 0 to {num_devices - 1}.")
-            sys.exit(1)
+    image_files = glob.glob(os.path.join(input_dir, '*.jpg'))
 
-    if num_devices == 1:
-        return torch.device("cuda:0")
+    if not image_files:
+        print(f"No .jpg images found in {input_dir}")
+        return
 
-    print("Multiple CUDA devices found. Please specify which one to use with --cuda_device_id <number>")
-    for i in range(num_devices):
-        print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
-    sys.exit(1)
+    print(f"Found {len(image_files)} images. Cropping...")
 
-class ScoreExtractor:
-    """Handles score extraction using Florence-2 OCR model."""
+    for img_path in image_files:
+        filename = os.path.basename(img_path)
+        img = cv2.imread(img_path)
 
-    def __init__(self, model_path: str, backend: str = None, device: str = "cpu"):
-        self.model_path = model_path
-        self._backend = backend or get_default_backend()
-        self.processor = None
-        self.model = None
-        self._ov_model = None
-        self._initialized = False
-        self.device = device
+        if img is None:
+            print(f"Warning: Could not read {filename}. Skipping.")
+            continue
 
-    def initialize(self) -> bool:
-        """Load the Florence-2 model using selected backend."""
-        if self._initialized:
-            return True
+        h, w = img.shape[:2]
+        y_start = int(h * (1 - BOTTOM_PERCENT))
+        x_end = int(w * LEFT_PERCENT)
+        cropped_img = img[y_start:h, 0:x_end]
 
-        if self._backend == BACKEND_OPENVINO:
-            return self._initialize_openvino()
-        else:
-            return self._initialize_pytorch()
+        output_path = os.path.join(output_dir, filename)
+        cv2.imwrite(output_path, cropped_img)
 
-    def _initialize_pytorch(self) -> bool:
-        """Initialize PyTorch backend."""
-        import torch
-        dev_info = ""
-        if str(self.device).startswith("cuda"):
-            try:
-                idx = getattr(self.device, "index", None)
-                if idx is None and ":" in str(self.device):
-                    idx = int(str(self.device).split(":")[1])
-                elif idx is None:
-                    idx = 0 # Default to 0 if just 'cuda'
-                dev_info = f" - {torch.cuda.get_device_name(idx)}"
-            except Exception:
-                pass
-        print(f"Loading Florence-2 model (PyTorch on {self.device}{dev_info})...")
-        try:
-            self.processor = AutoProcessor.from_pretrained(
-                self.model_path, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path, trust_remote_code=True,
-                attn_implementation="eager").to(self.device)
-            self._initialized = True
-            print("Model loaded successfully.")
-            return True
-        except Exception as e:
-            print(f"Error loading Florence-2 model: {e}")
-            return False
-
-    def _initialize_openvino(self) -> bool:
-        """Initialize OpenVINO backend for GPU acceleration."""
-        print("Loading Florence-2 model (OpenVINO GPU)...")
-        try:
-            from backends.ov_florence2_helper import (
-                OVFlorence2Model
-            )
-
-            ov_model_dir = Path(self.model_path) / "openvino"
-
-            self.processor = AutoProcessor.from_pretrained(
-                ov_model_dir, trust_remote_code=True)
-
-            self._ov_model = OVFlorence2Model(
-                ov_model_dir, device="GPU", ov_config={})
-
-            self._initialized = True
-            print("Model loaded successfully (OpenVINO GPU).")
-            return True
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            return False
-        except Exception as e:
-            print(f"Error loading OpenVINO model: {e}")
-            print("Falling back to PyTorch...")
-            self._backend = BACKEND_PYTORCH
-            return self._initialize_pytorch()
-
-    def extract(self, pil_image: Image.Image) -> str:
-        """Extract text from image using OCR."""
-        if not self._initialized:
-            raise RuntimeError("Model not initialized")
-
-        prompt = "<WTT_SCORE>"
-        inputs = self.processor(
-            text=prompt, images=pil_image, return_tensors="pt").to(self.device)
-
-        if self._backend == BACKEND_OPENVINO:
-            generated_ids = self._ov_model.generate(
-                input_ids=inputs["input_ids"],
-                pixel_values=inputs["pixel_values"],
-                max_new_tokens=1024,
-                num_beams=1,
-                do_sample=False
-            )
-        else:
-            inputs = inputs.to(self.device)
-            generated_ids = self.model.generate(
-                input_ids=inputs["input_ids"],
-                pixel_values=inputs["pixel_values"],
-                max_new_tokens=1024,
-                num_beams=1,
-                do_sample=False,
-                use_cache=False
-            )
-
-        return self.processor.batch_decode(
-            generated_ids, skip_special_tokens=True)[0]
-
+    print(f"Finished cropping {len(image_files)} images.")
 
 def process_images(image_dir, csv_path, extractor, verify_mode=True):
     print(f"\n--- Running Florence-2 on {image_dir} ---")
@@ -259,8 +161,8 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
             print(f"Error reading image {filename}: {e}")
             continue
 
-        generated_text = extractor.extract(pil_image)
-        score_result = parse_score(generated_text)
+        score_result = extractor.extract_score(pil_image)
+        generated_text = score_result.error if not score_result.success else 'Successfully extracted'
 
         if verify_mode:
             expected = expected_data.get(filename)
@@ -390,7 +292,6 @@ def main():
     print(f"Crop images: {do_crop}")
 
     # Initialize model
-    model_path = os.path.join(script_dir, "florence2-tt-finetuned")
     device = get_device(args) if backend == BACKEND_PYTORCH else 'cpu'
     
     # Print the resolved device immediately
@@ -403,7 +304,7 @@ def main():
         except Exception:
             pass
     print(f"Resolved execution device: {device}{dev_name_print}")
-    extractor = ScoreExtractor(model_path, backend=backend, device=device)
+    extractor = ScoreExtractor(backend=backend, device=device)
 
     if not extractor.initialize():
         print("Failed to initialize model")

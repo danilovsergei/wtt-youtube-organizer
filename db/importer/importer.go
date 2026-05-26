@@ -584,3 +584,49 @@ func updateSessionsForDay(ctx context.Context, tx pgx.Tx, tournamentID int, day 
 
 	return nil
 }
+
+
+// GetRecentUploadDateVideoIDs returns a list of youtube_ids ordered by upload_date DESC up to the given limit.
+func GetRecentUploadDateVideoIDs(limit int) ([]string, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
+	}
+
+	conn, err := pgx.Connect(context.Background(), databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer conn.Close(context.Background())
+
+	return GetRecentUploadDateVideoIDsWithConn(context.Background(), conn, limit)
+}
+
+func GetRecentUploadDateVideoIDsWithConn(ctx context.Context, conn *pgx.Conn, limit int) ([]string, error) {
+	var ids []string
+	rows, err := conn.Query(ctx, `
+		SELECT youtube_id FROM videos
+		ORDER BY upload_date DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query recent videos: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan video id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+	
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no videos found in database")
+	}
+	
+	return ids, nil
+}

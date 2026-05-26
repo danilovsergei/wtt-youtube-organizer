@@ -221,7 +221,7 @@ class ScoreExtractor:
             num_beams=1,
             do_sample=False,
             early_stopping=False,
-            repetition_penalty=1.2,
+            
             use_cache=True
         )
         return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
@@ -238,7 +238,7 @@ class ScoreExtractor:
             num_beams=1,
             do_sample=False,
             early_stopping=False,
-            repetition_penalty=1.2
+            
         )
         return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
@@ -391,7 +391,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         title, _ = self.fetch_video_info(url)
         return title is not None
 
-    def get_videos_after(self, after_video_id: str, batch_size: int = 200, max_batches: int = 10) -> List[dict]:
+    def get_videos_after(self, after_video_id: str, batch_size: int = 200, max_batches: int = 10) -> Optional[List[dict]]:
         """
         Get all completed streams newer than the specified video_id.
         Fetches playlist in batches, loading older videos if the
@@ -417,7 +417,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         if not self.validate_video_exists(after_video_id):
             print(
                 f"Error: Video '{after_video_id}' does not exist or is not accessible.")
-            return []
+            return None
         playlist_url = 'https://www.youtube.com/@WTTGlobal/streams'
         for batch_num in range(1, max_batches + 1):
             total_videos = batch_size * batch_num
@@ -453,15 +453,15 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                     if len(entries) < total_videos:
                         print(
                             f"Video '{after_video_id}' not found in playlist ({len(entries)} videos checked)")
-                        return []
+                        return None
                     print(
                         f'Video not found in first {total_videos} entries, fetching more...')
             except Exception as e:
                 print(f'Error fetching streams: {e}')
-                return []
+                return None
         print(
             f"Video '{after_video_id}' not found after checking {batch_size * max_batches} videos")
-        return []
+        return None
 
     def get_video_duration(self, video_path: str) -> float:
         """Get video duration in seconds using ffprobe."""

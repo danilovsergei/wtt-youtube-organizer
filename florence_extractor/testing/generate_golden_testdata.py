@@ -11,14 +11,6 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prod_video_processor import ProdWttVideoProcessor
 
-
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    print("Error: google-genai is not installed. Please run: pip install google-genai")
-    sys.exit(1)
-
 # Cropping constants from our established logic
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
@@ -108,14 +100,14 @@ def process_video(video_path: str, output_dir: str):
 
 def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
     """Run Gemini OCR on unique frames and map back to seconds."""
-    if not os.path.exists(mapping_file):
-        print(f"Error: Mapping file not found: {mapping_file}")
-        sys.exit(1)
-
-    with open(mapping_file, "r") as f:
-        mapping = json.load(f)
-
-    unique_frames = sorted(list(set(mapping.values())))
+    if mapping_file and os.path.exists(mapping_file):
+        with open(mapping_file, "r") as f:
+            mapping = json.load(f)
+        unique_frames = sorted(list(set(mapping.values())))
+    else:
+        import glob
+        mapping = None
+        unique_frames = sorted([os.path.basename(p) for p in glob.glob(os.path.join(unique_dir, "*.jpg"))])
     
     # Initialize state
     state_file = os.path.join(os.path.dirname(output_file), "ocr_state.json")
@@ -229,10 +221,13 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
 
 def generate_final_output(mapping: dict, results: dict, output_file: str):
     """Combine mapping and OCR results into the final per-second output."""
-    final_output = {}
-    for sec, frame_name in mapping.items():
-        if frame_name in results:
-            final_output[sec] = results[frame_name]
+    if mapping is not None:
+        final_output = {}
+        for sec, frame_name in mapping.items():
+            if frame_name in results:
+                final_output[sec] = results[frame_name]
+    else:
+        final_output = results
 
     with open(output_file, "w") as f:
         json.dump(final_output, f, indent=2)
@@ -244,16 +239,15 @@ if __name__ == "__main__":
     parser.add_argument("--video", type=str, help="Path to input video")
     parser.add_argument("--output_dir", type=str, default="frames", help="Directory to store extracted frames")
     parser.add_argument("--only_ocr", action="store_true", help="Skip extraction and only run OCR")
+    parser.add_argument("--image_dir", type=str, help="Directory containing raw images to OCR directly (ignores video/mapping)")
     parser.add_argument("--output_file", type=str, default="golden_scoreboards.json", help="Final output file")
     
     args = parser.parse_args()
 
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("ERROR: GEMINI_API_KEY environment variable is missing!")
-        print("Please set it before running this script: export GEMINI_API_KEY='your_api_key'")
-        sys.exit(1)
-
-    if not args.only_ocr:
+    if args.image_dir:
+        mapping_file = None
+        unique_dir = args.image_dir
+    elif not args.only_ocr:
         if not args.video:
             print("Error: --video is required unless --only_ocr is specified")
             sys.exit(1)
@@ -271,6 +265,13 @@ if __name__ == "__main__":
     else:
         mapping_file = os.path.join(args.output_dir, "mapping.json")
         unique_dir = os.path.join(args.output_dir, "unique")
-        
+
+
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        print("Error: google-genai is not installed. Please run: pip install google-genai")
+        sys.exit(1)
     run_ocr(mapping_file, unique_dir, args.output_file)
 
