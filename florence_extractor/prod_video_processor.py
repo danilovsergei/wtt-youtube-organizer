@@ -443,7 +443,9 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                         if video_id == after_video_id:
                             found_cutoff = True
                             break
-                        if entry.get('live_status') == 'was_live':
+                        # yt-dlp 2026.x removed 'live_status' in flat extracts.
+                        # Since we fetch from /streams, any video with a valid duration is a completed stream.
+                        if entry.get('duration'):
                             ts = entry.get('timestamp')
                             if ts is not None:
                                 entry['upload_date'] = str(int(ts))
