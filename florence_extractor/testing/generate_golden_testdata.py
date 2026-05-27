@@ -241,6 +241,7 @@ if __name__ == "__main__":
     parser.add_argument("--only_ocr", action="store_true", help="Skip extraction and only run OCR")
     parser.add_argument("--image_dir", type=str, help="Directory containing raw images to OCR directly (ignores video/mapping)")
     parser.add_argument("--output_file", type=str, default="golden_scoreboards.json", help="Final output file")
+    parser.add_argument("--just_frames", action="store_true", help="Only extract frames and exit (no OCR)")
     
     args = parser.parse_args()
 
@@ -266,6 +267,10 @@ if __name__ == "__main__":
         mapping_file = os.path.join(args.output_dir, "mapping.json")
         unique_dir = os.path.join(args.output_dir, "unique")
 
+    if args.just_frames:
+        print(f"\nFrames successfully extracted to {unique_dir}")
+        print("Exiting without running OCR as requested by --just_frames.")
+        sys.exit(0)
 
     try:
         from google import genai

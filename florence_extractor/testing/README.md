@@ -50,6 +50,25 @@ python florence_extractor/testing/generate_golden_testdata.py \
     --output_file florence_extractor/testing/hJXfBULLDro_golden.json
 ```
 
+#### 3. Extract Frames Only (`--just_frames`)
+If you want to mine training data for edge cases (e.g., specific players) without spending API calls on Gemini OCR, you can extract the unique scoreboard frames and exit immediately:
+
+```bash
+python florence_extractor/testing/generate_golden_testdata.py \
+    --video "https://www.youtube.com/watch?v=VIDEO_ID_HERE" \
+    --output_dir /home/geonix/frames_ovtcharov \
+    --just_frames
+```
+
+#### 4. Run OCR on a Custom Image Folder (`--image_dir`)
+If you manually curated a folder of specific cropped images (from the step above) and want to generate golden data *only* for those images without needing a video or `mapping.json`, use the `--image_dir` flag:
+
+```bash
+python florence_extractor/testing/generate_golden_testdata.py \
+    --image_dir /home/geonix/frames_ovtcharov/unique \
+    --output_file /home/geonix/frames_ovtcharov/ovtcharov_scoreboard.json
+```
+
 ### Generated Artifacts
 - `frames_VideoID/unique/*.jpg`: The isolated, unique cropped scoreboard images.
 - `frames_VideoID/mapping.json`: Maps every `second` (0, 1, 2...) to a `unique/*.jpg` filename.
