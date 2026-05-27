@@ -242,6 +242,9 @@ if __name__ == "__main__":
     parser.add_argument("--image_dir", type=str, help="Directory containing raw images to OCR directly (ignores video/mapping)")
     parser.add_argument("--output_file", type=str, default="golden_scoreboards.json", help="Final output file")
     parser.add_argument("--just_frames", action="store_true", help="Only extract frames and exit (no OCR)")
+    parser.add_argument("--append_csv", type=str, help="Path to test_data_sample.csv to automatically append these frames as new training data")
+    parser.add_argument("--override_p1", type=str, help="Strictly override player 1's expected name in the CSV (e.g. 'FEGERL LOUIS')")
+    parser.add_argument("--override_p2", type=str, help="Strictly override player 2's expected name in the CSV (e.g. 'DIMITRIJ OVTCHAROV')")
     
     args = parser.parse_args()
 
@@ -279,4 +282,59 @@ if __name__ == "__main__":
         print("Error: google-genai is not installed. Please run: pip install google-genai")
         sys.exit(1)
     run_ocr(mapping_file, unique_dir, args.output_file)
+
+    if args.append_csv:
+        import pandas as pd
+        import shutil
+        import uuid
+        
+        csv_path = args.append_csv
+        if not os.path.exists(csv_path):
+            print(f"Error: CSV not found at {csv_path}")
+            sys.exit(1)
+            
+        df = pd.read_csv(csv_path)
+        testdata_dir = os.path.join(os.path.dirname(csv_path), "testdata")
+        os.makedirs(testdata_dir, exist_ok=True)
+        
+        with open(args.output_file, "r") as f:
+            ocr_results = json.load(f)
+            
+        new_rows = []
+        for frame_name, data in ocr_results.items():
+            if not data: continue
+            
+            p1 = args.override_p1 if args.override_p1 else data.get("player1", "")
+            p2 = args.override_p2 if args.override_p2 else data.get("player2", "")
+            s1 = data.get("p1_sets", 0)
+            g1 = data.get("p1_points", 0)
+            s2 = data.get("p2_sets", 0)
+            g2 = data.get("p2_points", 0)
+            
+            img_source_path = os.path.join(unique_dir, frame_name)
+            if not os.path.exists(img_source_path):
+                continue
+                
+            new_filename = f"cropped_{uuid.uuid4().hex[:8]}.jpg"
+            new_filepath = os.path.join(testdata_dir, new_filename)
+            shutil.copy(img_source_path, new_filepath)
+            
+            new_rows.append({
+                "image path": f"testdata/{new_filename}",
+                "row 1 expected player": p1,
+                "row 2 expected player 2": p2,
+                "row 1 set score": s1,
+                "row 1 game score": g1,
+                "row 2 set score": s2,
+                "row 2 game score": g2
+            })
+            
+        if new_rows:
+            new_df = pd.DataFrame(new_rows)
+            df = pd.concat([df, new_df], ignore_index=True)
+            df.to_csv(csv_path, index=False)
+            print(f"\nSuccessfully copied images and appended {len(new_rows)} new rows to {csv_path}!")
+            print(f"Total dataset size is now {len(df)}.")
+        else:
+            print("\nNo valid OCR data found to append.")
 

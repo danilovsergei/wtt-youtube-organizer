@@ -69,6 +69,20 @@ python florence_extractor/testing/generate_golden_testdata.py \
     --output_file /home/geonix/frames_ovtcharov/ovtcharov_scoreboard.json
 ```
 
+
+#### 5. Automatically Append OCR Results to Training Dataset (`--append_csv`)
+If you want to use the OCR results to fine-tune the Florence-2 model, you can automatically copy the processed images into your `testdata` folder, assign them unique UUID filenames, and strictly append the scores into your `test_data_sample.csv`. 
+You can also use `--override_p1` and `--override_p2` to hardcode the exact player names in the ground-truth data, preventing Gemini from accidentally injecting typos.
+
+```bash
+python florence_extractor/testing/generate_golden_testdata.py \
+    --image_dir /home/geonix/frames_ovtcharov/unique \
+    --output_file /home/geonix/frames_ovtcharov/ovtcharov_scoreboard.json \
+    --append_csv florence_extractor/test_data_sample.csv \
+    --override_p1 "SOME OPPONENT" \
+    --override_p2 "DIMITRIJ OVTCHAROV"
+```
+
 ### Generated Artifacts
 - `frames_VideoID/unique/*.jpg`: The isolated, unique cropped scoreboard images.
 - `frames_VideoID/mapping.json`: Maps every `second` (0, 1, 2...) to a `unique/*.jpg` filename.
