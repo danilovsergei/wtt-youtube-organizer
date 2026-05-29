@@ -648,3 +648,83 @@ testdata/cropped_0.0-8c25fa2a-1f52-4efb-9863-2e240614270b.jpg,FEGERL LOUIS,DIMIT
 testdata/cropped_0.0-5fe3326d-ddbb-4f51-919a-d3f0af8b8169.jpg,FEGERL LOUIS,DIMITROV DIMITAR,1,1,9,5
 testdata/cropped_0.0-a218dae2-39fd-4bcd-a768-baa3840f385d.jpg,FEGERL LOUIS,DIMITROV DIMITAR,1,1,6,4
 testdata/cropped_0.0-0652223f-ac55-4fd1-a3e4-566ff2370775.jpg,FEGERL LOUIS,DIMITROV DIMITAR,0,1,5,3
+testdata/cropped_130a415c.jpg,KIM NAYEONG,MIMA ITO,0,0,1,1
+testdata/cropped_fe8de207.jpg,KIM NAYEONG,MIMA ITO,0,0,3,6
+testdata/cropped_95c2a60a.jpg,KIM NAYEONG,MIMA ITO,0,0,5,7
+testdata/cropped_d9f3afc8.jpg,KIM NAYEONG,MIMA ITO,0,0,6,11
+testdata/cropped_b9565c7c.jpg,KIM NAYEONG,MIMA ITO,0,1,1,2
+testdata/cropped_43467836.jpg,KIM NAYEONG,MIMA ITO,0,1,4,5
+testdata/cropped_6fae959c.jpg,KIM NAYEONG,MIMA ITO,0,1,4,8
+testdata/cropped_de8b24a2.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,1,2,0,0
+testdata/cropped_03ad8029.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,1,3,0,0
+testdata/cropped_a1086f06.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,0,4,8
+testdata/cropped_33dd966f.jpg,KIM NAYEONG,MIMA ITO,0,1,10,12
+testdata/cropped_a6b4d2ac.jpg,KIM NAYEONG,MIMA ITO,0,2,3,4
+testdata/cropped_2f0d141c.jpg,KIM NAYEONG,MIMA ITO,0,2,3,4
+testdata/cropped_eea4bb37.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,1,0,3
+testdata/cropped_3f54d010.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,1,4,5
+testdata/cropped_887105d7.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,1,6,7
+testdata/cropped_2aa63c0d.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,3,3,0,2
+testdata/cropped_8d15c1f7.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,2,4,3
+testdata/cropped_fcf160d3.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,2,7,6
+testdata/cropped_8fe09d28.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,2,1,0,0
+testdata/cropped_4c45951d.jpg,DIMITRIJ OVTCHAROV,ANDERS LIND,0,2,10,7
+testdata/cropped_582634b1.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,0,0,4,2
+testdata/cropped_fc025ff8.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,0,0,7,3
+testdata/cropped_eef56cf4.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,0,0,11,5
+testdata/cropped_384bb988.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,1,0,1,4
+testdata/cropped_04c3e9e8.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,1,0,2,5
+testdata/cropped_556735f1.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,1,0,5,9
+testdata/cropped_e55ae368.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,1,1,1,0
+testdata/cropped_6beed978.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,1,1,9,3
+testdata/cropped_7a21cbd8.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,0,0
+testdata/cropped_dcff666c.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,2,1
+testdata/cropped_7a8f9ea1.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,3,3
+testdata/cropped_990116fd.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,4,4
+testdata/cropped_dbd8219f.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,5,8
+testdata/cropped_096976f1.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,0,7,10
+testdata/cropped_fa5b31e0.jpg,CHIRITA IULIAN,GOMEZ GUSTAVO,2,1,7,6
+testdata/cropped_d2d9c1e5.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,1,2,4
+testdata/cropped_670e8f1e.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,1,4,7
+testdata/cropped_d0138fd1.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,2,2,2
+testdata/cropped_edc941e6.jpg,KRYVOSHEIA POLINA,ITAGAKI KOHARU,0,2,5,6
+testdata/cropped_cab38a24.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,0,0,1
+testdata/cropped_5f24fc7a.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,0,2,2
+testdata/cropped_62d016c0.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,0,4,5
+testdata/cropped_b646ac57.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,0,6,9
+testdata/cropped_851b0811.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,1,1,3
+testdata/cropped_718d8bb2.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,1,5,5
+testdata/cropped_9d0c3273.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,1,7,8
+testdata/cropped_0e1f21e1.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,2,0,3
+testdata/cropped_bd566202.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,2,2,4
+testdata/cropped_40f05516.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,2,3,6
+testdata/cropped_5309bbb4.jpg,JOSH CHUA,NIMIT SOIPHUANG,0,0,2,0
+testdata/cropped_493ce879.jpg,JOSH CHUA,NIMIT SOIPHUANG,0,0,3,3
+testdata/cropped_ccbf0a72.jpg,VIT KADLEC,HEORHI KUNATS,0,0,2,1
+testdata/cropped_8bf8f726.jpg,JOSH CHUA,NIMIT SOIPHUANG,0,0,4,6
+testdata/cropped_87914292.jpg,VIT KADLEC,HEORHI KUNATS,0,0,3,3
+testdata/cropped_23d72dae.jpg,JOSH CHUA,NIMIT SOIPHUANG,0,0,7,6
+testdata/cropped_cb4f2f48.jpg,VIT KADLEC,HEORHI KUNATS,0,0,6,4
+testdata/cropped_0446c238.jpg,JOSH CHUA,NIMIT SOIPHUANG,0,0,10,8
+testdata/cropped_d5d14741.jpg,VIT KADLEC,HEORHI KUNATS,0,0,10,7
+testdata/cropped_a9fee938.jpg,JOSH CHUA,NIMIT SOIPHUANG,1,0,2,3
+testdata/cropped_990667ae.jpg,JOSH CHUA,NIMIT SOIPHUANG,1,0,5,3
+testdata/cropped_3be0f05d.jpg,VIT KADLEC,HEORHI KUNATS,1,0,1,2
+testdata/cropped_af099980.jpg,VIT KADLEC,HEORHI KUNATS,1,0,5,4
+testdata/cropped_af6505f2.jpg,VIT KADLEC,HEORHI KUNATS,1,0,8,5
+testdata/cropped_79f3b59c.jpg,VIT KADLEC,HEORHI KUNATS,1,0,8,6
+testdata/cropped_03476eba.jpg,JOSH CHUA,NIMIT SOIPHUANG,1,1,2,4
+testdata/cropped_567d8497.jpg,VIT KADLEC,HEORHI KUNATS,1,0,10,8
+testdata/cropped_67a7044e.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,0,2,0
+testdata/cropped_382ad62f.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,0,3,4
+testdata/cropped_526da046.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,0,4,8
+testdata/cropped_8beb7403.jpg,VIT KADLEC,HEORHI KUNATS,2,0,3,2
+testdata/cropped_0cc89710.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,0,7,8
+testdata/cropped_3f351ced.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,0,8,10
+testdata/cropped_46172ce5.jpg,JOSH CHUA,NIMIT SOIPHUANG,1,1,12,10
+testdata/cropped_44481d92.jpg,JOSH CHUA,NIMIT SOIPHUANG,2,1,1,1
+testdata/cropped_45d0c299.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,1,1,1
+testdata/cropped_643ed6b4.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,1,4,3
+testdata/cropped_afe473a1.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,0,1,7,7
+testdata/cropped_c5b81733.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,1,1,4,2
+testdata/cropped_5b573bd9.jpg,LUKA MLADENOVIC,NIKITA ARTEMENKO,2,1,3,4
