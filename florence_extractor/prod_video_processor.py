@@ -221,10 +221,18 @@ class ScoreExtractor:
             num_beams=1,
             do_sample=False,
             early_stopping=False,
-            
+            bad_words_ids=[[495, 3755, 23728, 2747], [495, 3755, 36548, 2747], [495, 3755, 3755, 2068, 2747]],
             use_cache=True
         )
-        return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        out = out.replace('<s>', '').replace('</s>', '').strip()
+        if out.startswith('<WTT_SCORE>'):
+            out = out[len('<WTT_SCORE>'):]
+        if out.startswith('WTT_SCORE>'):
+            out = out[len('WTT_SCORE>'):]
+        if out.startswith('TT_SCORE>'):
+            out = out[len('TT_SCORE>'):]
+        return out.strip()
 
     def _extract_openvino(self, pil_image: Image.Image) -> str:
         """Extract text using OpenVINO with optimized generation."""
@@ -238,9 +246,17 @@ class ScoreExtractor:
             num_beams=1,
             do_sample=False,
             early_stopping=False,
-            
+            bad_words_ids=[[495, 3755, 23728, 2747], [495, 3755, 36548, 2747], [495, 3755, 3755, 2068, 2747]],
         )
-        return self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        out = out.replace('<s>', '').replace('</s>', '').strip()
+        if out.startswith('<WTT_SCORE>'):
+            out = out[len('<WTT_SCORE>'):]
+        if out.startswith('WTT_SCORE>'):
+            out = out[len('WTT_SCORE>'):]
+        if out.startswith('TT_SCORE>'):
+            out = out[len('TT_SCORE>'):]
+        return out.strip()
 
 
 class ProdWttVideoProcessor(WttVideoProcessor):
