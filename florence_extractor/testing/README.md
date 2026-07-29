@@ -88,3 +88,34 @@ python florence_extractor/testing/generate_golden_testdata.py \
 - `frames_VideoID/mapping.json`: Maps every `second` (0, 1, 2...) to a `unique/*.jpg` filename.
 - `ocr_state.json`: The running progress state of the Gemini OCR process.
 - `VideoID_golden.json`: The final combined output file containing the parsed scoreboard JSON payload for every single second of the original video.
+
+## `mine_new_players.py` (Automated Active Learning)
+
+This script automates the discovery and mining of new training data to make the Florence-2 model infinitely scalable. It queries the production database for matches played in the last `X` days, identifies players who are underrepresented in the `test_data_sample.csv` (e.g., they have fewer than 10 images), and automatically downloads their matches.
+
+To ensure pristine training data, it uses Florence-2 to actively scan the video at the exact start offset of the match, extracts highly distinct scoreboards using mathematical deduplication (ensuring no two identical scores are mined), and feeds those unique frames directly into the Gemini OCR pipeline (`generate_golden_testdata.py`) to organically append them to your CSV.
+
+### Usage
+
+**1. Mine new players (Default: Last 7 days, 10 frames per player)**
+```bash
+python florence_extractor/testing/mine_new_players.py
+```
+
+**2. Run retroactively and require 15 frames per player**
+```bash
+python florence_extractor/testing/mine_new_players.py --days 30 --target_frames 15
+```
+
+**3. Audit the database without downloading (Dry Run)**
+Use the `--list_players` flag to quickly check which players are underrepresented and how many frames the script *would* mine, without actually executing the downloads or OCR.
+```bash
+python florence_extractor/testing/mine_new_players.py --list_players
+```
+
+**4. Extract frames locally without calling Gemini**
+If you want to extract the deduplicated frames to your local drive to verify the extraction quality without burning any Gemini API tokens or altering your CSV:
+```bash
+python florence_extractor/testing/mine_new_players.py --extract_frames
+```
+*Frames will be permanently saved to `./mined_frames/PLAYER_NAME/unique`.*
