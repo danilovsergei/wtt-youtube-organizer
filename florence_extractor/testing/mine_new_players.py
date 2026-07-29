@@ -263,13 +263,132 @@ def poll_batches(csv_path):
     with open(state_file, "w") as f:
         json.dump(state, f, indent=2)
 
+
+def submit_local_frames_to_batch():
+    from google import genai
+    from google.genai import types
+    import time
+    import glob
+    
+    work_dir = os.path.join(os.getcwd(), "mined_frames")
+    if not os.path.exists(work_dir):
+        print(f"Error: {work_dir} does not exist.")
+        return
+        
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY environment variable is not set.")
+        sys.exit(1)
+    client = genai.Client(api_key=api_key)
+    
+    prompt = """
+    You are an expert OCR system specializing in World Table Tennis (WTT) scoreboards.
+    
+    Examine the provided image carefully. A valid WTT LIVE IN-GAME scoreboard ALWAYS has exactly TWO distinct rows for the current matchup. Each row MUST contain BOTH a player name AND two numbers: their sets won AND their current points.
+
+    CRITICAL RULES:
+    1. Do NOT hallucinate or guess names from blurry shapes.
+    2. If the image is just a blurry background, arena lights, or people, return the empty format.
+    3. REJECT TOURNAMENT BRACKETS AND PATHS. If the image shows a tournament bracket, player path, or summary (often with multiple matchups, connecting lines, arrows, or names severely truncated to an initial, and only showing one number per player representing sets won), return the empty format.
+    4. You MUST detect BOTH player names AND both scores (sets AND points). If only one score number is visible per player, it is NOT a live scoreboard.
+    
+    The empty format is strictly:
+    {
+      "player1": "",
+      "player2": "",
+      "p1_sets": 0,
+      "p2_sets": 0,
+      "p1_points": 0,
+      "p2_points": 0
+    }
+
+    Only if you clearly see two full rows (both player names and both sets and points are fully visible and legible for a single match), format the output strictly as JSON with this structure:
+    {
+      "player1": "NAME 1",
+      "player2": "NAME 2",
+      "p1_sets": 0,
+      "p2_sets": 0,
+      "p1_points": 0,
+      "p2_points": 0
+    }
+    """
+
+    inlined_requests = []
+    local_mapping = {}
+    req_index = int(time.time())
+    
+    player_dirs = [d for d in os.listdir(work_dir) if os.path.isdir(os.path.join(work_dir, d))]
+    if not player_dirs:
+        print(f"No player directories found in {work_dir}")
+        return
+        
+    for player_dir_name in player_dirs:
+        player_name = player_dir_name.replace("_", " ")
+        unique_dir = os.path.join(work_dir, player_dir_name, "unique")
+        if not os.path.exists(unique_dir):
+            continue
+            
+        frames = sorted(glob.glob(os.path.join(unique_dir, "*.jpg")))
+        if not frames:
+            continue
+            
+        print(f"Uploading {len(frames)} frames for {player_name}...")
+        for f in frames:
+            uploaded_file = client.files.upload(file=f)
+            req_name = f"req_{req_index}"
+            req_index += 1
+            
+            local_mapping[req_name] = {
+                "local_path": f,
+                "player": player_name
+            }
+            
+            inlined_requests.append(
+                types.InlinedRequest(
+                    name=req_name,
+                    contents=[
+                        types.Content(role="user", parts=[
+                            types.Part.from_uri(file_uri=uploaded_file.uri, mime_type=uploaded_file.mime_type),
+                            types.Part.from_text(prompt)
+                        ])
+                    ]
+                )
+            )
+            
+    if not inlined_requests:
+        print("\nNo valid frames to submit to Gemini.")
+        return
+        
+    print(f"\nSubmitting Gemini Batch Job for {len(inlined_requests)} total frames...")
+    job = client.batches.create(
+        model="gemini-1.5-flash", 
+        src=inlined_requests
+    )
+    
+    print(f"\nBatch Job Created Successfully!")
+    print(f"Job ID: {job.name}")
+    print("Run this script with --poll_for_images later to fetch the results and update the CSV.")
+    
+    state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "active_batches.json")
+    state = {}
+    import json
+    if os.path.exists(state_file):
+        with open(state_file, "r") as f:
+            state = json.load(f)
+            
+    state[job.name] = local_mapping
+    with open(state_file, "w") as f:
+        json.dump(state, f, indent=2)
+
 def main():
+
     parser = argparse.ArgumentParser(description="Mine training data for underrepresented players.")
     parser.add_argument("--days", type=int, default=7, help="Number of days to look back in the database")
     parser.add_argument("--target_frames", type=int, default=10, help="Target number of frames per player")
     parser.add_argument("--list_players", action="store_true", help="List players that will be added and exit without extracting")
     parser.add_argument("--extract_frames", action="store_true", help="Extract frames to ./mined_frames directory but DO NOT run Gemini/OCR")
     parser.add_argument("--poll_for_images", action="store_true", help="Poll for completed Gemini Batch jobs and append their results to the CSV")
+    parser.add_argument("--submit_local_frames", action="store_true", help="Upload already extracted frames from ./mined_frames to Gemini Batch API")
     args = parser.parse_args()
     
     csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "test_data_sample.csv")
@@ -277,6 +396,11 @@ def main():
     if args.poll_for_images:
         print("Polling active Gemini Batch Jobs...")
         poll_batches(csv_path)
+        return
+        
+    if args.submit_local_frames:
+        print("Submitting local frames from ./mined_frames to Gemini Batch API...")
+        submit_local_frames_to_batch()
         return
     
     print(f"Fetching matches from the last {args.days} days...")

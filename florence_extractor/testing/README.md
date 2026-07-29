@@ -95,27 +95,49 @@ This script automates the discovery and mining of new training data to make the 
 
 To ensure pristine training data, it uses Florence-2 to actively scan the video at the exact start offset of the match, extracts highly distinct scoreboards using mathematical deduplication (ensuring no two identical scores are mined), and feeds those unique frames directly into the Gemini OCR pipeline (`generate_golden_testdata.py`) to organically append them to your CSV.
 
-### Usage
+### Usage (Gemini Batch API Pipeline)
 
-**1. Mine new players (Default: Last 7 days, 10 frames per player)**
+Because image processing at scale can be expensive, this script is fully integrated with the **asynchronous Gemini Batch API**, which cuts processing costs by exactly 50%.
+
+Because the Batch API is asynchronous, running the pipeline is a two-step process:
+
+#### Step 1: Submit the Batch Job (Daily)
+When you run the script normally, it extracts all the necessary frames, uploads them to Google's Cloud Storage (File API), bundles them into a single massive Batch Job, submits it to Google, and exits immediately.
+
 ```bash
-python florence_extractor/testing/mine_new_players.py
+# Default: Scan last 7 days, 10 frames per player
+LD_PRELOAD= python florence_extractor/testing/mine_new_players.py
+
+# Retroactive: Scan last 30 days, 15 frames per player
+LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --days 30 --target_frames 15
+```
+*(Note: `LD_PRELOAD=` is required because this script boots up the local PyTorch Florence-2 model for semantic frame deduplication before uploading them to Gemini).*
+
+#### Step 2: Poll for Results (Every 5 minutes)
+Batch jobs enter a low-priority queue on Google's servers. It may take anywhere from 5 minutes to 2 hours for Google to process the images. 
+You must use the `--poll_for_images` flag to check the status of active batch jobs. When a job succeeds, the script will automatically download the JSONL results, parse them, copy the images to your `testdata/` folder, and securely append the ground-truth scores directly into your `test_data_sample.csv`.
+
+```bash
+# Run this via a cron job every 5 minutes
+python florence_extractor/testing/mine_new_players.py --poll_for_images
 ```
 
-**2. Run retroactively and require 15 frames per player**
-```bash
-python florence_extractor/testing/mine_new_players.py --days 30 --target_frames 15
-```
-
-**3. Audit the database without downloading (Dry Run)**
-Use the `--list_players` flag to quickly check which players are underrepresented and how many frames the script *would* mine, without actually executing the downloads or OCR.
+#### Utility Commands
+**Audit the database without downloading (Dry Run)**
+Use the `--list_players` flag to quickly check which players are underrepresented and how many frames the script *would* mine, without actually executing any downloads.
 ```bash
 python florence_extractor/testing/mine_new_players.py --list_players
 ```
 
-**4. Extract frames locally without calling Gemini**
-If you want to extract the deduplicated frames to your local drive to verify the extraction quality without burning any Gemini API tokens or altering your CSV:
+**Extract frames locally without calling Gemini**
+If you want to extract the deduplicated frames to your local drive to verify the Florence-2 extraction quality without burning any Gemini API tokens or altering your CSV:
 ```bash
-python florence_extractor/testing/mine_new_players.py --extract_frames
+LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --extract_frames
 ```
 *Frames will be permanently saved to `./mined_frames/PLAYER_NAME/unique`.*
+
+**Submit local frames to Gemini Batch API**
+If you previously used `--extract_frames` to generate a local `mined_frames` folder and now want to process them, use the `--submit_local_frames` flag. It will upload the deduplicated images to the Gemini File API and submit a single Batch Job without redownloading any videos.
+```bash
+python florence_extractor/testing/mine_new_players.py --submit_local_frames
+```
