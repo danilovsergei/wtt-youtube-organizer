@@ -190,5 +190,67 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         self.assertEqual(m5.player1, "HAYATA / HARIMOTO")
         self.assertEqual(m5.player2, "SHIN / NAGASAKI")
 
+
+    def test_missing_break_fallback(self):
+        # Simulate a scenario where there is NO empty break between matches
+        # Match 1 ends, then immediately Match 2 starts.
+        # But we only sample every 180s (3 mins).
+        # Let's say coarse samples are:
+        # 11700 (3:15:00): Player A vs Player B
+        # 11880 (3:18:00): Player C vs Player D
+        
+        # We need Match C vs D to start at 11818 (3:16:58)
+        
+        synthetic_data = {}
+        # At 11700, Match 1
+        synthetic_data["11700"] = {"player1": "PLAYER A", "player2": "PLAYER B", "p1_sets": 2, "p2_sets": 1, "p1_points": 10, "p2_points": 8}
+        
+        # Match 1 ends somewhere. Match 2 starts at 11818.
+        # So at 11818, it's 0:0
+        synthetic_data["11818"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 0, "p2_points": 0}
+        
+        # At 11880, it's Match 2. It has been 62 seconds = ~4 points.
+        synthetic_data["11880"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 2, "p2_points": 2}
+
+        # Let's fill out binary search points between 11700 and 11880 that it might hit
+        # mid = 11790 (before match 2). Let's say it's still Match 1 graphic.
+        synthetic_data["11790"] = {"player1": "PLAYER A", "player2": "PLAYER B", "p1_sets": 3, "p2_sets": 1, "p1_points": 11, "p2_points": 8}
+        # mid between 11790 and 11880 = 11835. Match 2 started, 17 seconds in = 1 point.
+        synthetic_data["11835"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 1, "p2_points": 0}
+        # mid between 11790 and 11835 = 11812.5 -> 11812. No score
+        synthetic_data["11812"] = {}
+        # mid between 11812 and 11835 = 11823.5 -> 11823. 0:0
+        synthetic_data["11823"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 0, "p2_points": 0}
+        # mid between 11812 and 11823 = 11817.5 -> 11817. No score
+        synthetic_data["11817"] = {}
+        
+        synthetic_json_path = os.path.join(self.test_dir, "synthetic_golden.json")
+        import json
+        with open(synthetic_json_path, "w") as f:
+            json.dump(synthetic_data, f)
+            
+        processor = TestWttVideoProcessor(synthetic_json_path)
+        video_path = processor.download_video("synthetic", self.test_dir)
+        
+        finder = MatchStartFinder(
+            video_path=video_path,
+            output_dir=self.test_dir,
+            processor=processor
+        )
+        
+        try:
+            matches = finder.find_match_starts()
+        finally:
+            finder.cleanup()
+            
+        # Should have found Match 2
+        self.assertTrue(len(matches) >= 1)
+        # Verify it found Match 2 at either 11818 or 11823 (which is 0:0)
+        m = matches[-1]
+        self.assertEqual(m.player1, "AN JAEHYUN")
+        self.assertEqual(m.player2, "ALEXIS LEBRUN")
+        self.assertTrue(11818 <= m.timestamp_seconds <= 11823)
+
 if __name__ == '__main__':
+
     unittest.main()

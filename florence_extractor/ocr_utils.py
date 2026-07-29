@@ -82,6 +82,11 @@ def parse_score(generated_text: str) -> ScoreResult:
         # p1_name = KNOWN_OCR_ALIASES.get(p1_name, p1_name)
         # p2_name = KNOWN_OCR_ALIASES.get(p2_name, p2_name)
 
+        p1_letters = re.sub(r'[^a-zA-Z]', '', p1_name)
+        p2_letters = re.sub(r'[^a-zA-Z]', '', p2_name)
+        if len(p1_letters) < 2 or len(p2_letters) < 2:
+            return ScoreResult(success=False, error="Invalid player name (insufficient letters)")
+
         set1 = int(p1_set) if p1_set else 0
         game1 = int(p1_game) if p1_game else -1
         set2 = int(p2_set) if p2_set else 0

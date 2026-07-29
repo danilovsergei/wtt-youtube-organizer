@@ -218,10 +218,11 @@ class MatchStartFinder:
     def _binary_search_match_start(self, start_ts: float, end_ts: float,
                                    end_result: ScoreResult = None,
                                    end_image: str = "") -> Optional[MatchStart]:
+        original_start_ts = start_ts
         """
         Binary search to find exact match start between two timestamps.
-        If 0:0 is not found, falls back to early match scores (1:0, 0:1, etc.)
-        and subtracts EARLY_MATCH_OFFSET seconds as approximation.
+        If 0:0 is not found, falls back to the earliest score seen in the new match
+        and approximates the start time.
 
         start_ts: Last known no-score or previous match timestamp
         end_ts: First known score visible timestamp
@@ -233,12 +234,14 @@ class MatchStartFinder:
             f"and {format_timestamp(end_ts)}")
 
         best_match: Optional[MatchStart] = None
-        # Track earliest early match as fallback.
-        # Seed with end-point coarse-scan score so the binary search always
-        # has a fallback even when the score region is extremely narrow.
-        earliest_early_match: Optional[Tuple[float, ScoreResult, str]] = None
-        if end_result and end_result.success and end_result.is_early_match():
-            earliest_early_match = (end_ts, end_result, end_image)
+        earliest_score: Optional[Tuple[float, ScoreResult, str]] = None
+        earliest_early_score: Optional[Tuple[float, ScoreResult, str]] = None
+        
+        # Seed with end-point coarse-scan score as absolute fallback
+        if end_result and end_result.success:
+            earliest_score = (end_ts, end_result, end_image)
+            if end_result.is_early_match():
+                earliest_early_score = earliest_score
 
         while (end_ts - start_ts) > BINARY_SEARCH_PRECISION:
             mid_ts = (start_ts + end_ts) / 2
@@ -246,6 +249,19 @@ class MatchStartFinder:
                 self._analyze_with_retry(mid_ts))
 
             if result.success:
+                # If we see a score, but it's from a completely different match
+                # than what we are looking for (end_result), it means we are too early!
+                if end_result and self._players_changed(result, end_result):
+                    start_ts = mid_ts
+                    continue
+
+                if earliest_score is None or actual_ts < earliest_score[0]:
+                    earliest_score = (actual_ts, result, image_path)
+                
+                if result.is_early_match():
+                    if earliest_early_score is None or actual_ts < earliest_early_score[0]:
+                        earliest_early_score = (actual_ts, result, image_path)
+
                 if result.is_match_start():
                     # Found a 0:0 score, search earlier for the earliest one
                     best_match = MatchStart(
@@ -256,33 +272,34 @@ class MatchStartFinder:
                         image_path=image_path
                     )
                     end_ts = mid_ts
-                elif result.is_early_match():
-                    # Early match score (1:0, 0:1, etc) - track as fallback
-                    if (earliest_early_match is None or
-                            actual_ts < earliest_early_match[0]):
-                        earliest_early_match = (actual_ts, result, image_path)
-                    end_ts = mid_ts
                 elif result.total_points() > 0 or result.set1 > 0 or result.set2 > 0:
-                    # Score already progressed, match start is earlier
+                    # Score already progressed in the correct match, start is earlier
                     end_ts = mid_ts
                 else:
-                    # Something unexpected, continue searching
-                    start_ts = mid_ts
+                    end_ts = mid_ts
             else:
                 # No score visible, match start is later
                 start_ts = mid_ts
 
-        # If no exact 0:0 found, use early match with offset
-        if best_match is None and earliest_early_match is not None:
-            early_ts, early_result, early_image = earliest_early_match
-            # Calculate offset based on points played
-            points = early_result.total_points()
-            offset = points * SECONDS_PER_POINT
-            approx_ts = max(0, early_ts - offset)
-            print(f"    Using early score {early_result.game1}:"
-                  f"{early_result.game2} at {format_timestamp(early_ts)}, "
+        fallback_score = earliest_early_score if earliest_early_score is not None else earliest_score
+
+        # If no exact 0:0 found, use earliest score seen with offset
+        if best_match is None and fallback_score is not None:
+            early_ts, early_result, early_image = fallback_score
+            # Calculate offset based on points played and sets played
+            set_points = (early_result.set1 + early_result.set2) * 18
+            points = early_result.total_points() if early_result.total_points() >= 0 else 0
+            
+            total_estimated_points = set_points + points
+            offset = total_estimated_points * SECONDS_PER_POINT
+            
+            # The start of the match CANNOT mathematically be earlier than the original start boundary
+            # (which is the timestamp of the last known 'No Score' or the end of the previous match)
+            approx_ts = max(original_start_ts, early_ts - offset)
+            
+            print(f"    Using earliest score {early_result.player1} {early_result.set1}:{early_result.set2} {early_result.player2}, Game {early_result.game1}:{early_result.game2} at {format_timestamp(early_ts)}, "
                   f"approximating start at {format_timestamp(approx_ts)} "
-                  f"(-{offset}s for {points} points)")
+                  f"(-{offset}s for est. {total_estimated_points} points)")
             best_match = MatchStart(
                 timestamp_seconds=approx_ts,
                 timestamp_formatted=format_timestamp(approx_ts),
