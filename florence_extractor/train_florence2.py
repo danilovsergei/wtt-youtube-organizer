@@ -132,19 +132,18 @@ def train(args):
 
     optimizer = AdamW(model.parameters(), lr=1e-5)
 
-    num_epochs = 7
-    num_training_steps = num_epochs * len(train_loader)
+    num_epochs = 3
+    gradient_accumulation_steps = 4
+    num_training_steps = (num_epochs * len(train_loader)) // gradient_accumulation_steps
     lr_scheduler = get_scheduler(
         name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
     )
 
     model.train()
-    # scaler is only for CUDA
+    optimizer.zero_grad()
     for epoch in range(num_epochs):
         loop = tqdm(train_loader, leave=True)
-        for batch in loop:
-            optimizer.zero_grad()
-
+        for step, batch in enumerate(loop):
             input_ids = batch["input_ids"].to(device)
             pixel_values = batch["pixel_values"].to(
                 device, dtype=torch.bfloat16)
@@ -152,14 +151,19 @@ def train(args):
 
             outputs = model(input_ids=input_ids,
                             pixel_values=pixel_values, labels=labels)
-            loss = outputs.loss
-
+            
+            # Scale the loss since we are accumulating gradients over 4 steps
+            loss = outputs.loss / gradient_accumulation_steps
             loss.backward()
-            optimizer.step()
-            lr_scheduler.step()
+
+            if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(train_loader):
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
             loop.set_description(f"Epoch {epoch}")
-            loop.set_postfix(loss=loss.item())
+            # Multiply the scaled loss back up for accurate logging display
+            loop.set_postfix(loss=loss.item() * gradient_accumulation_steps)
 
     print("Training complete. Saving model...")
     output_dir = os.path.join(script_dir, "florence2-tt-finetuned")
