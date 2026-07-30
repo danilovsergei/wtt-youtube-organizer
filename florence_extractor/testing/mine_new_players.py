@@ -143,8 +143,8 @@ def poll_batches(csv_path):
         sys.exit(1)
 
     client = genai.Client(api_key=api_key)
-    state_file = os.path.join(os.path.dirname(
-        os.path.abspath(__file__)), "active_batches.json")
+    state_file = os.path.expanduser("~/.config/wtt-youtube-organizer/active_batches.json")
+    os.makedirs(os.path.dirname(state_file), exist_ok=True)
 
     if not os.path.exists(state_file):
         print("No active batches found.")
@@ -406,8 +406,8 @@ def submit_local_frames_to_batch():
     print(f"Job ID: {job.name}")
     print("Run this script with --poll_for_images later to fetch the results and update the CSV.")
 
-    state_file = os.path.join(os.path.dirname(
-        os.path.abspath(__file__)), "active_batches.json")
+    state_file = os.path.expanduser("~/.config/wtt-youtube-organizer/active_batches.json")
+    os.makedirs(os.path.dirname(state_file), exist_ok=True)
     state = {}
     import json
     if os.path.exists(state_file):
@@ -625,8 +625,8 @@ def main():
     print(f"Job ID: {job.name}")
     print("Run this script with --poll_for_images later to fetch the results and update the CSV.")
 
-    state_file = os.path.join(os.path.dirname(
-        os.path.abspath(__file__)), "active_batches.json")
+    state_file = os.path.expanduser("~/.config/wtt-youtube-organizer/active_batches.json")
+    os.makedirs(os.path.dirname(state_file), exist_ok=True)
     state = {}
     if os.path.exists(state_file):
         with open(state_file, "r") as f:
