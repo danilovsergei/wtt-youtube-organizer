@@ -174,35 +174,23 @@ def poll_batches(csv_path):
                     print(
                         f"  Job {job_name} succeeded! Downloading results...")
 
-                    if not job.dest or not hasattr(job.dest, 'file_name') or not job.dest.file_name:
-                        print(
-                            "  Error: Cannot find output file URI in job destination.")
+                    if not job.dest or not job.dest.inlined_responses:
+                        print("  Error: Cannot find inlined_responses in job destination.")
                         jobs_to_remove.append(job_name)
                         continue
 
-                    # Download the JSONL output file
-                    output_bytes = client.files.download(
-                        file=job.dest.file_name)
-                    output_text = output_bytes.decode('utf-8')
-
-                    # Parse JSONL and append to CSV
+                    # Parse inlined responses and append to CSV
                     new_rows = []
-                    for line in output_text.strip().split('\\n'):
-                        if not line:
-                            continue
-                        res_obj = json.loads(line)
-                        req_name = res_obj.get("request", {}).get("name")
-
-                        if req_name not in local_mapping:
+                    for inlined_res in job.dest.inlined_responses:
+                        req_name = inlined_res.metadata.get("req_id") if inlined_res.metadata else None
+                        if not req_name or req_name not in local_mapping:
                             continue
 
                         # Extract the response text
                         try:
                             # Safely navigate GenerateContentResponse structure
-                            cand = res_obj.get("response", {}).get(
-                                "candidates", [])[0]
-                            text = cand.get("content", {}).get(
-                                "parts", [])[0].get("text", "")
+                            cand = inlined_res.response.candidates[0]
+                            text = cand.content.parts[0].text
 
                             # Clean markdown formatting if present
                             if text.startswith("```json"):
@@ -294,7 +282,7 @@ def submit_local_frames_to_batch():
     import time
     import glob
 
-    work_dir = os.path.join(os.getcwd(), "mined_frames")
+    work_dir = os.path.expanduser("~/.config/wtt-youtube-organizer/mined_frames")
     if not os.path.exists(work_dir):
         print(f"Error: {work_dir} does not exist.")
         return
@@ -430,11 +418,11 @@ def main():
     parser.add_argument("--list_players", action="store_true",
                         help="List players that will be added and exit without extracting")
     parser.add_argument("--extract_frames", action="store_true",
-                        help="Extract frames to ./mined_frames directory but DO NOT run Gemini/OCR")
+                        help="Extract frames to ~/.config/wtt-youtube-organizer/mined_frames directory but DO NOT run Gemini/OCR")
     parser.add_argument("--poll_for_images", action="store_true",
                         help="Poll for completed Gemini Batch jobs and append their results to the CSV")
     parser.add_argument("--submit_local_frames", action="store_true",
-                        help="Upload already extracted frames from ./mined_frames to Gemini Batch API")
+                        help="Upload already extracted frames from ~/.config/wtt-youtube-organizer/mined_frames to Gemini Batch API")
     args = parser.parse_args()
 
     csv_path = os.path.join(os.path.dirname(os.path.dirname(
@@ -446,7 +434,7 @@ def main():
         return
 
     if args.submit_local_frames:
-        print("Submitting local frames from ./mined_frames to Gemini Batch API...")
+        print("Submitting local frames from ~/.config/wtt-youtube-organizer/mined_frames to Gemini Batch API...")
         submit_local_frames_to_batch()
         return
 
@@ -489,7 +477,7 @@ def main():
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    work_dir = os.path.join(os.getcwd(), "mined_frames")
+    work_dir = os.path.expanduser("~/.config/wtt-youtube-organizer/mined_frames")
     os.makedirs(work_dir, exist_ok=True)
 
     prompt = """

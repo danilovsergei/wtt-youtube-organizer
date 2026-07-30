@@ -134,7 +134,7 @@ If you want to extract the deduplicated frames to your local drive to verify the
 ```bash
 LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --extract_frames
 ```
-*Frames will be permanently saved to `./mined_frames/PLAYER_NAME/unique`.*
+*Frames will be permanently saved to `~/.config/wtt-youtube-organizer/mined_frames/PLAYER_NAME/unique`.*
 
 **Submit local frames to Gemini Batch API**
 If you previously used `--extract_frames` to generate a local `mined_frames` folder and now want to process them, use the `--submit_local_frames` flag. It will upload the deduplicated images to the Gemini File API and submit a single Batch Job without redownloading any videos.
