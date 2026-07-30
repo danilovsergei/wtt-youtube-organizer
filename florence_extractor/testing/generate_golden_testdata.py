@@ -1,3 +1,4 @@
+from prod_video_processor import ProdWttVideoProcessor
 import argparse
 import cv2
 import os
@@ -9,13 +10,11 @@ import time
 
 # Add parent directory to path to import ProdWttVideoProcessor
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prod_video_processor import ProdWttVideoProcessor
 
 # Cropping constants from our established logic
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 DIFF_THRESHOLD = 3.0
-
 
 
 def process_video(video_path: str, output_dir: str):
@@ -26,11 +25,13 @@ def process_video(video_path: str, output_dir: str):
 
     import subprocess
     import tempfile
-    
+
     # Use ffprobe to get exact duration
-    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+           '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
     try:
-        duration_sec = int(float(subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()))
+        duration_sec = int(float(subprocess.run(
+            cmd, capture_output=True, text=True, check=True).stdout.strip()))
     except Exception as e:
         print(f"Failed to get video duration: {e}")
         sys.exit(1)
@@ -43,32 +44,32 @@ def process_video(video_path: str, output_dir: str):
     unique_count = 0
 
     print("Extracting frames via system FFmpeg (AV1 Supported)...")
-    
+
     with tempfile.TemporaryDirectory() as temp_dir:
         # Extract strictly at 1 fps directly via ffmpeg, which handles AV1 natively
         subprocess.run([
-            'ffmpeg', '-y', '-v', 'error', 
-            '-i', video_path, 
-            '-r', '1', 
-            '-q:v', '2', 
+            'ffmpeg', '-y', '-v', 'error',
+            '-i', video_path,
+            '-r', '1',
+            '-q:v', '2',
             os.path.join(temp_dir, 'raw_frame_%05d.jpg')
         ], check=True)
-        
+
         # Deduplicate the extracted frames
         print("Deduplicating frames...")
         for sec in tqdm(range(duration_sec)):
             frame_path = os.path.join(temp_dir, f"raw_frame_{sec+1:05d}.jpg")
             if not os.path.exists(frame_path):
                 break
-                
+
             frame = cv2.imread(frame_path)
             h, w = frame.shape[:2]
             crop_h = int(h * BOTTOM_PERCENT)
             crop_w = int(w * LEFT_PERCENT)
-            
+
             cropped = frame[h - crop_h:h, 0:crop_w]
             gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-            
+
             is_new = False
             if last_unique_gray is None:
                 is_new = True
@@ -76,29 +77,29 @@ def process_video(video_path: str, output_dir: str):
                 diff = cv2.absdiff(gray, last_unique_gray)
                 if np.mean(diff) > DIFF_THRESHOLD:
                     is_new = True
-                    
+
             if is_new:
                 last_unique_gray = gray
                 last_unique_filename = f"frame_{sec:05d}.jpg"
-                cv2.imwrite(os.path.join(unique_dir, last_unique_filename), cropped)
+                cv2.imwrite(os.path.join(
+                    unique_dir, last_unique_filename), cropped)
                 unique_count += 1
-                
+
             mapping[str(sec)] = last_unique_filename
 
     mapping_file = os.path.join(output_dir, "mapping.json")
     with open(mapping_file, "w") as f:
         json.dump(mapping, f, indent=2)
 
-
     print(f"Extraction complete! Found {unique_count} unique frames.")
     if unique_count == 0:
         print("ERROR: No frames were extracted! The video might be corrupt, encoded in an unsupported format (like AV1), or completely blank.")
         sys.exit(1)
-        
+
     return mapping_file, unique_dir
 
 
-def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
+def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: str = 'gemini-3.6-flash'):
     """Run Gemini OCR on unique frames and map back to seconds."""
     if mapping_file and os.path.exists(mapping_file):
         with open(mapping_file, "r") as f:
@@ -107,8 +108,9 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
     else:
         import glob
         mapping = None
-        unique_frames = sorted([os.path.basename(p) for p in glob.glob(os.path.join(unique_dir, "*.jpg"))])
-    
+        unique_frames = sorted(
+            [os.path.basename(p) for p in glob.glob(os.path.join(unique_dir, "*.jpg"))])
+
     # Initialize state
     state_file = os.path.join(os.path.dirname(output_file), "ocr_state.json")
     results = {}
@@ -131,7 +133,7 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable is not set.")
         sys.exit(1)
-        
+
     client = genai.Client(api_key=api_key)
 
     prompt = """
@@ -178,46 +180,49 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str):
             try:
                 from PIL import Image
                 img = Image.open(img_path)
-                
+
                 response = client.models.generate_content(
-                    model='gemini-3.1-flash-lite-preview',
+                    model=model_name,
                     contents=[img, prompt],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         temperature=0.0
                     )
                 )
-                
+
                 try:
                     data = json.loads(response.text)
                     results[frame_name] = data
                 except json.JSONDecodeError:
                     results[frame_name] = {}
-                
+
                 # Save state frequently
                 with open(state_file, "w") as f:
                     json.dump(results, f, indent=2)
-                    
+
                 # Avoid aggressive rate limiting just in case
                 time.sleep(0.5)
                 success = True
-                
+
             except Exception as e:
                 err_str = str(e).lower()
                 if any(err in err_str for err in ["429", "too many requests", "503", "quota", "104", "connection", "timeout", "broken pipe"]):
                     wait_time = (6 - retries) * 10
-                    print(f"\nNetwork/API error hit. Waiting {wait_time}s before retry... ({retries} retries left) - {e}")
+                    print(
+                        f"\nNetwork/API error hit. Waiting {wait_time}s before retry... ({retries} retries left) - {e}")
                     time.sleep(wait_time)
                     retries -= 1
                 else:
                     print(f"\nError processing {frame_name}: {e}")
-                    break # Stop on non-retryable API error
+                    break  # Stop on non-retryable API error
 
         if not success:
-            print(f"Failed to process {frame_name} after retries or due to fatal error. Stopping.")
+            print(
+                f"Failed to process {frame_name} after retries or due to fatal error. Stopping.")
             break
 
     generate_final_output(mapping, results, output_file)
+
 
 def generate_final_output(mapping: dict, results: dict, output_file: str):
     """Combine mapping and OCR results into the final per-second output."""
@@ -237,15 +242,25 @@ def generate_final_output(mapping: dict, results: dict, output_file: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", type=str, help="Path to input video")
-    parser.add_argument("--output_dir", type=str, default="frames", help="Directory to store extracted frames")
-    parser.add_argument("--only_ocr", action="store_true", help="Skip extraction and only run OCR")
-    parser.add_argument("--image_dir", type=str, help="Directory containing raw images to OCR directly (ignores video/mapping)")
-    parser.add_argument("--output_file", type=str, default="golden_scoreboards.json", help="Final output file")
-    parser.add_argument("--just_frames", action="store_true", help="Only extract frames and exit (no OCR)")
-    parser.add_argument("--append_csv", type=str, help="Path to test_data_sample.csv to automatically append these frames as new training data")
-    parser.add_argument("--override_p1", type=str, help="Strictly override player 1's expected name in the CSV (e.g. 'FEGERL LOUIS')")
-    parser.add_argument("--override_p2", type=str, help="Strictly override player 2's expected name in the CSV (e.g. 'DIMITRIJ OVTCHAROV')")
-    
+    parser.add_argument("--output_dir", type=str, default="frames",
+                        help="Directory to store extracted frames")
+    parser.add_argument("--only_ocr", action="store_true",
+                        help="Skip extraction and only run OCR")
+    parser.add_argument("--image_dir", type=str,
+                        help="Directory containing raw images to OCR directly (ignores video/mapping)")
+    parser.add_argument("--output_file", type=str,
+                        default="golden_scoreboards.json", help="Final output file")
+    parser.add_argument("--just_frames", action="store_true",
+                        help="Only extract frames and exit (no OCR)")
+    parser.add_argument("--append_csv", type=str,
+                        help="Path to test_data_sample.csv to automatically append these frames as new training data")
+    parser.add_argument("--override_p1", type=str,
+                        help="Strictly override player 1's expected name in the CSV (e.g. 'FEGERL LOUIS')")
+    parser.add_argument("--override_p2", type=str,
+                        help="Strictly override player 2's expected name in the CSV (e.g. 'DIMITRIJ OVTCHAROV')")
+    parser.add_argument("--model", type=str, default="gemini-3.6-flash",
+                        help="The Gemini model to use for OCR")
+
     args = parser.parse_args()
 
     if args.image_dir:
@@ -255,16 +270,17 @@ if __name__ == "__main__":
         if not args.video:
             print("Error: --video is required unless --only_ocr is specified")
             sys.exit(1)
-            
+
         video_target = args.video
         if "youtube.com" in video_target or "youtu.be" in video_target or not os.path.exists(video_target):
             print(f"Using ProdWttVideoProcessor to download {video_target}...")
             processor = ProdWttVideoProcessor()
-            video_target = processor.download_video(video_target, args.output_dir)
+            video_target = processor.download_video(
+                video_target, args.output_dir)
             if not video_target or not os.path.exists(video_target):
                 print(f"Error: Failed to download video {args.video}")
                 sys.exit(1)
-                
+
         mapping_file, unique_dir = process_video(video_target, args.output_dir)
     else:
         mapping_file = os.path.join(args.output_dir, "mapping.json")
@@ -281,44 +297,47 @@ if __name__ == "__main__":
     except ImportError:
         print("Error: google-genai is not installed. Please run: pip install google-genai")
         sys.exit(1)
-    run_ocr(mapping_file, unique_dir, args.output_file)
+    run_ocr(mapping_file, unique_dir, args.output_file, args.model)
 
     if args.append_csv:
         import pandas as pd
         import shutil
         import uuid
-        
+
         csv_path = args.append_csv
         if not os.path.exists(csv_path):
             print(f"Error: CSV not found at {csv_path}")
             sys.exit(1)
-            
+
         df = pd.read_csv(csv_path)
         testdata_dir = os.path.join(os.path.dirname(csv_path), "testdata")
         os.makedirs(testdata_dir, exist_ok=True)
-        
+
         with open(args.output_file, "r") as f:
             ocr_results = json.load(f)
-            
+
         new_rows = []
         for frame_name, data in ocr_results.items():
-            if not data: continue
-            
-            p1 = args.override_p1 if args.override_p1 else data.get("player1", "")
-            p2 = args.override_p2 if args.override_p2 else data.get("player2", "")
+            if not data:
+                continue
+
+            p1 = args.override_p1 if args.override_p1 else data.get(
+                "player1", "")
+            p2 = args.override_p2 if args.override_p2 else data.get(
+                "player2", "")
             s1 = data.get("p1_sets", 0)
             g1 = data.get("p1_points", 0)
             s2 = data.get("p2_sets", 0)
             g2 = data.get("p2_points", 0)
-            
+
             img_source_path = os.path.join(unique_dir, frame_name)
             if not os.path.exists(img_source_path):
                 continue
-                
+
             new_filename = f"cropped_{uuid.uuid4().hex[:8]}.jpg"
             new_filepath = os.path.join(testdata_dir, new_filename)
             shutil.copy(img_source_path, new_filepath)
-            
+
             new_rows.append({
                 "image path": f"testdata/{new_filename}",
                 "row 1 expected player": p1,
@@ -328,13 +347,13 @@ if __name__ == "__main__":
                 "row 2 set score": s2,
                 "row 2 game score": g2
             })
-            
+
         if new_rows:
             new_df = pd.DataFrame(new_rows)
             df = pd.concat([df, new_df], ignore_index=True)
             df.to_csv(csv_path, index=False)
-            print(f"\nSuccessfully copied images and appended {len(new_rows)} new rows to {csv_path}!")
+            print(
+                f"\nSuccessfully copied images and appended {len(new_rows)} new rows to {csv_path}!")
             print(f"Total dataset size is now {len(df)}.")
         else:
             print("\nNo valid OCR data found to append.")
-

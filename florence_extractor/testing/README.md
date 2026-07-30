@@ -141,3 +141,10 @@ If you previously used `--extract_frames` to generate a local `mined_frames` fol
 ```bash
 python florence_extractor/testing/mine_new_players.py --submit_local_frames
 ```
+
+**Run OCR synchronously (Real-Time API)**
+If you want to bypass the asynchronous Batch API and run the extraction immediately, you can use the `--realtime` flag. This will call the Gemini API synchronously and instantly append the results to your CSV. Note that real-time processing costs approximately double the Batch API price.
+By default, this uses `gemini-1.5-flash`. You can optionally specify a different model using the `--model` flag.
+```bash
+LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --realtime --model "gemini-3.6-flash-lite"
+```

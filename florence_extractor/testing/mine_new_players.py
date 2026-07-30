@@ -17,7 +17,8 @@ BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 DIFF_THRESHOLD = 3.0
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prod_video_processor import ProdWttVideoProcessor
+
+
 def get_recent_matches(days):
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
@@ -50,6 +51,11 @@ def get_player_counts(csv_path):
 
 def download_video(youtube_id, output_dir, max_retries=3):
     import time
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))
+    from prod_video_processor import ProdWttVideoProcessor
     processor = ProdWttVideoProcessor(backend="pytorch-cpu", device="cpu")
     video_url = f"https://www.youtube.com/watch?v={youtube_id}"
 
@@ -113,7 +119,8 @@ def extract_and_dedup(video_path, start_sec, out_dir, player_name, processor, ma
         if player_norm not in p1_norm and player_norm not in p2_norm and not is_similar(player_norm, p1_norm) and not is_similar(player_norm, p2_norm):
             continue
 
-        state_key = (score.set1, score.set2, score.game1, score.game2)
+        state_key = (score.set1, score.set2, score.game1,
+                     score.game2, score.player1, score.player2)
         if state_key not in seen_states:
             seen_states.add(state_key)
             out_path = os.path.join(
@@ -391,7 +398,7 @@ def submit_local_frames_to_batch():
     print(
         f"\nSubmitting Gemini Batch Job for {len(inlined_requests)} total frames...")
     job = client.batches.create(
-        model="gemini-3.6-flash-lite",
+        model="gemini-3.6-flash",
         src=inlined_requests
     )
 
@@ -610,7 +617,7 @@ def main():
         f"\\nSubmitting Gemini Batch Job for {len(inlined_requests)} total frames...")
 
     job = client.batches.create(
-        model="gemini-3.6-flash-lite",
+        model="gemini-3.6-flash",
         src=inlined_requests
     )
 
