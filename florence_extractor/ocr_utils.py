@@ -87,6 +87,20 @@ def parse_score(generated_text: str) -> ScoreResult:
         if len(p1_letters) < 2 or len(p2_letters) < 2:
             return ScoreResult(success=False, error="Invalid player name (insufficient letters)")
 
+        # Reject names containing commas or colons (usually hallucinations or ads)
+        if ',' in p1_name or ',' in p2_name or ':' in p1_name or ':' in p2_name:
+            return ScoreResult(success=False, error="Invalid player name (contains comma or colon)")
+
+        # Reject common hallucinated ad/graphic words
+        invalid_words = {'purple', 'gray', 'grey', 'blue', 'red', 'black', 'white', 'yellow', 'green', 'row', 'and', 'seat', 'live', 'better', 'through', 'sport'}
+        
+        def has_invalid_word(name):
+            words = set(re.findall(r'[a-zA-Z]+', name.lower()))
+            return bool(words.intersection(invalid_words))
+
+        if has_invalid_word(p1_name) or has_invalid_word(p2_name):
+            return ScoreResult(success=False, error="Invalid player name (hallucinated ad word)")
+
         set1 = int(p1_set) if p1_set else 0
         game1 = int(p1_game) if p1_game else -1
         set2 = int(p2_set) if p2_set else 0
