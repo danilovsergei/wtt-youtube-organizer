@@ -203,6 +203,8 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         
         synthetic_data = {}
         # At 11700, Match 1
+        synthetic_data["11340"] = {"player1": "PLAYER A", "player2": "PLAYER B", "p1_sets": 2, "p2_sets": 1, "p1_points": 1, "p2_points": 1}
+        synthetic_data["11520"] = {"player1": "PLAYER A", "player2": "PLAYER B", "p1_sets": 2, "p2_sets": 1, "p1_points": 5, "p2_points": 5}
         synthetic_data["11700"] = {"player1": "PLAYER A", "player2": "PLAYER B", "p1_sets": 2, "p2_sets": 1, "p1_points": 10, "p2_points": 8}
         
         # Match 1 ends somewhere. Match 2 starts at 11818.
@@ -211,6 +213,8 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         
         # At 11880, it's Match 2. It has been 62 seconds = ~4 points.
         synthetic_data["11880"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 2, "p2_points": 2}
+        synthetic_data["12060"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 5, "p2_points": 5}
+        synthetic_data["12240"] = {"player1": "AN JAEHYUN", "player2": "ALEXIS LEBRUN", "p1_sets": 0, "p2_sets": 0, "p1_points": 10, "p2_points": 8}
 
         # Let's fill out binary search points between 11700 and 11880 that it might hit
         # mid = 11790 (before match 2). Let's say it's still Match 1 graphic.
@@ -250,6 +254,67 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         self.assertEqual(m.player1, "AN JAEHYUN")
         self.assertEqual(m.player2, "ALEXIS LEBRUN")
         self.assertTrue(11818 <= m.timestamp_seconds <= 11823)
+
+
+
+    def test_highlight_reel_filtering(self):
+        # Simulate a 15-minute video (900 seconds)
+        # 180s intervals: 0, 180, 360, 540, 720, 900
+        
+        synthetic_data = {}
+        
+        # 0s to 360s: No score (Simulate a big commercial break > 300s to trigger binary search)
+        synthetic_data["0"] = {}
+        synthetic_data["180"] = {}
+        
+        # 360s: Real match starts (REAL PLAYER 1 vs REAL PLAYER 2)
+        synthetic_data["360"] = {"player1": "REAL PLAYER 1", "player2": "REAL PLAYER 2", "p1_sets": 0, "p2_sets": 0, "p1_points": 5, "p2_points": 3}
+        
+        # 540s: Real match continues
+        synthetic_data["540"] = {"player1": "REAL PLAYER 1", "player2": "REAL PLAYER 2", "p1_sets": 0, "p2_sets": 0, "p1_points": 8, "p2_points": 9}
+        
+        # 720s: Real match continues
+        synthetic_data["720"] = {"player1": "REAL PLAYER 1", "player2": "REAL PLAYER 2", "p1_sets": 1, "p2_sets": 0, "p1_points": 2, "p2_points": 1}
+        
+        # 900s: SUDDENLY, A HIGHLIGHT REEL! (Fake player vs Fake player)
+        synthetic_data["900"] = {"player1": "FAKE SORA", "player2": "FAKE JANG", "p1_sets": 1, "p2_sets": 3, "p1_points": 10, "p2_points": 8}
+        
+        # 1080s: Back to the real match
+        synthetic_data["1080"] = {"player1": "REAL PLAYER 1", "player2": "REAL PLAYER 2", "p1_sets": 1, "p2_sets": 0, "p1_points": 10, "p2_points": 8}
+
+        # Let's add some binary search steps for the real match around 360s
+        synthetic_data["270"] = {}
+        synthetic_data["315"] = {"player1": "REAL PLAYER 1", "player2": "REAL PLAYER 2", "p1_sets": 0, "p2_sets": 0, "p1_points": 0, "p2_points": 0}
+        
+        synthetic_json_path = os.path.join(self.test_dir, "synthetic_golden_highlight.json")
+        import json
+        with open(synthetic_json_path, "w") as f:
+            json.dump(synthetic_data, f)
+            
+        processor = TestWttVideoProcessor(synthetic_json_path)
+        video_path = processor.download_video("synthetic_highlight", self.test_dir)
+        
+        # We need a duration > 900 for the loop to hit 900
+        # Wait, the loop is while timestamp < duration.
+        # We can just let the processor say duration is 1000.
+        
+        finder = MatchStartFinder(
+            video_path=video_path,
+            output_dir=self.test_dir,
+            processor=processor
+        )
+        
+        try:
+            matches = finder.find_match_starts()
+        finally:
+            finder.cleanup()
+            
+        # The fake highlight (seen only once at 720) should be COMPLETELY ignored.
+        # Only the real match should be returned.
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].player1, "REAL PLAYER 1")
+        self.assertEqual(matches[0].player2, "REAL PLAYER 2")
+        self.assertEqual(int(matches[0].timestamp_seconds), 315)
 
 if __name__ == '__main__':
 
