@@ -446,6 +446,45 @@ class MatchStartFinder:
         phase1_duration = time.time() - phase1_start
         print(f"Phase 1 completed in {phase1_duration:.1f} seconds")
 
+        print(f"\n=== Phase 1.5: Filtering Highlight Reels & False Positives ===")
+        matchup_counts = []
+        for _, result, _, _ in coarse_samples:
+            if not result.success:
+                continue
+            found = False
+            for m in matchup_counts:
+                if (is_similar(result.player1, m['p1']) and is_similar(result.player2, m['p2'])) or \
+                   (is_similar(result.player1, m['p2']) and is_similar(result.player2, m['p1'])):
+                    m['count'] += 1
+                    found = True
+                    break
+            if not found:
+                matchup_counts.append({'p1': result.player1, 'p2': result.player2, 'count': 1})
+        
+        valid_matchups = []
+        for m in matchup_counts:
+            # We require a match to be seen at least 3 times (~9 minutes of broadcast time) 
+            # to be considered a real match rather than a highlight or extended analysis graphic.
+            if m['count'] >= 3:
+                valid_matchups.append(m)
+                print(f"  Valid Matchup: {m['p1']} vs {m['p2']} (seen {m['count']} times)")
+            else:
+                print(f"  Filtered Highlight/Ad: {m['p1']} vs {m['p2']} (seen {m['count']} times)")
+
+        def is_valid_matchup(result):
+            if not result.success: return False
+            for m in valid_matchups:
+                if (is_similar(result.player1, m['p1']) and is_similar(result.player2, m['p2'])) or \
+                   (is_similar(result.player1, m['p2']) and is_similar(result.player2, m['p1'])):
+                    return True
+            return False
+
+        for i in range(len(coarse_samples)):
+            result = coarse_samples[i][1]
+            if result.success and not is_valid_matchup(result):
+                # Treat highlight reels and false positives as 'No Score' commercial breaks
+                result.success = False
+
         # Phase 2: Find transitions and binary search
         phase2_start = time.time()
         print(f"\n=== Phase 2: Binary Search for Match Starts ===")
