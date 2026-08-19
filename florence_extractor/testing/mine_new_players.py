@@ -12,7 +12,7 @@ import glob
 import shutil
 import uuid
 
-DATABASE_URL = "<DATABASE_URL_REDACTED>"
+DATABASE_URL = os.environ.get("DATABASE_URL")\nif not DATABASE_URL:\n    print("DATABASE_URL environment variable is not set.")\n    sys.exit(1)
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 DIFF_THRESHOLD = 3.0
