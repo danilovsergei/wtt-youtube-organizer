@@ -316,6 +316,68 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         self.assertEqual(matches[0].player2, "REAL PLAYER 2")
         self.assertEqual(int(matches[0].timestamp_seconds), 315)
 
+
+
+    def test_short_break_gap_calculation(self):
+        # Covers the Tikhonov vs Gauzy bug where only 1 coarse frame was missing
+        # but the actual gap from the last successful frame was 360s (>= 300s MIN_BREAK_DURATION).
+        
+        synthetic_data = {}
+        
+        # 0s and 180s: Break
+        synthetic_data["0"] = {}
+        synthetic_data["180"] = {}
+        
+        # Match 1 needs to be seen at least 3 times to pass Phase 1.5 filter
+        synthetic_data["360"] = {"player1": "HINA HAYATA", "player2": "ADRIANA DIAZ", "p1_sets": 0, "p2_sets": 1, "p1_points": 0, "p2_points": 0}
+        synthetic_data["540"] = {"player1": "HINA HAYATA", "player2": "ADRIANA DIAZ", "p1_sets": 1, "p2_sets": 1, "p1_points": 0, "p2_points": 0}
+        synthetic_data["720"] = {"player1": "HINA HAYATA", "player2": "ADRIANA DIAZ", "p1_sets": 2, "p2_sets": 1, "p1_points": 10, "p2_points": 2}
+        
+        # 900s: Missing frame (Commercial break)
+        synthetic_data["900"] = {}
+        
+        # 1080s: Match 2 starts. The gap from 720 to 1080 is 360s.
+        synthetic_data["1080"] = {"player1": "EVGENY TIKHONOV", "player2": "SIMON GAUZY", "p1_sets": 0, "p2_sets": 0, "p1_points": 3, "p2_points": 2}
+        synthetic_data["1260"] = {"player1": "EVGENY TIKHONOV", "player2": "SIMON GAUZY", "p1_sets": 0, "p2_sets": 0, "p1_points": 10, "p2_points": 6}
+        synthetic_data["1440"] = {"player1": "EVGENY TIKHONOV", "player2": "SIMON GAUZY", "p1_sets": 1, "p2_sets": 0, "p1_points": 2, "p2_points": 4}
+
+        # Binary search for Match 1 (180 to 360)
+        synthetic_data["270"] = {}
+        synthetic_data["315"] = {"player1": "HINA HAYATA", "player2": "ADRIANA DIAZ", "p1_sets": 0, "p2_sets": 0, "p1_points": 0, "p2_points": 0}
+
+        # Binary search for Match 2 (720 to 1080)
+        # Note: the binary search bounds will be (720, 1080)
+        synthetic_data["900"] = {} # Middle
+        synthetic_data["990"] = {} # Middle of 900-1080
+        synthetic_data["1035"] = {"player1": "EVGENY TIKHONOV", "player2": "SIMON GAUZY", "p1_sets": 0, "p2_sets": 0, "p1_points": 0, "p2_points": 0}
+
+        synthetic_json_path = os.path.join(self.test_dir, "synthetic_golden_gap.json")
+        import json
+        with open(synthetic_json_path, "w") as f:
+            json.dump(synthetic_data, f)
+            
+        processor = TestWttVideoProcessor(synthetic_json_path)
+        video_path = processor.download_video("synthetic_gap", self.test_dir)
+        
+        finder = MatchStartFinder(
+            video_path=video_path,
+            output_dir=self.test_dir,
+            processor=processor
+        )
+        
+        try:
+            matches = finder.find_match_starts()
+        finally:
+            finder.cleanup()
+            
+        # Match 1 starts at 315, Match 2 starts at 1035. 
+        self.assertEqual(len(matches), 2)
+        self.assertEqual(matches[0].player1, "HINA HAYATA")
+        self.assertEqual(matches[0].player2, "ADRIANA DIAZ")
+        self.assertEqual(matches[1].player1, "EVGENY TIKHONOV")
+        self.assertEqual(matches[1].player2, "SIMON GAUZY")
+        self.assertEqual(int(matches[1].timestamp_seconds), 1035)
+
 if __name__ == '__main__':
 
     unittest.main()

@@ -507,17 +507,25 @@ class MatchStartFinder:
                         no_score_start = coarse_samples[j][0]
                     else:
                         break
-                no_score_duration = curr_ts - no_score_start
+                        
+                # Find the actual last successful frame to calculate the true gap duration
+                last_success_ts = 0
+                for j in range(i - 1, -1, -1):
+                    if coarse_samples[j][1].success:
+                        last_success_ts = coarse_samples[j][0]
+                        break
+                        
+                gap_duration = curr_ts - last_success_ts
 
-                if no_score_duration < MIN_BREAK_DURATION:
+                if gap_duration < MIN_BREAK_DURATION:
                     print(f"\n  Skipping short gap at {format_timestamp(prev_ts)} "
-                          f"({no_score_duration:.0f}s < {MIN_BREAK_DURATION}s)")
+                          f"({gap_duration:.0f}s < {MIN_BREAK_DURATION}s)")
                     continue
 
                 print(f"\nTransition detected between "
                       f"{format_timestamp(no_score_start)} and "
                       f"{format_timestamp(curr_ts)} "
-                      f"(break: {no_score_duration:.0f}s)")
+                      f"(break: {gap_duration:.0f}s)")
 
                 match_start = self._binary_search_match_start(
                     no_score_start, curr_ts,
