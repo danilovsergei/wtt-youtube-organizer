@@ -72,7 +72,7 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 	// Filter out unwanted parts
 	var filteredParts []string
 	for _, p := range parts {
-		if p == "LIVE!" || strings.Contains(p, "Infinity") {
+		if p == "LIVE!" {
 			continue
 		}
 		if len(p) >= 2 && p[0] == 'T' {
@@ -106,6 +106,13 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 
 	if titlePartIdx < 0 {
 		return "", 0, "", fmt.Errorf("could not find tournament with year in title: %s", title)
+	}
+
+	// Clean up tournament name from leading garbage (e.g. "Infinity Arena I WTT...")
+	// If the name contains "WTT ", strip everything before it.
+	// Otherwise, leave it as is.
+	if idx := strings.Index(tournamentName, "WTT "); idx >= 0 {
+		tournamentName = tournamentName[idx:]
 	}
 
 	var dayPart string

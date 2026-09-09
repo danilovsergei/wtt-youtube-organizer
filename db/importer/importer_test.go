@@ -597,6 +597,34 @@ func TestParseTournamentFromTitle(t *testing.T) {
 			wantYear: 2026,
 			wantDay:  "Day 6",
 		},
+		{
+			name:     "Macao typo with Infinity Arena I and no pipe",
+			title:    "LIVE!| Day 1| Infinity Arena I WTT Champions Macao 2026 Presented by Galaxy Entertainment Group | S1",
+			wantName: "WTT Champions Macao",
+			wantYear: 2026,
+			wantDay:  "Day 1",
+		},
+		{
+			name:     "Europe Smash test",
+			title:    "LIVE! | T3 | Day 5 | Europe Smash - Sweden 2026",
+			wantName: "Europe Smash - Sweden",
+			wantYear: 2026,
+			wantDay:  "Day 5",
+		},
+		{
+			name:     "ITTF World Team Table Tennis Championships test",
+			title:    "LIVE! | T16 | Day 1 | GS | ITTF World Team Table Tennis Championships Finals London 2026 | Session 1",
+			wantName: "ITTF World Team Table Tennis Championships Finals London",
+			wantYear: 2026,
+			wantDay:  "Day 1",
+		},
+		{
+			name:     "United States Smash test",
+			title:    "LIVE! | Infinity Arena | Day 2 | United States Smash 2026 | Finals",
+			wantName: "United States Smash",
+			wantYear: 2026,
+			wantDay:  "Day 2 Finals",
+		},
 	}
 
 	for _, tt := range tests {
