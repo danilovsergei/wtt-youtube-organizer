@@ -52,6 +52,10 @@ python train_florence2.py
 
 This creates `florence2-tt-finetuned/` based on `test_data_sample.csv`.
 
+**Prompt Hijacking Architecture:**
+The training pipeline utilizes an advanced Vision-Language Model technique known as "Prompt Hijacking" (or Task Overriding). Instead of defining a custom task token (like `<WTT_SCORE>`), the script fine-tunes the foundational `<OCR>` token built into the Microsoft Florence-2 base model. 
+This forces the model to learn our strict spatial JSON formatting (`row 1: NAME, Set, Game`) while simultaneously keeping its massive 5-billion-image English spelling dictionary activated. This elegantly resolves visual BPE tokenizer collisions (e.g., hallucinating an extra 'T' in names due to squished WTT fonts) natively, inheriting the pre-trained language priors without requiring manual `bad_words_ids` blocking or programmatic aliases.
+
 #### 3. (Optional) Create OpenVINO Version
 
 By default, Florence-2 runs on NVIDIA/CUDA or CPU. For Intel GPUs, create an optimized OpenVINO version:

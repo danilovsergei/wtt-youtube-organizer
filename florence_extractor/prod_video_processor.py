@@ -206,7 +206,7 @@ class ScoreExtractor:
 
     def _extract_pytorch(self, pil_image: Image.Image) -> str:
         """Extract text using PyTorch with optimized generation."""
-        prompt = '<WTT_SCORE>'
+        prompt = '<OCR>'
         inputs = self.processor(
             text=prompt, images=pil_image, return_tensors='pt').to(self.device)
 
@@ -226,17 +226,17 @@ class ScoreExtractor:
         )
         out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
         out = out.replace('<s>', '').replace('</s>', '').strip()
-        if out.startswith('<WTT_SCORE>'):
-            out = out[len('<WTT_SCORE>'):]
-        if out.startswith('WTT_SCORE>'):
-            out = out[len('WTT_SCORE>'):]
+        if out.startswith('<OCR>'):
+            out = out[len('<OCR>'):]
+        if out.startswith('OCR>'):
+            out = out[len('OCR>'):]
         if out.startswith('TT_SCORE>'):
             out = out[len('TT_SCORE>'):]
         return out.strip()
 
     def _extract_openvino(self, pil_image: Image.Image) -> str:
         """Extract text using OpenVINO with optimized generation."""
-        prompt = '<WTT_SCORE>'
+        prompt = '<OCR>'
         inputs = self.processor(
             text=prompt, images=pil_image, return_tensors='pt')
         generated_ids = self._ov_model.generate(
@@ -250,10 +250,10 @@ class ScoreExtractor:
         )
         out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
         out = out.replace('<s>', '').replace('</s>', '').strip()
-        if out.startswith('<WTT_SCORE>'):
-            out = out[len('<WTT_SCORE>'):]
-        if out.startswith('WTT_SCORE>'):
-            out = out[len('WTT_SCORE>'):]
+        if out.startswith('<OCR>'):
+            out = out[len('<OCR>'):]
+        if out.startswith('OCR>'):
+            out = out[len('OCR>'):]
         if out.startswith('TT_SCORE>'):
             out = out[len('TT_SCORE>'):]
         return out.strip()

@@ -38,7 +38,7 @@ class TableTennisDataset(Dataset):
             f"row 2: {row['row 2 expected player 2']}, {row['row 2 set score']}, {row['row 2 game score']}"
         )
 
-        prompt = "<WTT_SCORE>"
+        prompt = "<OCR>"
 
         # Florence-2 uses specific formatting
         inputs = self.processor(text=prompt, images=image, return_tensors="pt")
