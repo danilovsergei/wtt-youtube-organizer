@@ -274,7 +274,15 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
                 child: GestureDetector(
                   // media_kit does not consume double taps by default, so this safely wins the arena
                   onDoubleTap: widget.onDoubleTap,
-                  child: Video(controller: _controller),
+                  child: MaterialDesktopVideoControlsTheme(
+                    normal: const MaterialDesktopVideoControlsThemeData(
+                      hideMouseOnControlsRemoval: true,
+                    ),
+                    fullscreen: const MaterialDesktopVideoControlsThemeData(
+                      hideMouseOnControlsRemoval: true,
+                    ),
+                    child: Video(controller: _controller),
+                  ),
                 ),
               );
             },
