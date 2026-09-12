@@ -11,6 +11,7 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.danilovsergei.wtt.desktop</launchable>
+  <icon type="stock">io.github.danilovsergei.wtt</icon>
   <provides>
     <binary>wtt</binary>
   </provides>
