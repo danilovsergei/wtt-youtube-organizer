@@ -7,5 +7,5 @@ Exec=wtt
 Icon=io.github.danilovsergei.wtt
 Terminal=false
 Categories=AudioVideo;Video;Player;
-StartupWMClass=flutter_app
+StartupWMClass=io.github.danilovsergei.wtt
 
