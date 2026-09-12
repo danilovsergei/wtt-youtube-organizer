@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -49,7 +50,7 @@ class _WttAppState extends State<WttApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WTT Match Explorer',
+      title: 'WTT Organizer',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
@@ -598,15 +599,15 @@ class Sidebar extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.sports_tennis,
-                      color: Color(0xFF0D7FF2),
-                      size: 30,
+                    SvgPicture.asset(
+                      'assets/app_icon.svg',
+                      width: 30,
+                      height: 30,
                     ),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Text(
-                        'Match Explorer',
+                        'WTT Organizer',
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.splineSans(
                           fontSize: 20,
