@@ -7,3 +7,9 @@ __pycache__/florence_extractor/florence2-tt-finetuned/
 florence_extractor/cropped_images/
 extracted_video_clips/
 db/env.sh
+*.log
+wtt.flatpak
+repo/
+.metadata
+flutter_sdk/
+flutter_path
