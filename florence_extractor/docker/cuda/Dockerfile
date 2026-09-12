@@ -70,7 +70,7 @@ RUN echo "📦 Installing remaining dependencies..." && \
     # while it looks for a compatible torchvision.
     pip3 install --no-cache-dir "torch==2.10.0" torchvision --index-url https://download.pytorch.org/whl/cu128 && \
     echo "🤖 Installing Transformers stack..." && \
-    pip3 install --no-cache-dir --no-deps timm "transformers==4.44.2"
+    pip3 install --no-cache-dir --no-deps timm "transformers>=4.45.0" "qwen-vl-utils" "accelerate"
 
 # 5. FINAL VERIFICATION: Universal shell syntax (works in Dash and Bash)
 # This confirms the version didn't drift during the torchvision/transformers steps

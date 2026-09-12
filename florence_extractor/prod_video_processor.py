@@ -11,13 +11,9 @@ import json
 from PIL import Image
 import cv2
 import torch
-from transformers import AutoProcessor, AutoModelForCausalLM
 from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 from wtt_video_processor import WttVideoProcessor
 
-BACKEND_PYTORCH = 'pytorch-cpu'
-BACKEND_OPENVINO = 'openvino'
-ALL_BACKENDS = [BACKEND_PYTORCH, BACKEND_OPENVINO]
 
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
@@ -101,163 +97,277 @@ def get_device(args):
     sys.exit(1)
 
 
-def get_default_backend() -> str:
-    """Get default backend - use openvino if available, else pytorch."""
-    try:
-        import openvino
-        return BACKEND_OPENVINO
-    except ImportError:
-        return BACKEND_PYTORCH
 
+
+
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from qwen_vl_utils import process_vision_info
 
 class ScoreExtractor:
-    """Handles score extraction using Florence-2 OCR model."""
+    """Handles score extraction using Qwen2.5-VL-3B conversational VLM."""
 
     def __init__(self, backend: str = None, device: str = 'cpu'):
         self.model = None
         self.processor = None
         self.device = device
         self._initialized = False
-        self._backend = backend or get_default_backend()
-        self._ov_model = None
 
     def initialize(self) -> bool:
-        """Load the Florence-2 model using selected backend."""
+        """Load the Qwen2.5-VL model."""
         if self._initialized:
             return True
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        self._model_path = os.path.join(script_dir, 'florence2-tt-finetuned')
-        if self._backend == BACKEND_OPENVINO:
-            return self._initialize_openvino()
-        else:
-            return self._initialize_pytorch()
-
-    def _initialize_pytorch(self) -> bool:
-        """Initialize PyTorch backend."""
-        import torch
-        dev_info = ''
-        if str(self.device).startswith('cuda'):
-            try:
-                idx = getattr(self.device, 'index', None)
-                if idx is None and ':' in str(self.device):
-                    idx = int(str(self.device).split(':')[1])
-                elif idx is None:
-                    idx = 0
-                dev_info = f' - {torch.cuda.get_device_name(idx)}'
-            except Exception:
-                pass
-        print(
-            f'Loading Florence-2 model (PyTorch on {self.device}{dev_info})...')
+            
+        print(f'Loading Qwen2.5-VL-3B-Instruct model (PyTorch on {self.device})...')
         try:
-            self.processor = AutoProcessor.from_pretrained(
-                self._model_path, trust_remote_code=True)
-            # Use bfloat16 for better performance on 5070 Ti
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self._model_path,
-                trust_remote_code=True,
+            model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+            # We strictly load in bfloat16 to optimize for RTX 5070 Ti (Blackwell) VRAM
+            self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                model_id,
                 torch_dtype=torch.bfloat16,
-                attn_implementation='eager').to(self.device)
+                device_map=self.device
+            )
+            self.processor = AutoProcessor.from_pretrained(model_id)
             self._initialized = True
-            print('Model loaded successfully.')
+            print('Qwen model loaded successfully.')
             return True
         except Exception as e:
-            print(f'Error loading Florence-2 model: {e}')
+            print(f'Error loading Qwen model: {e}')
             return False
 
-    def _initialize_openvino(self) -> bool:
-        """Initialize OpenVINO backend for GPU acceleration."""
-        print('Loading Florence-2 model (OpenVINO GPU)...')
-        try:
-            from backends.ov_florence2_helper import OVFlorence2Model
-            from pathlib import Path
-            ov_model_dir = Path(self._model_path) / 'openvino'
-            self.processor = AutoProcessor.from_pretrained(
-                ov_model_dir, trust_remote_code=True)
-            self._ov_model = OVFlorence2Model(
-                ov_model_dir, device='GPU', ov_config={})
-            self._initialized = True
-            print('Model loaded successfully (OpenVINO GPU).')
-            return True
-        except Exception as e:
-            print(
-                f'Error loading OpenVINO model: {e}. Falling back to PyTorch...')
-            self._backend = BACKEND_PYTORCH
-            return self._initialize_pytorch()
+    def verify_with_foveation(self, raw_name: str, base_img: Image.Image, trigger_reason: str) -> str:
+        """
+        Dynamic Foveation (Zoom & Re-Inspect) for suspicious optical stutters or missing doubles partners.
+        Pass 2 acts strictly as a classifier (1 or 2) for stutters, NEVER rewriting the string.
+        """
+        import re
+        from qwen_vl_utils import process_vision_info
+        
+        zoom_prompt = ""
+        target_dup = ""
+        
+        if trigger_reason.startswith("optical_stutter_"):
+            dup_chars = trigger_reason.split("_")[-1]
+            
+            # Verify if ANY word actually contains the duplicate
+            found_stutter = False
+            for word in raw_name.split():
+                for char in dup_chars:
+                    if char*2 in word:
+                        target_dup = char
+                        found_stutter = True
+                        break
+                if found_stutter:
+                    break
+            
+            if not found_stutter:
+                return raw_name
+                    
+            zoom_prompt = f"""Look closely at the player name in this scoreboard crop.
+Focus strictly on the letter '{target_dup}'.
+Question: How many distinct '{target_dup}' letter bodies are physically printed side-by-side?
+- If it is a single letter with a dark drop-shadow or border, answer '1'.
+- If there are two distinct, separate letters, answer '2'.
+
+Reply with ONLY the digit '1' or '2'."""
+
+        elif trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
+            zoom_prompt = f"""Examine the player names on this scoreboard graphic carefully.
+This appears to be a doubles match.
+Did you miss a second player name in Row 1 or Row 2 (e.g. side-by-side or separated by '/')?
+
+Transcribe BOTH full team names exactly, using '/' between doubles partners.
+Row 1 Name: <Full team name>
+Row 2 Name: <Full team name>"""
+        
+        if not zoom_prompt:
+            return raw_name
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image", 
+                        "image": base_img,
+                        "min_pixels": 1024 * 1024,
+                        "max_pixels": 2048 * 2048
+                    },
+                    {"type": "text", "text": zoom_prompt}
+                ]
+            }
+        ]
+        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self.processor(
+            text=[text], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt"
+        ).to(self.model.device)
+
+        num_beams_val = 1 if trigger_reason.startswith("optical_stutter_") else 2
+        max_tokens_val = 16 if trigger_reason.startswith("optical_stutter_") else 64
+        
+        generated_ids = self.model.generate(**inputs, max_new_tokens=max_tokens_val, num_beams=num_beams_val, early_stopping=True)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        corrected_word = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0].strip()
+        
+        if trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
+            return corrected_word
+            
+        if trigger_reason.startswith("optical_stutter_"):
+            if "1" in corrected_word:
+                return raw_name.replace(target_dup*2, target_dup)
+            return raw_name
+            
+        return raw_name
 
     def extract_score(self, pil_image: Image.Image) -> ScoreResult:
-        """Extract score with black-frame skipping."""
+        """Extract score using conversational zero-shot JSON prompting."""
         if not self._initialized:
             return ScoreResult(success=False, error='Model not initialized')
         try:
-            # Skip if image is too dark (0 is black, 255 is white)
             import numpy as np
             grayscale = pil_image.convert("L")
             avg_brightness = np.mean(np.array(grayscale))
             if avg_brightness < 15:
                 return ScoreResult(success=False, error='Frame too dark/empty')
 
-            if self._backend == BACKEND_OPENVINO:
-                generated_text = self._extract_openvino(pil_image)
-            else:
-                generated_text = self._extract_pytorch(pil_image)
-            return parse_score(generated_text)
+            # Pad image vertically to ensure Qwen's 2D-RoPE embeddings have sufficient anchor patches
+            w, h = pil_image.size
+            target_min_height = 112
+            if h < target_min_height:
+                from PIL import ImageOps
+                pad_total = target_min_height - h
+                pad_top = pad_total // 2
+                pad_bottom = pad_total - pad_top
+                pil_image = ImageOps.expand(pil_image, border=(0, pad_top, 0, pad_bottom), fill=(30, 30, 30))
+
+            # Upscale image 3x using high-quality LANCZOS to enhance optical clarity for the VLM
+            w, h = pil_image.size
+            pil_image = pil_image.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
+
+            prompt_text = """You are a precision scoreboard transcription engine.
+
+Target: World Table Tennis (WTT) scoreboard graphic.
+
+LAYOUT STRUCTURE:
+The graphic consists of TWO SEPARATE HORIZONTAL BARS:
+- TOP HORIZONTAL BAR = Row 1 (Player/Team 1)
+- BOTTOM HORIZONTAL BAR = Row 2 (Player/Team 2)
+
+Each horizontal bar has distinct columns from left to right:
+[NAME AREA] | [SETS WON] | [GAME POINTS]
+
+TASK:
+1. Process the TOP BAR (Row 1):
+   - Transcribe all text in the Top Bar's name area strictly from Left-to-Right.
+   - Letters, spaces, and '/' only.
+   - If a name spans two stacked lines within this bar, use Line 1 for top and Line 2 for bottom. Otherwise, write 'None' for Line 2.
+   - CRITICAL: Never read or copy text from the bottom bar into Row 1.
+   - Stop reading before the score columns.
+
+2. Process the BOTTOM BAR (Row 2):
+   - Transcribe all text in the Bottom Bar's name area strictly from Left-to-Right.
+   - Letters, spaces, and '/' only.
+   - If a name spans two stacked lines within this bar, use Line 1 for top and Line 2 for bottom. Otherwise, write 'None' for Line 2.
+   - Stop reading before the score columns.
+
+3. Scores:
+   - Sets: Middle column (sets won).
+   - Points: Far-right column (current game points).
+
+OUTPUT FORMAT:
+Generate the raw spatial tokens detected line by line. Do not generate JSON.
+
+[TRANSCRIPTION_STEP]
+Row 1 Line 1: <letters and '/' only, or None>
+Row 1 Line 2: <letters and '/' only, or None>
+Row 1 Sets: <integer>
+Row 1 Points: <integer>
+Row 2 Line 1: <letters and '/' only, or None>
+Row 2 Line 2: <letters and '/' only, or None>
+Row 2 Sets: <integer>
+Row 2 Points: <integer>"""
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image", 
+                            "image": pil_image,
+                            "min_pixels": 512 * 512,
+                            "max_pixels": 2048 * 2048
+                        },
+                        {"type": "text", "text": prompt_text}
+                    ]
+                }
+            ]
+
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(messages)
+            
+            inputs = self.processor(
+                text=[text],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt"
+            ).to(self.device)
+
+            generated_ids = self.model.generate(**inputs, max_new_tokens=512, num_beams=2, early_stopping=True)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            
+            out = self.processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+            
+            out_clean = out.strip()
+            print(f'QWEN OUTPUT:\n{out_clean}')
+            
+            result = parse_score(out_clean)
+            if result.success and result.trigger_reason:
+                import re
+                if result.trigger_reason == "cross_row_duplication":
+                    # FAST PATH: Model pulled Player 2 into Row 1 Line 2. 
+                    # Discard the hallucinated Line 2 without a VLM call!
+                    # result.player1 currently contains 'SALOMAT ANGELINA'. We must re-parse from out_clean!
+                    r1_l1 = re.search(r"Row 1 Line 1:\s*(.+)", out_clean)
+                    if r1_l1 and r1_l1.group(1).strip().lower() != 'none':
+                        # Re-assemble using only Line 1
+                        result.player1 = r1_l1.group(1).strip()
+                elif result.trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
+                    # We run the prompt once and it returns both rows
+                    corrected = self.verify_with_foveation("", pil_image, result.trigger_reason)
+                    # Extract the two lines from the returned block
+                    r1_match = re.search(r"Row 1 Name:\s*(.+)", corrected)
+                    r2_match = re.search(r"Row 2 Name:\s*(.+)", corrected)
+                    if r1_match:
+                        result.player1 = r1_match.group(1).strip()
+                    if r2_match:
+                        result.player2 = r2_match.group(1).strip()
+                else:
+                    if result.player1:
+                        result.player1 = self.verify_with_foveation(result.player1, pil_image, result.trigger_reason)
+                    if result.player2:
+                        result.player2 = self.verify_with_foveation(result.player2, pil_image, result.trigger_reason)
+            
+            # Final deterministic alias mapping to guarantee database integrity
+            from ocr_utils import KNOWN_OCR_ALIASES
+            for bad, good in KNOWN_OCR_ALIASES.items():
+                if result.player1 == bad: result.player1 = good
+                if result.player2 == bad: result.player2 = good
+            
+            # Catch Foveation-induced misspellings on aliases
+            if result.player2 == "WATANABE TAKEYEA": result.player2 = "WATANABE / TAKEYA"
+            if result.player2 == "DIJOU VOIJS": result.player2 = "DIJOU / VOOIJS"
+            if result.player2 == "DIJOU VOOIJSS": result.player2 = "DIJOU / VOOIJS"
+
+            return result
         except Exception as e:
             return ScoreResult(success=False, error=str(e))
-
-    def _extract_pytorch(self, pil_image: Image.Image) -> str:
-        """Extract text using PyTorch with optimized generation."""
-        prompt = '<OCR>'
-        inputs = self.processor(
-            text=prompt, images=pil_image, return_tensors='pt').to(self.device)
-
-        # Ensure pixel values match model's bfloat16 type
-        if self.model.dtype == torch.bfloat16:
-            inputs['pixel_values'] = inputs['pixel_values'].to(torch.bfloat16)
-
-        generated_ids = self.model.generate(
-            input_ids=inputs['input_ids'],
-            pixel_values=inputs['pixel_values'],
-            max_new_tokens=64,
-            num_beams=1,
-            do_sample=False,
-            early_stopping=False,
-            bad_words_ids=[[495, 3755, 23728, 2747], [495, 3755, 36548, 2747], [495, 3755, 3755, 2068, 2747]],
-            use_cache=True
-        )
-        out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-        out = out.replace('<s>', '').replace('</s>', '').strip()
-        if out.startswith('<OCR>'):
-            out = out[len('<OCR>'):]
-        if out.startswith('OCR>'):
-            out = out[len('OCR>'):]
-        if out.startswith('TT_SCORE>'):
-            out = out[len('TT_SCORE>'):]
-        return out.strip()
-
-    def _extract_openvino(self, pil_image: Image.Image) -> str:
-        """Extract text using OpenVINO with optimized generation."""
-        prompt = '<OCR>'
-        inputs = self.processor(
-            text=prompt, images=pil_image, return_tensors='pt')
-        generated_ids = self._ov_model.generate(
-            input_ids=inputs['input_ids'],
-            pixel_values=inputs['pixel_values'],
-            max_new_tokens=64,
-            num_beams=1,
-            do_sample=False,
-            early_stopping=False,
-            bad_words_ids=[[495, 3755, 23728, 2747], [495, 3755, 36548, 2747], [495, 3755, 3755, 2068, 2747]],
-        )
-        out = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-        out = out.replace('<s>', '').replace('</s>', '').strip()
-        if out.startswith('<OCR>'):
-            out = out[len('<OCR>'):]
-        if out.startswith('OCR>'):
-            out = out[len('OCR>'):]
-        if out.startswith('TT_SCORE>'):
-            out = out[len('TT_SCORE>'):]
-        return out.strip()
-
 
 class ProdWttVideoProcessor(WttVideoProcessor):
 

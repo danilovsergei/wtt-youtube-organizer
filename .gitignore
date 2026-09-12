@@ -13,3 +13,4 @@ repo/
 .metadata
 flutter_sdk/
 flutter_path
+qwen_venv/

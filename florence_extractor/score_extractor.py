@@ -22,7 +22,9 @@ from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
 BOTTOM_PERCENT = 0.14  # Fraction of height to crop from the bottom
 LEFT_PERCENT = 0.40    # Fraction of width to crop from the left
 
-from prod_video_processor import ScoreExtractor, get_device, get_default_backend, BACKEND_PYTORCH, BACKEND_OPENVINO, ALL_BACKENDS
+from prod_video_processor import ScoreExtractor, get_device
+BACKEND_PYTORCH = 'pytorch-cpu'
+ALL_BACKENDS = [BACKEND_PYTORCH]
 
 def load_expected_data(csv_path):
     data = {}
@@ -287,7 +289,7 @@ def main():
         csv_path = None
 
     # Determine backend
-    backend = args.backend or get_default_backend()
+    backend = BACKEND_PYTORCH
     print(f"Backend: {backend}")
     print(f"Crop images: {do_crop}")
 
