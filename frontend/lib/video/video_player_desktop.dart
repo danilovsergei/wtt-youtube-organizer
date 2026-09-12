@@ -249,10 +249,20 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          GestureDetector(
-            onTap: () => _player.playOrPause(),
-            onDoubleTap: widget.onDoubleTap,
-            child: Video(controller: _controller),
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              Video(controller: _controller),
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  debugPrint('Single tap gesture detected! Toggling play/pause...');
+                  _player.playOrPause();
+                },
+                onDoubleTap: widget.onDoubleTap,
+                child: const SizedBox.expand(),
+              ),
+            ],
           ),
           
           if (_availableStreams.isNotEmpty)
