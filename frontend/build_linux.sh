@@ -1,15 +1,29 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting native Gentoo Flutter Linux build..."
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
 
-# Build the Linux release binary directly on the host OS
+echo "🚀 Bootstrapping Native Gentoo Build Environment..."
+
+# Automatically provision an isolated, native Flutter SDK to bypass the Ubuntu Docker ABI collision
+if [ ! -d "$DIR/flutter_sdk" ]; then
+    echo "Downloading native Linux Flutter SDK..."
+    git clone https://github.com/flutter/flutter.git -b stable "$DIR/flutter_sdk"
+    "$DIR/flutter_sdk/bin/flutter" config --enable-linux-desktop
+fi
+
+export PATH="$DIR/flutter_sdk/bin:$PATH"
+
+echo "🧹 Cleaning previous builds..."
 flutter clean
 flutter pub get
+
+echo "🔨 Compiling raw native binary linked directly to your Gentoo system libraries..."
 flutter build linux --release
 
 echo ""
-echo "✅ Native build complete!"
-echo "The executable is compiled specifically for your Gentoo environment."
-echo "You can launch it natively by running: ./build/linux/x64/release/bundle/flutter_app"
+echo "✅ Native compilation complete!"
+echo "You can now launch the lightning-fast native application directly by running:"
+echo "$DIR/build/linux/x64/release/bundle/flutter_app"
 
