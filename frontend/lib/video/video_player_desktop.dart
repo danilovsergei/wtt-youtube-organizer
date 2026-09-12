@@ -208,6 +208,43 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
     }
   }
 
+
+  Widget _buildQualitySelector() {
+    return PopupMenuButton<YtStreamInfo>(
+      key: const Key('quality_selector_btn'),
+      icon: const Icon(Icons.settings, color: Colors.white, size: 28),
+      color: Colors.black.withValues(alpha: 0.8),
+      tooltip: 'Video Quality',
+      onSelected: _changeQuality,
+      itemBuilder: (BuildContext context) {
+        return _availableStreams.map((stream) {
+          final isSelected = stream.height == _selectedStream?.height;
+          return PopupMenuItem<YtStreamInfo>(
+            key: Key('quality_${stream.height}p'),
+            value: stream,
+            child: Row(
+              children: [
+                Icon(
+                  isSelected ? Icons.check : Icons.circle,
+                  color: isSelected ? Colors.red : Colors.transparent,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${stream.height}p',
+                  style: TextStyle(
+                    color: isSelected ? Colors.red : Colors.white,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList();
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDifferentMatch = _lastMatchId != widget.matchId;
@@ -275,11 +312,19 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
                   // media_kit does not consume double taps by default, so this safely wins the arena
                   onDoubleTap: widget.onDoubleTap,
                   child: MaterialDesktopVideoControlsTheme(
-                    normal: const MaterialDesktopVideoControlsThemeData(
+                    normal: MaterialDesktopVideoControlsThemeData(
                       hideMouseOnControlsRemoval: true,
+                      topButtonBar: [
+                        const Spacer(),
+                        if (_availableStreams.isNotEmpty) _buildQualitySelector(),
+                      ],
                     ),
-                    fullscreen: const MaterialDesktopVideoControlsThemeData(
+                    fullscreen: MaterialDesktopVideoControlsThemeData(
                       hideMouseOnControlsRemoval: true,
+                      topButtonBar: [
+                        const Spacer(),
+                        if (_availableStreams.isNotEmpty) _buildQualitySelector(),
+                      ],
                     ),
                     child: Video(controller: _controller),
                   ),
@@ -287,45 +332,6 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
               );
             },
           ),
-          
-          if (_availableStreams.isNotEmpty)
-            Positioned(
-              top: 16,
-              right: 16,
-              child: PopupMenuButton<YtStreamInfo>(
-                key: const Key('quality_selector_btn'),
-                icon: const Icon(Icons.settings, color: Colors.white, size: 28),
-                color: Colors.black.withValues(alpha: 0.8),
-                tooltip: 'Video Quality',
-                onSelected: _changeQuality,
-                itemBuilder: (BuildContext context) {
-                  return _availableStreams.map((stream) {
-                    final isSelected = stream.height == _selectedStream?.height;
-                    return PopupMenuItem<YtStreamInfo>(
-                      key: Key('quality_${stream.height}p'),
-                      value: stream,
-                      child: Row(
-                        children: [
-                          Icon(
-                            isSelected ? Icons.check : Icons.circle,
-                            color: isSelected ? Colors.red : Colors.transparent,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${stream.height}p',
-                            style: TextStyle(
-                              color: isSelected ? Colors.red : Colors.white,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList();
-                },
-              ),
-            ),
 
           if (widget.resizingNotifier != null)
             ValueListenableBuilder<bool>(
