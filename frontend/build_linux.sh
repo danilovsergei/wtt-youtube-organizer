@@ -4,16 +4,7 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
-echo "🚀 Bootstrapping Native Gentoo Build Environment..."
-
-# Automatically provision an isolated, native Flutter SDK to bypass the Ubuntu Docker ABI collision
-if [ ! -d "$DIR/flutter_sdk" ]; then
-    echo "Downloading native Linux Flutter SDK..."
-    git clone https://github.com/flutter/flutter.git -b stable "$DIR/flutter_sdk"
-    "$DIR/flutter_sdk/bin/flutter" config --enable-linux-desktop
-fi
-
-export PATH="$DIR/flutter_sdk/bin:$PATH"
+echo "🚀 Starting Native Gentoo Build Environment..."
 
 echo "🧹 Cleaning previous builds..."
 flutter clean
