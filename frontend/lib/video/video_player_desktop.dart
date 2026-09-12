@@ -249,20 +249,27 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Stack(
-            fit: StackFit.expand,
-            children: [
-              Video(controller: _controller),
-              GestureDetector(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Listener(
                 behavior: HitTestBehavior.translucent,
-                onTap: () {
-                  debugPrint('Single tap gesture detected! Toggling play/pause...');
-                  _player.playOrPause();
+                onPointerUp: (event) {
+                  // media_kit's internal Material controls consume single taps to toggle UI visibility.
+                  // This causes normal GestureDetectors to lose the Gesture Arena competition and silently drop taps.
+                  // By using a raw Listener, we completely bypass the arena and reliably catch the click.
+                  // We ignore clicks in the bottom 80 pixels to allow the user to interact with the progress bar/volume.
+                  if (event.localPosition.dy < constraints.maxHeight - 80) {
+                    debugPrint('Raw pointer event detected in video area! Toggling play/pause...');
+                    _player.playOrPause();
+                  }
                 },
-                onDoubleTap: widget.onDoubleTap,
-                child: const SizedBox.expand(),
-              ),
-            ],
+                child: GestureDetector(
+                  // media_kit does not consume double taps by default, so this safely wins the arena
+                  onDoubleTap: widget.onDoubleTap,
+                  child: Video(controller: _controller),
+                ),
+              );
+            },
           ),
           
           if (_availableStreams.isNotEmpty)
