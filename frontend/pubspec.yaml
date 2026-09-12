@@ -45,6 +45,7 @@ dependencies:
   media_kit_libs_video: ^1.0.7
   http: ^1.6.0
   flutter_svg: ^2.0.10
+  wakelock_plus: ^1.8.0
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'video_player_service.dart';
 
 VideoPlayerWidget createVideoPlayer({
@@ -52,6 +53,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   late final VideoController _controller;
   String? _lastMatchId;
   StreamSubscription? _durationSub;
+  StreamSubscription? _playingSub;
   Timer? _singleClickTimer;
 
   List<YtStreamInfo> _availableStreams = [];
@@ -63,12 +65,21 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
+    _playingSub = _player.stream.playing.listen((isPlaying) {
+      if (isPlaying) {
+        WakelockPlus.enable();
+      } else {
+        WakelockPlus.disable();
+      }
+    });
   }
 
   @override
   void dispose() {
     _durationSub?.cancel();
+    _playingSub?.cancel();
     _singleClickTimer?.cancel();
+    WakelockPlus.disable();
     _player.dispose();
     super.dispose();
   }
