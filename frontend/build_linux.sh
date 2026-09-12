@@ -15,6 +15,10 @@ fi
 
 export PATH="$DIR/flutter_sdk/bin:$PATH"
 
+# Override Gentoo's environment to fallback to GCC if clang++ is missing
+export CXX=g++
+export CC=gcc
+
 echo "🧹 Cleaning previous builds..."
 flutter clean
 flutter pub get
