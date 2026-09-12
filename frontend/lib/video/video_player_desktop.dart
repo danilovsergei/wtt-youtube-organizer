@@ -250,6 +250,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
         fit: StackFit.expand,
         children: [
           GestureDetector(
+            onTap: () => _player.playOrPause(),
             onDoubleTap: widget.onDoubleTap,
             child: Video(controller: _controller),
           ),
