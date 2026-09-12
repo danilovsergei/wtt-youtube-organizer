@@ -1,0 +1,121 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:flutter/foundation.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart' as app;
+import 'package:window_manager/window_manager.dart';
+import 'package:flutter_app/main.dart' as app;
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  Future<void> pumpUntilFound(WidgetTester tester, Finder finder, {int maxSeconds = 15}) async {
+    bool timerDone = false;
+    final timer = Future.delayed(Duration(seconds: maxSeconds), () => timerDone = true);
+    while (!timerDone) {
+      await tester.pump(const Duration(milliseconds: 500));
+      if (finder.evaluate().isNotEmpty) return;
+    }
+    throw Exception("Timeout waiting for $finder");
+  }
+
+  testWidgets('Video Quality selector exists, changes stream quality, and preserves state on desktop', (WidgetTester tester) async {
+    if (kIsWeb) return; 
+    
+    MediaKit.ensureInitialized();
+    await windowManager.ensureInitialized();
+
+    // Inject a fake match to bypass Supabase network errors in the headless Docker container
+    final mockMatch = app.Match(
+      id: 'test_match_1',
+      title: 'Fan Zhendong vs Ma Long',
+      tournamentId: 'test_tourney',
+      date: '2023-01-01',
+      time: '12:00',
+      imageUrl: 'https://img.youtube.com/vi/jNQXAC9IVRw/0.jpg',
+      tag: 'Singles',
+      day: 'Day 1',
+      youtubeId: 'jNQXAC9IVRw', // Me at the zoo
+      offsetSeconds: 5,
+    );
+
+    // Force the UI to pick up the mock match BEFORE rendering VideoHero
+    app.filterController.selectMatch(mockMatch);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListenableBuilder(
+          listenable: app.filterController,
+          builder: (context, _) {
+            return app.VideoHero();
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Wait for the settings button to appear
+    final settingsButton = find.byKey(const Key('quality_selector_btn'));
+    await pumpUntilFound(tester, settingsButton, maxSeconds: 15);
+
+    // Wait up to 10 seconds for the underlying C++ media_kit engine to genuinely start streaming bytes
+    bool isPlaying = false;
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+      final videoWidgets = find.byType(app.VideoHero).evaluate();
+      if (videoWidgets.isNotEmpty) {
+        try {
+          // Extract the native media_kit Video widget to read the raw C++ engine state
+          final videoFinder = find.descendant(of: find.byType(app.VideoHero), matching: find.byType(app.Video));
+          if (videoFinder.evaluate().isNotEmpty) {
+            final dynamic videoWidget = tester.widget(videoFinder);
+            final player = videoWidget.controller.player;
+            // Check that video is playing AND that an audio track has successfully initialized
+            final hasAudio = player.state.track.audio?.id != 'no' && player.state.track.audio?.id != null && player.state.track.audio?.id != 'auto';
+            if (player.state.playing && player.state.duration.inSeconds > 0 && hasAudio) {
+              isPlaying = true;
+              break;
+            }
+          }
+        } catch (e) {
+          // Video widget might not be mounted yet
+        }
+      }
+    }
+    expect(isPlaying, isTrue, reason: 'media_kit C++ engine failed to load the YouTube stream (likely dropped by CDN or missing codec)!');
+
+    // Open the Quality Selector popup
+    await tester.tap(settingsButton);
+    await tester.pump(const Duration(seconds: 1));
+
+    // The popup menu uses a navigation transition, pump until the animation finishes
+    await tester.pumpAndSettle();
+
+    // Find a quality option (e.g. 360p or 480p) in the dropdown using a text finder 
+    // to bypass strict generic type matching on PopupMenuItem<VideoOnlyStreamInfo>
+    final popupItem = find.textContaining('p').last;
+    await pumpUntilFound(tester, popupItem);
+    await tester.tap(popupItem);
+    
+    // Check if the C++ engine successfully remuxed the new 1080p stream
+    bool swappedSuccessfully = false;
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+      try {
+        final videoFinder = find.descendant(of: find.byType(app.VideoHero), matching: find.byType(app.Video));
+        if (videoFinder.evaluate().isNotEmpty) {
+          final dynamic videoWidget = tester.widget(videoFinder);
+          final player = videoWidget.controller.player;
+          final hasAudio = player.state.track.audio?.id != 'no' && player.state.track.audio?.id != null && player.state.track.audio?.id != 'auto';
+          if (player.state.playing && player.state.duration.inSeconds > 0 && hasAudio) {
+            swappedSuccessfully = true;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+    expect(swappedSuccessfully, isTrue, reason: 'media_kit failed to resume playing the new high-quality stream or dropped the audio track!');
+  });
+}

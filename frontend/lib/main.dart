@@ -3,10 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+import 'fullscreen/fullscreen_service.dart';
+import 'video/video_player_service.dart';
+
+import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) {
+    MediaKit.ensureInitialized();
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1280, 720),
+      center: true,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
   await Supabase.initialize(
     url: 'https://yxegxufjztnsogjrqsqw.supabase.co',
     anonKey: 'sb_publishable_YLN9F1xMInlM8BbwF_dA3Q_rBU9V687',
@@ -393,6 +409,7 @@ class FilterController extends ChangeNotifier {
 }
 
 final filterController = FilterController();
+final ValueNotifier<bool> isFullscreenNotifier = ValueNotifier(false);
 
 // --- Main Layout ---
 
@@ -406,6 +423,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   double _sidebarWidth = 320;
   final ValueNotifier<bool> _resizingNotifier = ValueNotifier(false);
+  final GlobalKey _videoHeroKey = GlobalKey();
 
   @override
   void dispose() {
@@ -415,102 +433,96 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine screen size for responsiveness
     final isDesktop = MediaQuery.of(context).size.width >= 768;
 
     return ListenableBuilder(
       listenable: filterController,
       builder: (context, _) {
         if (filterController.isLoading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        return Scaffold(
-          drawer: !isDesktop
-              ? PointerInterceptor(
-                  child: const Drawer(
-                    backgroundColor: Colors.transparent,
-                    child: Sidebar(),
-                  ),
-                )
-              : null,
-          body: Stack(
-            children: [
-              Row(
+        return ValueListenableBuilder<bool>(
+          valueListenable: isFullscreenNotifier,
+          builder: (context, isFullscreen, _) {
+            return Scaffold(
+              backgroundColor: isFullscreen ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
+              drawer: !isDesktop && !isFullscreen
+                  ? PointerInterceptor(child: const Drawer(backgroundColor: Colors.transparent, child: Sidebar()))
+                  : null,
+              body: Stack(
                 children: [
-                  if (isDesktop) ...[
-                    SizedBox(
-                      width: _sidebarWidth,
-                      child: const Sidebar(),
-                    ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.resizeColumn,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onHorizontalDragStart: (_) {
-                          _resizingNotifier.value = true;
-                        },
-                        onHorizontalDragUpdate: (details) {
-                          setState(() {
-                            _sidebarWidth += details.delta.dx;
-                            if (_sidebarWidth < 250) _sidebarWidth = 250;
-                            if (_sidebarWidth > 600) _sidebarWidth = 600;
-                          });
-                        },
-                        onHorizontalDragEnd: (_) {
-                          _resizingNotifier.value = false;
-                        },
-                        onHorizontalDragCancel: () {
-                          _resizingNotifier.value = false;
-                        },
-                        child: Container(
-                          width: 12,
-                          color: Colors.transparent,
-                        ),
-                      ),
-                    ),
-                  ],
-                  Expanded(
-                    child: Column(
-                      children: [
-                        if (!isDesktop) const MobileHeader(),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                VideoHero(resizingNotifier: _resizingNotifier),
-                                const MatchDetails(),
-                                const UpNextSection(),
-                              ],
-                            ),
+                  Row(
+                    children: [
+                      if (isDesktop && !isFullscreen) ...[
+                        SizedBox(width: _sidebarWidth, child: const Sidebar()),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.resizeColumn,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onHorizontalDragStart: (_) => _resizingNotifier.value = true,
+                            onHorizontalDragUpdate: (details) {
+                              setState(() {
+                                _sidebarWidth += details.delta.dx;
+                                if (_sidebarWidth < 250) _sidebarWidth = 250;
+                                if (_sidebarWidth > 600) _sidebarWidth = 600;
+                              });
+                            },
+                            onHorizontalDragEnd: (_) => _resizingNotifier.value = false,
+                            onHorizontalDragCancel: () => _resizingNotifier.value = false,
+                            child: Container(width: 12, color: Colors.transparent),
                           ),
                         ),
-                        if (!isDesktop) const MobileBottomNav(),
                       ],
-                    ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            if (!isDesktop && !isFullscreen) const MobileHeader(),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                physics: isFullscreen ? const NeverScrollableScrollPhysics() : null,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (isFullscreen)
+                                      Container(
+                                        height: MediaQuery.of(context).size.height,
+                                        width: MediaQuery.of(context).size.width,
+                                        color: Colors.black,
+                                        child: Center(
+                                          child: AspectRatio(
+                                            aspectRatio: 16 / 9,
+                                            child: VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
+                                    if (!isFullscreen) const MatchDetails(),
+                                    if (!isFullscreen) const UpNextSection(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (!isDesktop && !isFullscreen) const MobileBottomNav(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _resizingNotifier,
+                    builder: (context, isResizing, child) {
+                      if (!isResizing) return const SizedBox.shrink();
+                      return Positioned.fill(
+                        child: PointerInterceptor(child: Container(color: Colors.transparent)),
+                      );
+                    },
                   ),
                 ],
               ),
-              // We keep the PointerInterceptor as a safety net, though the thumbnail might be enough.
-              // It doesn't hurt to keep it.
-              ValueListenableBuilder<bool>(
-                valueListenable: _resizingNotifier,
-                builder: (context, isResizing, child) {
-                  if (!isResizing) return const SizedBox.shrink();
-                  return Positioned.fill(
-                    child: PointerInterceptor(
-                      child: Container(
-                        color: Colors.transparent,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1206,29 +1218,16 @@ class VideoHero extends StatefulWidget {
 }
 
 class _VideoHeroState extends State<VideoHero> {
-  YoutubePlayerController? _controller;
-  String? _lastMatchId;
-
-  bool get _isPlayerSupported => kIsWeb;
+  void _handleFullscreenToggle() {
+    FullscreenService.toggleFullscreen((isFullscreen) {
+      isFullscreenNotifier.value = isFullscreen;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    if (_isPlayerSupported) {
-      _controller = YoutubePlayerController(
-        params: const YoutubePlayerParams(
-          showControls: true,
-          showFullscreenButton: true,
-          mute: false,
-        ),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.close();
-    super.dispose();
+    FullscreenService.registerGlobalHotkey(_handleFullscreenToggle);
   }
 
   @override
@@ -1237,120 +1236,13 @@ class _VideoHeroState extends State<VideoHero> {
       listenable: filterController,
       builder: (context, _) {
         final match = filterController.selectedMatch;
-
-        if (match.id != _lastMatchId) {
-          _lastMatchId = match.id;
-          if (_controller != null) {
-            if (match.youtubeId != null) {
-              _controller!.loadVideoById(
-                videoId: match.youtubeId!,
-                startSeconds: match.offsetSeconds?.toDouble(),
-              );
-            } else {
-              _controller!.stopVideo();
-            }
-          }
-        }
-
-        final thumbnailWidget = AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Container(
-            decoration: BoxDecoration(
-              image: DecorationImage(
-                image: NetworkImage(match.imageUrl),
-                fit: BoxFit.cover,
-                opacity: 0.8,
-                onError: (exception, stackTrace) {},
-              ),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D7FF2).withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0D7FF2).withValues(alpha: 0.6),
-                        blurRadius: 50,
-                        spreadRadius: 10,
-                      ),
-                    ],
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      width: 4,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    size: 48,
-                    color: Colors.white,
-                  ),
-                ),
-                Positioned(
-                  top: 24,
-                  left: 24,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 4),
-                      ],
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.fiber_manual_record,
-                          size: 8,
-                          color: Colors.white,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'LIVE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-
-        if (match.youtubeId == null || _controller == null) {
-          return thumbnailWidget;
-        }
-
-        return AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Stack(
-            fit: StackFit.expand, // Ensures children fill the AspectRatio box
-            children: [
-              YoutubePlayer(
-                controller: _controller!,
-              ),
-              if (widget.resizingNotifier != null)
-                ValueListenableBuilder<bool>(
-                  valueListenable: widget.resizingNotifier!,
-                  builder: (context, isResizing, _) {
-                    if (isResizing) {
-                      return thumbnailWidget; // Show thumbnail during resize to hide heavy iframe
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-            ],
-          ),
+        return VideoPlayerWidget.create(
+          resizingNotifier: widget.resizingNotifier,
+          matchId: match.id,
+          youtubeId: match.youtubeId,
+          imageUrl: match.imageUrl,
+          offsetSeconds: match.offsetSeconds ?? 0,
+          onDoubleTap: _handleFullscreenToggle,
         );
       },
     );
