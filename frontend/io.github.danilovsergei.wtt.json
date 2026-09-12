@@ -16,32 +16,88 @@
         {
             "name": "luajit",
             "buildsystem": "simple",
-            "build-commands": ["make PREFIX=/app", "make install PREFIX=/app"],
-            "sources": [{"type": "git", "url": "https://github.com/openresty/luajit2.git", "tag": "v2.1-20260620", "commit": "b411bec3ce550ef9968fc83bca094455cf812c1f"}]
+            "build-commands": [
+                "make PREFIX=/app",
+                "make install PREFIX=/app"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/openresty/luajit2.git",
+                    "tag": "v2.1-20260620",
+                    "commit": "b411bec3ce550ef9968fc83bca094455cf812c1f"
+                }
+            ]
         },
         {
             "name": "ffmpeg",
             "buildsystem": "autotools",
-            "config-opts": ["--enable-shared", "--disable-static", "--disable-programs", "--disable-doc", "--disable-debug", "--enable-gpl", "--enable-version3", "--enable-gnutls"],
-            "sources": [{"type": "archive", "url": "https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz", "sha256": "7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52"}]
+            "config-opts": [
+                "--enable-shared",
+                "--disable-static",
+                "--disable-programs",
+                "--disable-doc",
+                "--disable-debug",
+                "--enable-gpl",
+                "--enable-version3",
+                "--enable-gnutls"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz",
+                    "sha256": "7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52"
+                }
+            ]
         },
         {
             "name": "libass",
             "buildsystem": "autotools",
-            "config-opts": ["--disable-static"],
-            "sources": [{"type": "archive", "url": "https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.gz", "sha256": "caab4b993dd7be6187c55623b789ed75dddefea6e65938af134637c732fe094a"}]
+            "config-opts": [
+                "--disable-static"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.gz",
+                    "sha256": "caab4b993dd7be6187c55623b789ed75dddefea6e65938af134637c732fe094a"
+                }
+            ]
         },
         {
             "name": "libplacebo",
             "buildsystem": "meson",
-            "config-opts": ["-Ddemos=false"],
-            "sources": [{"type": "git", "url": "https://github.com/haasn/libplacebo.git", "tag": "v7.360.1", "commit": "cee9b076f2c63104ccfd497fa79c39a867293ec4"}]
+            "config-opts": [
+                "-Ddemos=false"
+            ],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/haasn/libplacebo.git",
+                    "tag": "v7.360.1",
+                    "commit": "cee9b076f2c63104ccfd497fa79c39a867293ec4"
+                }
+            ]
         },
         {
             "name": "libmpv",
             "buildsystem": "meson",
-            "config-opts": ["-Dlibmpv=true", "-Dcplayer=false", "-Dalsa=disabled", "-Dhtml-build=disabled", "-Djavascript=disabled", "-Duchardet=disabled", "-Dlibarchive=disabled"],
-            "sources": [{"type": "archive", "url": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz", "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"}]
+            "config-opts": [
+                "-Dlibmpv=true",
+                "-Dcplayer=false",
+                "-Dalsa=disabled",
+                "-Dhtml-build=disabled",
+                "-Djavascript=disabled",
+                "-Duchardet=disabled",
+                "-Dlibarchive=disabled"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+                    "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+                }
+            ]
         },
         {
             "name": "yt-dlp",
@@ -75,13 +131,23 @@
                 "echo 'export PATH=\"$YT_DLP_DIR:$PATH\"' >> /app/bin/wtt",
                 "echo '\"$YT_DLP_DIR/yt-dlp_linux\" -U > /dev/null 2>&1' >> /app/bin/wtt",
                 "echo 'exec /app/wtt/flutter_app \"$@\"' >> /app/bin/wtt",
-                "chmod +x /app/bin/wtt"
+                "chmod +x /app/bin/wtt",
+                "install -Dm644 io.github.danilovsergei.wtt.desktop /app/share/applications/io.github.danilovsergei.wtt.desktop",
+                "install -Dm644 io.github.danilovsergei.wtt.svg /app/share/icons/hicolor/scalable/apps/io.github.danilovsergei.wtt.svg"
             ],
             "sources": [
                 {
                     "type": "dir",
                     "path": "build/linux/x64/release/bundle",
                     "dest": "bundle"
+                },
+                {
+                    "type": "file",
+                    "path": "io.github.danilovsergei.wtt.desktop"
+                },
+                {
+                    "type": "file",
+                    "path": "io.github.danilovsergei.wtt.svg"
                 }
             ]
         }

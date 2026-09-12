@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=WTT YouTube Organizer
+Comment=A robust desktop application for organizing and playing WTT YouTube matches seamlessly.
+Exec=wtt
+Icon=io.github.danilovsergei.wtt
+Terminal=false
+Categories=AudioVideo;Video;Player;
+StartupWMClass=flutter_app
+
