@@ -15,17 +15,11 @@ fi
 
 export PATH="$DIR/flutter_sdk/bin:$PATH"
 
-# Flutter strictly hardcodes 'clang++' execution, entirely ignoring standard CXX environment variables.
-# We create a local shim to maliciously masquerade GCC as Clang to force Flutter to compile without the llvm toolchain!
-echo "🎭 Injecting Clang-to-GCC compiler shims..."
-ln -sf $(which g++) "$DIR/flutter_sdk/bin/clang++"
-ln -sf $(which gcc) "$DIR/flutter_sdk/bin/clang"
-
 echo "🧹 Cleaning previous builds..."
 flutter clean
 flutter pub get
 
-echo "🔨 Compiling raw native binary linked directly to your Gentoo system libraries using GCC..."
+echo "🔨 Compiling raw native binary linked directly to your Gentoo system libraries..."
 flutter build linux --release
 
 echo ""
