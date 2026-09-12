@@ -52,6 +52,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   late final VideoController _controller;
   String? _lastMatchId;
   StreamSubscription? _durationSub;
+  Timer? _singleClickTimer;
 
   List<YtStreamInfo> _availableStreams = [];
   YtStreamInfo? _selectedStream;
@@ -67,6 +68,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   @override
   void dispose() {
     _durationSub?.cancel();
+    _singleClickTimer?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -145,6 +147,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
       }
 
       _durationSub?.cancel();
+    _singleClickTimer?.cancel();
       
       final nativePlayer = _player.platform as dynamic;
       try { nativePlayer.setProperty('ytdl', 'no'); } catch (e) { debugPrint('MPV prop err: $e'); }
@@ -188,6 +191,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
         _durationSub = _player.stream.duration.listen((duration) async {
           if (duration.inSeconds > 0) {
             _durationSub?.cancel();
+    _singleClickTimer?.cancel();
             await playAndSeek();
           }
         });
@@ -254,13 +258,17 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
               return Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerUp: (event) {
-                  // media_kit's internal Material controls consume single taps to toggle UI visibility.
-                  // This causes normal GestureDetectors to lose the Gesture Arena competition and silently drop taps.
-                  // By using a raw Listener, we completely bypass the arena and reliably catch the click.
-                  // We ignore clicks in the bottom 80 pixels to allow the user to interact with the progress bar/volume.
                   if (event.localPosition.dy < constraints.maxHeight - 80) {
-                    debugPrint('Raw pointer event detected in video area! Toggling play/pause...');
-                    _player.playOrPause();
+                    if (_singleClickTimer != null && _singleClickTimer!.isActive) {
+                      // Double click detected! Cancel the pending single click action
+                      _singleClickTimer!.cancel();
+                    } else {
+                      // Start a timer for single click action (300ms is standard double-click window)
+                      _singleClickTimer = Timer(const Duration(milliseconds: 300), () {
+                        debugPrint('Raw pointer event detected in video area! Toggling play/pause...');
+                        _player.playOrPause();
+                      });
+                    }
                   }
                 },
                 child: GestureDetector(

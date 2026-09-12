@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -62,6 +63,7 @@ void main() {
 
     // Wait up to 10 seconds for the underlying C++ media_kit engine to genuinely start streaming bytes
     bool isPlaying = false;
+    late Player testPlayer;
     for (int i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 500));
       final videoWidgets = find.byType(app.VideoHero).evaluate();
@@ -72,6 +74,7 @@ void main() {
           if (videoFinder.evaluate().isNotEmpty) {
             final dynamic videoWidget = tester.widget(videoFinder);
             final player = videoWidget.controller.player;
+            testPlayer = player;
             // Check that video is playing AND that an audio track has successfully initialized
             final hasAudio = player.state.track.audio?.id != 'no' && player.state.track.audio?.id != null && player.state.track.audio?.id != 'auto';
             if (player.state.playing && player.state.duration.inSeconds > 0 && hasAudio) {
@@ -91,41 +94,49 @@ void main() {
     
     // Tap to pause
     await tester.tap(videoHero);
-    await tester.pump(const Duration(milliseconds: 500));
+    // With the timeout fix, we need to wait longer than the 300ms timeout for the single tap to register!
+    await tester.pump(const Duration(milliseconds: 600));
     
     bool isPaused = false;
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 200));
       try {
-        final videoFinder = find.descendant(of: videoHero, matching: find.byType(app.Video));
-        if (videoFinder.evaluate().isNotEmpty) {
-          final dynamic videoWidget = tester.widget(videoFinder);
-          final player = videoWidget.controller.player;
-          if (!player.state.playing) {
-            isPaused = true;
-            break;
-          }
+        if (!testPlayer.state.playing) {
+          isPaused = true;
+          break;
         }
       } catch (e) {}
     }
     expect(isPaused, isTrue, reason: 'Single tap failed to pause the video!');
 
-    // Tap to resume
+    // --- Test Double Click (Fullscreen) does NOT toggle Play/Pause ---
+    // The video is currently paused.
+    // Simulate first tap of a double tap
+    await tester.tap(videoHero);
+    await tester.pump(const Duration(milliseconds: 50));
+    
+    // At this point (50ms in), the play/pause action should NOT have fired yet because it's waiting to see if it's a double click!
+    // This assertion will fail BEFORE the fix, because the first tap immediately played the video.
+    expect(testPlayer.state.playing, isFalse, reason: 'Double-click bug: The first tap of a double-click immediately changed the play state!');
+    
+    // Simulate second tap of the double tap (within the 300ms window)
     await tester.tap(videoHero);
     await tester.pump(const Duration(milliseconds: 500));
+    
+    // After the double click is fully resolved, the video should STILL be paused!
+    expect(testPlayer.state.playing, isFalse, reason: 'Double-click bug: The double-click improperly toggled the play state!');
+    
+    // Now single tap to resume the video for the rest of the tests
+    await tester.tap(videoHero);
+    await tester.pump(const Duration(milliseconds: 600));
     
     bool isResumed = false;
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 200));
       try {
-        final videoFinder = find.descendant(of: videoHero, matching: find.byType(app.Video));
-        if (videoFinder.evaluate().isNotEmpty) {
-          final dynamic videoWidget = tester.widget(videoFinder);
-          final player = videoWidget.controller.player;
-          if (player.state.playing) {
-            isResumed = true;
-            break;
-          }
+        if (testPlayer.state.playing) {
+          isResumed = true;
+          break;
         }
       } catch (e) {}
     }
@@ -150,18 +161,14 @@ void main() {
     for (int i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 500));
       try {
-        final videoFinder = find.descendant(of: find.byType(app.VideoHero), matching: find.byType(app.Video));
-        if (videoFinder.evaluate().isNotEmpty) {
-          final dynamic videoWidget = tester.widget(videoFinder);
-          final player = videoWidget.controller.player;
-          final hasAudio = player.state.track.audio?.id != 'no' && player.state.track.audio?.id != null && player.state.track.audio?.id != 'auto';
-          if (player.state.playing && player.state.duration.inSeconds > 0 && hasAudio) {
-            swappedSuccessfully = true;
-            break;
-          }
+        final hasAudio = testPlayer.state.track.audio?.id != 'no' && testPlayer.state.track.audio?.id != null && testPlayer.state.track.audio?.id != 'auto';
+        if (testPlayer.state.playing && testPlayer.state.duration.inSeconds > 0 && hasAudio) {
+          swappedSuccessfully = true;
+          break;
         }
       } catch (e) {}
     }
     expect(swappedSuccessfully, isTrue, reason: 'media_kit failed to resume playing the new high-quality stream or dropped the audio track!');
   });
 }
+
