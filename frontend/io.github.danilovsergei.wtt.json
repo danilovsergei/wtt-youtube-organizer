@@ -133,7 +133,8 @@
                 "echo 'exec /app/wtt/flutter_app \"$@\"' >> /app/bin/wtt",
                 "chmod +x /app/bin/wtt",
                 "install -Dm644 io.github.danilovsergei.wtt.desktop /app/share/applications/io.github.danilovsergei.wtt.desktop",
-                "install -Dm644 io.github.danilovsergei.wtt.svg /app/share/icons/hicolor/scalable/apps/io.github.danilovsergei.wtt.svg"
+                "install -Dm644 io.github.danilovsergei.wtt.svg /app/share/icons/hicolor/scalable/apps/io.github.danilovsergei.wtt.svg",
+                "install -Dm644 io.github.danilovsergei.wtt.metainfo.xml /app/share/metainfo/io.github.danilovsergei.wtt.metainfo.xml"
             ],
             "sources": [
                 {
@@ -148,6 +149,10 @@
                 {
                     "type": "file",
                     "path": "io.github.danilovsergei.wtt.svg"
+                },
+                {
+                    "type": "file",
+                    "path": "io.github.danilovsergei.wtt.metainfo.xml"
                 }
             ]
         }

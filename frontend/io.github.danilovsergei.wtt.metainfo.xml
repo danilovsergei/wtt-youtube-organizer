@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.danilovsergei.wtt</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>WTT YouTube Organizer</name>
+  <summary>A robust desktop application for organizing and playing WTT YouTube matches seamlessly.</summary>
+  <description>
+    <p>
+      WTT YouTube Organizer allows you to seamlessly watch and organize World Table Tennis matches directly on your desktop. It bypasses aggressive CDN IP bans using native yt-dlp execution and hardware-accelerated libmpv rendering.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.danilovsergei.wtt.desktop</launchable>
+  <provides>
+    <binary>wtt</binary>
+  </provides>
+  <developer_name>Sergei Danilov</developer_name>
+</component>
+
