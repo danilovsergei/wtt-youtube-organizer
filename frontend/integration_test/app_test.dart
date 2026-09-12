@@ -86,6 +86,52 @@ void main() {
     }
     expect(isPlaying, isTrue, reason: 'media_kit C++ engine failed to load the YouTube stream (likely dropped by CDN or missing codec)!');
 
+    // --- Test Play/Pause toggle via single tap ---
+    final videoHero = find.byType(app.VideoHero);
+    
+    // Tap to pause
+    await tester.tap(videoHero);
+    await tester.pump(const Duration(milliseconds: 500));
+    
+    bool isPaused = false;
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+      try {
+        final videoFinder = find.descendant(of: videoHero, matching: find.byType(app.Video));
+        if (videoFinder.evaluate().isNotEmpty) {
+          final dynamic videoWidget = tester.widget(videoFinder);
+          final player = videoWidget.controller.player;
+          if (!player.state.playing) {
+            isPaused = true;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+    expect(isPaused, isTrue, reason: 'Single tap failed to pause the video!');
+
+    // Tap to resume
+    await tester.tap(videoHero);
+    await tester.pump(const Duration(milliseconds: 500));
+    
+    bool isResumed = false;
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+      try {
+        final videoFinder = find.descendant(of: videoHero, matching: find.byType(app.Video));
+        if (videoFinder.evaluate().isNotEmpty) {
+          final dynamic videoWidget = tester.widget(videoFinder);
+          final player = videoWidget.controller.player;
+          if (player.state.playing) {
+            isResumed = true;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+    expect(isResumed, isTrue, reason: 'Single tap failed to resume the video!');
+    // ---------------------------------------------
+
     // Open the Quality Selector popup
     await tester.tap(settingsButton);
     await tester.pump(const Duration(seconds: 1));
