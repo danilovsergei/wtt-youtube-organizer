@@ -66,10 +66,21 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
     _player = Player();
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((isPlaying) {
+      debugPrint("DIAGNOSTICS: Player playing state changed to: $isPlaying");
       if (isPlaying) {
-        WakelockPlus.enable();
+        debugPrint("DIAGNOSTICS: Attempting to enable WakelockPlus...");
+        WakelockPlus.enable().then((_) {
+          debugPrint("DIAGNOSTICS: WakelockPlus.enable() completed successfully.");
+        }).catchError((e) {
+          debugPrint("DIAGNOSTICS: WakelockPlus.enable() FAILED: $e");
+        });
       } else {
-        WakelockPlus.disable();
+        debugPrint("DIAGNOSTICS: Attempting to disable WakelockPlus...");
+        WakelockPlus.disable().then((_) {
+          debugPrint("DIAGNOSTICS: WakelockPlus.disable() completed successfully.");
+        }).catchError((e) {
+          debugPrint("DIAGNOSTICS: WakelockPlus.disable() FAILED: $e");
+        });
       }
     });
   }
