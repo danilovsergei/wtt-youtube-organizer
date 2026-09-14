@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import 'screen_inhibitor.dart';
 import 'video_player_service.dart';
 
 VideoPlayerWidget createVideoPlayer({
@@ -48,81 +48,7 @@ class _DesktopVideoPlayerWidget extends VideoPlayerWidget {
   State<_DesktopVideoPlayerWidget> createState() => _DesktopVideoPlayerState();
 }
 
-
-class LinuxScreenInhibitor {
-  static String? _fdCookie;
-  static String? _gnomeCookie;
-
-  static Future<void> enable() async {
-    debugPrint("DIAGNOSTICS: Native LinuxScreenInhibitor.enable() called");
-    
-    // Try org.freedesktop.ScreenSaver
-    try {
-      final List<String> argsFd = [
-        '--session', '--print-reply', '--dest=org.freedesktop.ScreenSaver',
-        '/org/freedesktop/ScreenSaver', 'org.freedesktop.ScreenSaver.Inhibit',
-        'string:WTT Video', 'string:Playing Match'
-      ];
-      debugPrint("DIAGNOSTICS: Calling dbus-send with args: $argsFd");
-      debugPrint("DIAGNOSTICS: Notice there is NO window ID required for this direct daemon call, completely bypassing the Wayland Portal restriction!");
-      
-      final result = await Process.run('dbus-send', argsFd);
-      final match = RegExp(r'uint32\s+(\d+)').firstMatch(result.stdout.toString());
-      if (match != null) {
-        _fdCookie = match.group(1);
-        debugPrint("DIAGNOSTICS: fd.ScreenSaver Inhibit Success! Cookie: $_fdCookie");
-      }
-    } catch (e) {
-      debugPrint("DIAGNOSTICS: fd.ScreenSaver Error: $e");
-    }
-
-    // Try org.gnome.SessionManager
-    try {
-      final List<String> argsGnome = [
-        '--session', '--print-reply', '--dest=org.gnome.SessionManager',
-        '/org/gnome/SessionManager', 'org.gnome.SessionManager.Inhibit',
-        'string:WTT Video', 'uint32:0', 'string:Playing Match', 'uint32:8'
-      ];
-      debugPrint("DIAGNOSTICS: Calling dbus-send with args: $argsGnome");
-      
-      final result = await Process.run('dbus-send', argsGnome);
-      final match = RegExp(r'uint32\s+(\d+)').firstMatch(result.stdout.toString());
-      if (match != null) {
-        _gnomeCookie = match.group(1);
-        debugPrint("DIAGNOSTICS: gnome.SessionManager Inhibit Success! Cookie: $_gnomeCookie");
-      }
-    } catch (e) {
-      debugPrint("DIAGNOSTICS: gnome.SessionManager Error: $e");
-    }
-  }
-
-  static Future<void> disable() async {
-    debugPrint("DIAGNOSTICS: Native LinuxScreenInhibitor.disable() called");
-    
-    if (_fdCookie != null) {
-      try {
-        await Process.run('dbus-send', [
-          '--session', '--print-reply', '--dest=org.freedesktop.ScreenSaver',
-          '/org/freedesktop/ScreenSaver', 'org.freedesktop.ScreenSaver.UnInhibit',
-          'uint32:$_fdCookie'
-        ]);
-        _fdCookie = null;
-      } catch (e) {}
-    }
-
-    if (_gnomeCookie != null) {
-      try {
-        await Process.run('dbus-send', [
-          '--session', '--print-reply', '--dest=org.gnome.SessionManager',
-          '/org/gnome/SessionManager', 'org.gnome.SessionManager.Uninhibit',
-          'uint32:$_gnomeCookie'
-        ]);
-        _gnomeCookie = null;
-      } catch (e) {}
-    }
-  }
-}
-\nclass _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
+class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   late final Player _player;
   late final VideoController _controller;
   String? _lastMatchId;
@@ -140,7 +66,6 @@ class LinuxScreenInhibitor {
     _player = Player();
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((isPlaying) {
-      debugPrint("DIAGNOSTICS: Player playing state changed to: $isPlaying");
       if (isPlaying) {
         LinuxScreenInhibitor.enable();
       } else {
@@ -154,7 +79,7 @@ class LinuxScreenInhibitor {
     _durationSub?.cancel();
     _playingSub?.cancel();
     _singleClickTimer?.cancel();
-    WakelockPlus.disable();
+    LinuxScreenInhibitor.disable();
     _player.dispose();
     super.dispose();
   }
