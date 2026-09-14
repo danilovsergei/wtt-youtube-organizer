@@ -101,6 +101,7 @@ def get_device(args):
 
 
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from peft import PeftModel
 from qwen_vl_utils import process_vision_info
 
 class ScoreExtractor:
@@ -113,264 +114,122 @@ class ScoreExtractor:
         self._initialized = False
 
     def initialize(self) -> bool:
-        """Load the Qwen2.5-VL model."""
+        """Load the fine-tuned Qwen2.5-VL model with LoRA adapters."""
         if self._initialized:
             return True
             
-        print(f'Loading Qwen2.5-VL-3B-Instruct model (PyTorch on {self.device})...')
+        print(f'Loading Fine-Tuned Qwen2.5-VL-3B-Instruct LoRA model (PyTorch on {self.device})...')
         try:
             model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+            lora_dir = "/home/geonix/Build/wtt-youtube-organizer/florence_extractor/output/qwen2.5-vl-3b-wtt-lora/v4-20260914-115927/checkpoint-1119"
+            
             # We strictly load in bfloat16 to optimize for RTX 5070 Ti (Blackwell) VRAM
-            self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 model_id,
                 torch_dtype=torch.bfloat16,
                 device_map=self.device
             )
-            self.processor = AutoProcessor.from_pretrained(model_id)
+            self.model = PeftModel.from_pretrained(base_model, lora_dir)
+            self.model.eval()
+            
+            self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=112 * 28 * 28, max_pixels=768 * 28 * 28)
             self._initialized = True
-            print('Qwen model loaded successfully.')
+            print('Qwen LoRA model loaded successfully.')
             return True
         except Exception as e:
-            print(f'Error loading Qwen model: {e}')
+            print(f'Error loading Qwen LoRA model: {e}')
             return False
 
-    def verify_with_foveation(self, raw_name: str, base_img: Image.Image, trigger_reason: str) -> str:
-        """
-        Dynamic Foveation (Zoom & Re-Inspect) for suspicious optical stutters or missing doubles partners.
-        Pass 2 acts strictly as a classifier (1 or 2) for stutters, NEVER rewriting the string.
-        """
+    def extract_score(self, pil_image: Image.Image) -> ScoreResult:
+        """Extracts the scoreboard data using the fine-tuned JSON format."""
+        from ocr_utils import ScoreResult
+        import json
         import re
+        from PIL import ImageOps
         from qwen_vl_utils import process_vision_info
         
-        zoom_prompt = ""
-        target_dup = ""
-        
-        if trigger_reason.startswith("optical_stutter_"):
-            dup_chars = trigger_reason.split("_")[-1]
+        if not hasattr(self, "model") or not self.model or not hasattr(self, "processor") or not self.processor:
+            self.initialize()
             
-            # Verify if ANY word actually contains the duplicate
-            found_stutter = False
-            for word in raw_name.split():
-                for char in dup_chars:
-                    if char*2 in word:
-                        target_dup = char
-                        found_stutter = True
-                        break
-                if found_stutter:
-                    break
-            
-            if not found_stutter:
-                return raw_name
-                    
-            zoom_prompt = f"""Look closely at the player name in this scoreboard crop.
-Focus strictly on the letter '{target_dup}'.
-Question: How many distinct '{target_dup}' letter bodies are physically printed side-by-side?
-- If it is a single letter with a dark drop-shadow or border, answer '1'.
-- If there are two distinct, separate letters, answer '2'.
+        w, h = pil_image.size
+        pad_total = max(0, 112 - h)
+        if pad_total > 0:
+            pad_top = pad_total // 2
+            pad_bottom = pad_total - pad_top
+            pil_image = ImageOps.expand(pil_image, border=(0, pad_top, 0, pad_bottom), fill=(30, 30, 30))
 
-Reply with ONLY the digit '1' or '2'."""
+        INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image. Extract the player names and scores into a valid JSON object matching this schema:
+{
+  "row_1_name": "string",
+  "row_1_sets": integer,
+  "row_1_points": integer,
+  "row_2_name": "string",
+  "row_2_sets": integer,
+  "row_2_points": integer
+}"""
 
-        elif trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
-            zoom_prompt = f"""Examine the player names on this scoreboard graphic carefully.
-This appears to be a doubles match.
-Did you miss a second player name in Row 1 or Row 2 (e.g. side-by-side or separated by '/')?
+        conversation = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": INFERENCE_PROMPT},
+            ],
+        }]
 
-Transcribe BOTH full team names exactly, using '/' between doubles partners.
-Row 1 Name: <Full team name>
-Row 2 Name: <Full team name>"""
-        
-        if not zoom_prompt:
-            return raw_name
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image", 
-                        "image": base_img,
-                        "min_pixels": 1024 * 1024,
-                        "max_pixels": 2048 * 2048
-                    },
-                    {"type": "text", "text": zoom_prompt}
-                ]
-            }
-        ]
-        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = process_vision_info(messages)
+        text_input = self.processor.apply_chat_template(
+            conversation, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(conversation)
         inputs = self.processor(
-            text=[text], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt"
+            text=[text_input], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt"
         ).to(self.model.device)
 
-        num_beams_val = 1 if trigger_reason.startswith("optical_stutter_") else 2
-        max_tokens_val = 16 if trigger_reason.startswith("optical_stutter_") else 64
-        
-        generated_ids = self.model.generate(**inputs, max_new_tokens=max_tokens_val, num_beams=num_beams_val, early_stopping=True)
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        corrected_word = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True)[0].strip()
-        
-        if trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
-            return corrected_word
-            
-        if trigger_reason.startswith("optical_stutter_"):
-            if "1" in corrected_word:
-                return raw_name.replace(target_dup*2, target_dup)
-            return raw_name
-            
-        return raw_name
+        with torch.no_grad():
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=90,  
+                do_sample=False,
+                temperature=None,
+                top_p=None,
+                top_k=None,
+            )
 
-    def extract_score(self, pil_image: Image.Image) -> ScoreResult:
-        """Extract score using conversational zero-shot JSON prompting."""
-        if not self._initialized:
-            return ScoreResult(success=False, error='Model not initialized')
+        generated_ids = output_ids[0][inputs.input_ids.shape[1] :]
+        response_text = self.processor.decode(generated_ids, skip_special_tokens=True)
+
+        cleaned_json_str = re.sub(
+            r"^```json\s*|\s*```$", "", response_text.strip(), flags=re.MULTILINE
+        )
+
         try:
-            import numpy as np
-            grayscale = pil_image.convert("L")
-            avg_brightness = np.mean(np.array(grayscale))
-            if avg_brightness < 15:
-                return ScoreResult(success=False, error='Frame too dark/empty')
-
-            # Pad image vertically to ensure Qwen's 2D-RoPE embeddings have sufficient anchor patches
-            w, h = pil_image.size
-            target_min_height = 112
-            if h < target_min_height:
-                from PIL import ImageOps
-                pad_total = target_min_height - h
-                pad_top = pad_total // 2
-                pad_bottom = pad_total - pad_top
-                pil_image = ImageOps.expand(pil_image, border=(0, pad_top, 0, pad_bottom), fill=(30, 30, 30))
-
-            # Upscale image 3x using high-quality LANCZOS to enhance optical clarity for the VLM
-            w, h = pil_image.size
-            pil_image = pil_image.resize((w * 3, h * 3), Image.Resampling.LANCZOS)
-
-            prompt_text = """You are a precision scoreboard transcription engine.
-
-Target: World Table Tennis (WTT) scoreboard graphic.
-
-LAYOUT STRUCTURE:
-The graphic consists of TWO SEPARATE HORIZONTAL BARS:
-- TOP HORIZONTAL BAR = Row 1 (Player/Team 1)
-- BOTTOM HORIZONTAL BAR = Row 2 (Player/Team 2)
-
-Each horizontal bar has distinct columns from left to right:
-[NAME AREA] | [SETS WON] | [GAME POINTS]
-
-TASK:
-1. Process the TOP BAR (Row 1):
-   - Transcribe all text in the Top Bar's name area strictly from Left-to-Right.
-   - Letters, spaces, and '/' only.
-   - If a name spans two stacked lines within this bar, use Line 1 for top and Line 2 for bottom. Otherwise, write 'None' for Line 2.
-   - CRITICAL: Never read or copy text from the bottom bar into Row 1.
-   - Stop reading before the score columns.
-
-2. Process the BOTTOM BAR (Row 2):
-   - Transcribe all text in the Bottom Bar's name area strictly from Left-to-Right.
-   - Letters, spaces, and '/' only.
-   - If a name spans two stacked lines within this bar, use Line 1 for top and Line 2 for bottom. Otherwise, write 'None' for Line 2.
-   - Stop reading before the score columns.
-
-3. Scores:
-   - Sets: Middle column (sets won).
-   - Points: Far-right column (current game points).
-
-OUTPUT FORMAT:
-Generate the raw spatial tokens detected line by line. Do not generate JSON.
-
-[TRANSCRIPTION_STEP]
-Row 1 Line 1: <letters and '/' only, or None>
-Row 1 Line 2: <letters and '/' only, or None>
-Row 1 Sets: <integer>
-Row 1 Points: <integer>
-Row 2 Line 1: <letters and '/' only, or None>
-Row 2 Line 2: <letters and '/' only, or None>
-Row 2 Sets: <integer>
-Row 2 Points: <integer>"""
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image", 
-                            "image": pil_image,
-                            "min_pixels": 512 * 512,
-                            "max_pixels": 2048 * 2048
-                        },
-                        {"type": "text", "text": prompt_text}
-                    ]
-                }
-            ]
-
-            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs = process_vision_info(messages)
-            
-            inputs = self.processor(
-                text=[text],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt"
-            ).to(self.device)
-
-            generated_ids = self.model.generate(**inputs, max_new_tokens=512, num_beams=2, early_stopping=True)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            
-            out = self.processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0]
-            
-            out_clean = out.strip()
-            print(f'QWEN OUTPUT:\n{out_clean}')
-            
-            result = parse_score(out_clean)
-            if result.success and result.trigger_reason:
-                import re
-                if result.trigger_reason == "cross_row_duplication":
-                    # FAST PATH: Model pulled Player 2 into Row 1 Line 2. 
-                    # Discard the hallucinated Line 2 without a VLM call!
-                    # result.player1 currently contains 'SALOMAT ANGELINA'. We must re-parse from out_clean!
-                    r1_l1 = re.search(r"Row 1 Line 1:\s*(.+)", out_clean)
-                    if r1_l1 and r1_l1.group(1).strip().lower() != 'none':
-                        # Re-assemble using only Line 1
-                        result.player1 = r1_l1.group(1).strip()
-                elif result.trigger_reason in ("doubles_slash_asymmetry", "line_count_asymmetry"):
-                    # We run the prompt once and it returns both rows
-                    corrected = self.verify_with_foveation("", pil_image, result.trigger_reason)
-                    # Extract the two lines from the returned block
-                    r1_match = re.search(r"Row 1 Name:\s*(.+)", corrected)
-                    r2_match = re.search(r"Row 2 Name:\s*(.+)", corrected)
-                    if r1_match:
-                        result.player1 = r1_match.group(1).strip()
-                    if r2_match:
-                        result.player2 = r2_match.group(1).strip()
-                else:
-                    if result.player1:
-                        result.player1 = self.verify_with_foveation(result.player1, pil_image, result.trigger_reason)
-                    if result.player2:
-                        result.player2 = self.verify_with_foveation(result.player2, pil_image, result.trigger_reason)
-            
-            # Final deterministic alias mapping to guarantee database integrity
-            from ocr_utils import KNOWN_OCR_ALIASES
-            for bad, good in KNOWN_OCR_ALIASES.items():
-                if result.player1 == bad: result.player1 = good
-                if result.player2 == bad: result.player2 = good
-            
-            # Catch Foveation-induced misspellings on aliases
-            if result.player2 == "WATANABE TAKEYEA": result.player2 = "WATANABE / TAKEYA"
-            if result.player2 == "DIJOU VOIJS": result.player2 = "DIJOU / VOOIJS"
-            if result.player2 == "DIJOU VOOIJSS": result.player2 = "DIJOU / VOOIJS"
-
-            return result
-        except Exception as e:
-            return ScoreResult(success=False, error=str(e))
-
-class ProdWttVideoProcessor(WttVideoProcessor):
-
+            data = json.loads(cleaned_json_str)
+            return ScoreResult(
+                success=True,
+                player1=data.get("row_1_name", ""),
+                set1=data.get("row_1_sets", 0),
+                game1=data.get("row_1_points", 0),
+                player2=data.get("row_2_name", ""),
+                set2=data.get("row_2_sets", 0),
+                game2=data.get("row_2_points", 0)
+            )
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(0))
+                    return ScoreResult(
+                        success=True,
+                        player1=data.get("row_1_name", ""),
+                        set1=data.get("row_1_sets", 0),
+                        game1=data.get("row_1_points", 0),
+                        player2=data.get("row_2_name", ""),
+                        set2=data.get("row_2_sets", 0),
+                        game2=data.get("row_2_points", 0)
+                    )
+                except Exception:
+                    pass
+            return ScoreResult(success=False, error=f"JSON Parse Error. Output: {response_text}")
+class VideoPipeline:
     def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None):
         self.extractor = ScoreExtractor(backend=backend, device=device)
         self.cropped_dir = cropped_dir
