@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prod_video_processor import ProdWttVideoProcessor
 import os
 import sys
 import argparse
@@ -12,7 +16,10 @@ import glob
 import shutil
 import uuid
 
-DATABASE_URL = os.environ.get("DATABASE_URL")\nif not DATABASE_URL:\n    print("DATABASE_URL environment variable is not set.")\n    sys.exit(1)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    print("DATABASE_URL environment variable is not set.")
+    sys.exit(1)
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 DIFF_THRESHOLD = 3.0
@@ -89,6 +96,7 @@ def extract_and_dedup(video_path, start_sec, out_dir, player_name, processor, ma
         '-ss', str(start_sec + 60),
         '-t', '3600',
         '-i', video_path,
+        '-strict', 'unofficial',
         '-vf', 'fps=1/30',
         '-q:v', '2',
         os.path.join(raw_dir, 'raw_frame_%05d.jpg')
@@ -423,6 +431,8 @@ def main():
                         help="Poll for completed Gemini Batch jobs and append their results to the CSV")
     parser.add_argument("--submit_local_frames", action="store_true",
                         help="Upload already extracted frames from ~/.config/wtt-youtube-organizer/mined_frames to Gemini Batch API")
+    parser.add_argument("--force_matches", type=str,
+                        help="Comma separated list of vid:offset:player to bypass DB")
     args = parser.parse_args()
 
     csv_path = os.path.join(os.path.dirname(os.path.dirname(
@@ -438,8 +448,15 @@ def main():
         submit_local_frames_to_batch()
         return
 
-    print(f"Fetching matches from the last {args.days} days...")
-    recent_matches = get_recent_matches(args.days)
+    if args.force_matches:
+        print("Using forced matches...")
+        recent_matches = []
+        for match in args.force_matches.split(","):
+            vid, offset, player = match.split(":")
+            recent_matches.append((int(offset), vid, player))
+    else:
+        print(f"Fetching matches from the last {args.days} days...")
+        recent_matches = get_recent_matches(args.days)
     player_counts = get_player_counts(csv_path)
 
     underrepresented = {}
