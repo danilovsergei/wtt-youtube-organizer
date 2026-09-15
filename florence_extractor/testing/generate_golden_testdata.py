@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prod_video_processor import ProdWttVideoProcessor
 import argparse
 import cv2
@@ -99,7 +102,7 @@ def process_video(video_path: str, output_dir: str):
     return mapping_file, unique_dir
 
 
-def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: str = 'gemini-3.6-flash'):
+def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: str = 'gemini-3.6-flash', target_p1: str = None, target_p2: str = None, max_append: int = 0):
     """Run Gemini OCR on unique frames and map back to seconds."""
     if mapping_file and os.path.exists(mapping_file):
         with open(mapping_file, "r") as f:
@@ -195,6 +198,20 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: st
                     results[frame_name] = data
                 except json.JSONDecodeError:
                     results[frame_name] = {}
+                    
+                if data and target_p1 and target_p2:
+                    import sys
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from ocr_utils import is_similar
+                    p1_ext = data.get("player1", "")
+                    p2_ext = data.get("player2", "")
+                    if is_similar(target_p1, p1_ext) or is_similar(target_p1, p2_ext):
+                        if is_similar(target_p2, p1_ext) or is_similar(target_p2, p2_ext):
+                            valid_count = sum(1 for k, v in results.items() if v and (is_similar(target_p1, v.get("player1", "")) or is_similar(target_p1, v.get("player2", ""))))
+                            if max_append > 0 and valid_count >= max_append:
+                                print(f"\nReached max append target ({max_append}) for {target_p1}. Stopping early.")
+                                success = True
+                                break
 
                 # Save state frequently
                 with open(state_file, "w") as f:
@@ -203,6 +220,12 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: st
                 # Avoid aggressive rate limiting just in case
                 time.sleep(0.5)
                 success = True
+                
+                # Check if we broke out of the inner condition
+                if max_append > 0 and target_p1:
+                    valid_count = sum(1 for k, v in results.items() if v and (is_similar(target_p1, v.get("player1", "")) or is_similar(target_p1, v.get("player2", ""))))
+                    if valid_count >= max_append:
+                        break
 
             except Exception as e:
                 err_str = str(e).lower()
@@ -220,6 +243,11 @@ def run_ocr(mapping_file: str, unique_dir: str, output_file: str, model_name: st
             print(
                 f"Failed to process {frame_name} after retries or due to fatal error. Stopping.")
             break
+            
+        if max_append > 0 and target_p1:
+            valid_count = sum(1 for k, v in results.items() if v and (is_similar(target_p1, v.get("player1", "")) or is_similar(target_p1, v.get("player2", ""))))
+            if valid_count >= max_append:
+                break
 
     generate_final_output(mapping, results, output_file)
 
@@ -260,6 +288,12 @@ if __name__ == "__main__":
                         help="Strictly override player 2's expected name in the CSV (e.g. 'DIMITRIJ OVTCHAROV')")
     parser.add_argument("--model", type=str, default="gemini-3.6-flash",
                         help="The Gemini model to use for OCR")
+    parser.add_argument("--target_p1", type=str,
+                        help="Only append frames where OCR detects this player (fuzzy match)")
+    parser.add_argument("--target_p2", type=str,
+                        help="Only append frames where OCR detects this player (fuzzy match)")
+    parser.add_argument("--max_append", type=int, default=0,
+                        help="Maximum number of frames to append (0 means unlimited)")
 
     args = parser.parse_args()
 
@@ -297,7 +331,7 @@ if __name__ == "__main__":
     except ImportError:
         print("Error: google-genai is not installed. Please run: pip install google-genai")
         sys.exit(1)
-    run_ocr(mapping_file, unique_dir, args.output_file, args.model)
+    run_ocr(mapping_file, unique_dir, args.output_file, args.model, args.target_p1, args.target_p2, args.max_append)
 
     if args.append_csv:
         import pandas as pd
@@ -317,14 +351,30 @@ if __name__ == "__main__":
             ocr_results = json.load(f)
 
         new_rows = []
+        import sys
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from ocr_utils import is_similar
+
+        appended_count = 0
         for frame_name, data in ocr_results.items():
+            if args.max_append > 0 and appended_count >= args.max_append:
+                break
+                
             if not data:
                 continue
 
-            p1 = args.override_p1 if args.override_p1 else data.get(
-                "player1", "")
-            p2 = args.override_p2 if args.override_p2 else data.get(
-                "player2", "")
+            extracted_p1 = data.get("player1", "")
+            extracted_p2 = data.get("player2", "")
+
+            # If targets are provided, verify the extracted text matches
+            if args.target_p1 and not is_similar(args.target_p1, extracted_p1):
+                continue
+            if args.target_p2 and not is_similar(args.target_p2, extracted_p2):
+                continue
+
+            p1 = args.override_p1 if args.override_p1 else extracted_p1
+            p2 = args.override_p2 if args.override_p2 else extracted_p2
+            appended_count += 1
             s1 = data.get("p1_sets", 0)
             g1 = data.get("p1_points", 0)
             s2 = data.get("p2_sets", 0)
