@@ -133,20 +133,29 @@ python -m unittest discover -p "*_test.py"
 ## Add new Test Data to Retrain the model
 
 
-### 1. Get Cropped Images
+### 1. Extract Frames (Automated Workflow)
 
-Run with `--keep_cropped` to save cropped score images:
+To rapidly extract exactly 15 crisp frames of a specific matchup without manually copying files, use the targeted Gemini Golden Dataset generator. This automatically downloads the video, runs Gemini OCR, and appends the exact expected values into your CSV for you!
 
+```bash
+python florence_extractor/testing/generate_golden_testdata.py \
+    --video "https://www.youtube.com/watch?v=VIDEO_ID" \
+    --output_dir /tmp/frames_matchup \
+    --append_csv florence_extractor/test_data_sample.csv \
+    --target_p1 "SOME OPPONENT" \
+    --target_p2 "OVTCHAROV" \
+    --override_p1 "SOME OPPONENT" \
+    --override_p2 "DIMITRIJ OVTCHAROV" \
+    --max_append 15
+```
+
+### 2. Manual Extraction (Fallback)
+
+If you prefer to extract frames manually without Gemini:
 ```bash
 python match_start_finder.py --youtube_video "https://..." --keep_cropped
 ```
-
-Cropped images are saved to `match_starts/cropped_frames/` with unique UUIDs.
-
-### 2. Update Test Data
-
-1. Move images from `match_starts/cropped_frames/` to `testdata/`
-2. Update `test_data_sample.csv` with expected values
+Then move images from `match_starts/cropped_frames/` to `testdata/` and manually update `test_data_sample.csv` with expected values.
 
 ### 3. Retrain Model
 
