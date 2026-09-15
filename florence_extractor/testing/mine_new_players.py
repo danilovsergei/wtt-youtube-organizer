@@ -590,40 +590,41 @@ def main():
                 if not args.extract_frames:
                     frames = sorted(
                         glob.glob(os.path.join(unique_dir, '*.jpg')))
-        import concurrent.futures
-
-        def _upload_frame(f_path, r_name, p_name):
-            up_file = client.files.upload(file=f_path)
-            req = types.InlinedRequest(
-                metadata={"req_id": r_name},
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_uri(
-                            file_uri=up_file.uri, mime_type=up_file.mime_type),
-                        types.Part.from_text(text=prompt)
-                    ])
-                ]
-            )
-            return r_name, {"local_path": f_path, "player": p_name}, req
-
-        print(f"Uploading {len(frames)} frames for {player} concurrently...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = []
-            for f in frames:
-                req_name = f"req_{req_index}"
-                req_index += 1
-                futures.append(executor.submit(
-                    _upload_frame, f, req_name, player_name))
-
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    r_name, mapping_entry, req = future.result()
-                    local_mapping[r_name] = mapping_entry
-                    inlined_requests.append(req)
-                except Exception as e:
-                    print(f"  Error uploading frame: {e}")
-            else:
-                print(f"  No valid frames found for {player}.")
+        if not args.extract_frames:
+            import concurrent.futures
+    
+            def _upload_frame(f_path, r_name, p_name):
+                up_file = client.files.upload(file=f_path)
+                req = types.InlinedRequest(
+                    metadata={"req_id": r_name},
+                    contents=[
+                        types.Content(role="user", parts=[
+                            types.Part.from_uri(
+                                file_uri=up_file.uri, mime_type=up_file.mime_type),
+                            types.Part.from_text(text=prompt)
+                        ])
+                    ]
+                )
+                return r_name, {"local_path": f_path, "player": p_name}, req
+    
+            print(f"Uploading {len(frames)} frames for {player} concurrently...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = []
+                for f in frames:
+                    req_name = f"req_{req_index}"
+                    req_index += 1
+                    futures.append(executor.submit(
+                        _upload_frame, f, req_name, player_name))
+    
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        r_name, mapping_entry, req = future.result()
+                        local_mapping[r_name] = mapping_entry
+                        inlined_requests.append(req)
+                    except Exception as e:
+                        print(f"  Error uploading frame: {e}")
+                else:
+                    print(f"  No valid frames found for {player}.")
 
         # Clean up huge video file immediately after processing its tasks
         try:
