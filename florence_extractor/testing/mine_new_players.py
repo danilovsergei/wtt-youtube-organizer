@@ -452,8 +452,17 @@ def main():
         print("Using forced matches...")
         recent_matches = []
         for match in args.force_matches.split(","):
-            vid, offset, player = match.split(":")
-            recent_matches.append((int(offset), vid, player))
+            parts = match.split(":")
+            if len(parts) == 3:
+                vid, offset, player = parts
+                recent_matches.append((int(offset), vid, player))
+            elif len(parts) == 2:
+                vid, player = parts
+                # We need to find the offset dynamically later inside the loop
+                recent_matches.append((None, vid, player))
+            else:
+                print(f"Invalid force_matches format: {match}")
+                sys.exit(1)
     else:
         print(f"Fetching matches from the last {args.days} days...")
         recent_matches = get_recent_matches(args.days)
@@ -555,6 +564,20 @@ def main():
             continue
 
         for player, offset in tasks:
+            if offset is None:
+                from match_start_finder import MatchStartFinder
+                from ocr_utils import is_similar
+                print(f"  Dynamically finding match start offset for {player}...")
+                finder = MatchStartFinder(video_path=video_path, output_dir=work_dir, processor=processor)
+                matches = finder.find_match_starts()
+                for m in matches:
+                    if is_similar(player, m.player1) or is_similar(player, m.player2):
+                        offset = int(m.timestamp_seconds)
+                        break
+                if offset is None:
+                    print(f"  [ERROR] Could not find match start for {player} in {youtube_id}. Skipping.")
+                    continue
+                    
             print(f"  Extracting frames for {player} at offset {offset}s...")
             player_dir = os.path.join(work_dir, player.replace(" ", "_"))
             unique_dir, count = extract_and_dedup(
