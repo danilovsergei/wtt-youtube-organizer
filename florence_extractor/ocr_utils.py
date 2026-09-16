@@ -11,7 +11,9 @@ KNOWN_OCR_ALIASES = {
     "DIMITROV DIMIMITAR": "DIMITROV DIMITAR",
     "CHUDZICKI MAKSyM": "CHUDZICKI MAKSYM",
     "DING YLJIE": "DING YAJIE",
-    "WATANABE TAKEYEA": "WATANABE / TAKEYA"
+    "WATANABE TAKEYEA": "WATANABE / TAKEYA",
+    "RUZIMUKHMMAD RAKHMONOV": "RUZIMUKHAMMAD RAKHMONOV",
+    "AFRAKTEH ALI": "AFRAKHTEH ALI"
 }
 
 
@@ -93,6 +95,9 @@ def parse_score(generated_text: str) -> ScoreResult:
 
         p1_name = assemble_name(row_1_l1, row_1_l2)
         p2_name = assemble_name(row_2_l1, row_2_l2)
+        
+        p1_name = KNOWN_OCR_ALIASES.get(p1_name, p1_name)
+        p2_name = KNOWN_OCR_ALIASES.get(p2_name, p2_name)
         
         p1_set = int(row_1_sets.group(1)) if row_1_sets else -1
         p2_set = int(row_2_sets.group(1)) if row_2_sets else -1
