@@ -470,6 +470,42 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             f"Video '{after_video_id}' not found after checking {batch_size * max_batches} videos")
         return None
 
+    def list_recent_streams(self, num_videos: int, cookies_file: str=None) -> None:
+        try:
+            import yt_dlp
+        except ImportError:
+            print("Error: yt-dlp not installed. Run: pip install yt-dlp")
+            return
+            
+        print(f"Fetching last {num_videos} streams from World Table Tennis channel...")
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': 'in_playlist',
+            'playlistend': num_videos,
+            'remote_components': ['ejs:github']
+        }
+        
+        if cookies_file and os.path.exists(cookies_file):
+            ydl_opts['cookiefile'] = cookies_file
+            
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                url = "https://www.youtube.com/@WTTGlobal/streams"
+                info = ydl.extract_info(url, download=False)
+                
+                if info and 'entries' in info:
+                    print("\nRecent WTT Streams:")
+                    print("-" * 80)
+                    for i, entry in enumerate(info['entries'], 1):
+                        vid = entry.get('id', 'Unknown ID')
+                        title = entry.get('title', 'Unknown Title')
+                        print(f"{i:2d}. {vid} | {title}")
+                    print("-" * 80)
+                else:
+                    print("No entries found in the channel streams.")
+        except Exception as e:
+            print(f"Error fetching streams: {e}")
+
     def get_video_duration(self, video_path: str) -> float:
         """Get video duration in seconds using ffprobe."""
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
