@@ -152,6 +152,13 @@ class ScoreExtractor:
             self.initialize()
             
         w, h = pil_image.size
+        
+        # Anamorphic Horizontal Pre-Scaling: Expand dense 8px glyphs past the 14x14 ViT patch limit
+        new_w = int(w * 2.0)
+        from PIL import Image
+        pil_image = pil_image.resize((new_w, h), resample=Image.Resampling.LANCZOS)
+        
+        # Apply vertical padding for 2D-RoPE spatial anchors
         pad_total = max(0, 112 - h)
         if pad_total > 0:
             pad_top = pad_total // 2
@@ -229,7 +236,7 @@ class ScoreExtractor:
                 except Exception:
                     pass
             return ScoreResult(success=False, error=f"JSON Parse Error. Output: {response_text}")
-class VideoPipeline:
+class ProdWttVideoProcessor(WttVideoProcessor):
     def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None):
         self.extractor = ScoreExtractor(backend=backend, device=device)
         self.cropped_dir = cropped_dir
