@@ -335,7 +335,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             download_time = time.time() - start_time
             if os.path.exists(video_path):
                 file_size = os.path.getsize(video_path) / (1024 * 1024)
-                if file_size < 1.0:
+                if file_size < 100.0:
                     print(f'Error: Downloaded video is suspiciously small ({file_size:.2f} MB). This is likely a failed or 403 Forbidden download.')
                     # Delete the broken file so it doesn't get cached
                     os.remove(video_path)
@@ -350,7 +350,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                     alt_path = video_path.rsplit('.', 1)[0] + ext
                     if os.path.exists(alt_path):
                         file_size = os.path.getsize(alt_path) / (1024 * 1024)
-                        if file_size < 1.0:
+                        if file_size < 100.0:
                             print(f'Error: Downloaded video is suspiciously small ({file_size:.2f} MB). This is likely a failed or 403 Forbidden download.')
                             os.remove(alt_path)
                             return None
