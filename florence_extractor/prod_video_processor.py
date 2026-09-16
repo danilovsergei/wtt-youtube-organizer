@@ -191,6 +191,9 @@ class ScoreExtractor:
             text=[text_input], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt"
         ).to(self.model.device)
 
+        bad_words = ["RUZIMUKHMMAD", "AFRAKTEH", "DIMITTAR", "DIMMITAR", "DIMIMITAR"]
+        bad_words_ids = self.processor.tokenizer(bad_words, add_special_tokens=False).input_ids
+
         with torch.no_grad():
             output_ids = self.model.generate(
                 **inputs,
@@ -199,6 +202,7 @@ class ScoreExtractor:
                 temperature=None,
                 top_p=None,
                 top_k=None,
+                bad_words_ids=bad_words_ids,
             )
 
         generated_ids = output_ids[0][inputs.input_ids.shape[1] :]
