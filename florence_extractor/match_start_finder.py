@@ -30,7 +30,12 @@ import sys
 from wtt_video_processor import WttVideoProcessor
 from prod_video_processor import ProdWttVideoProcessor
 from test_video_processor import TestWttVideoProcessor
-from prod_video_processor import ALL_BACKENDS, BACKEND_PYTORCH, BACKEND_OPENVINO, get_default_backend, get_device
+ALL_BACKENDS = ["pytorch-cpu"]
+BACKEND_PYTORCH = "pytorch-cpu"
+BACKEND_OPENVINO = "openvino"
+def get_default_backend(args=None): return "pytorch-cpu"
+def get_device(args=None): return "cuda:0" if args and getattr(args, "cuda_device_id", None) is not None else "cpu"
+
 import tempfile
 import shutil
 import time
