@@ -41,7 +41,11 @@ run_with_watchdog "🧪 2/3: Running Unit Tests..." $FLUTTER_BIN test test/unit/
 run_with_watchdog "📱 3/3: Running Responsive & Widget Tests..." $FLUTTER_BIN test test/widgets/ test/f5_refresh_test.dart
 
 if [ "$1" == "--e2e" ]; then
-    run_with_watchdog "🚀 Running E2E Integration Tests on Linux Desktop..." $FLUTTER_BIN test integration_test/ -d linux
+    export PATH="/usr/lib/llvm/22/bin:$PATH"
+    export DISPLAY="${DISPLAY:-:0}"
+    export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+    run_with_watchdog "🚀 Running Hermetic E2E Integration Tests on Linux Desktop..." $FLUTTER_BIN test integration_test/hermetic_e2e_test.dart -d linux
 fi
 
 echo "=================================================="

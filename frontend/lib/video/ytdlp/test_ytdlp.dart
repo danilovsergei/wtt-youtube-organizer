@@ -23,21 +23,23 @@ class TestYtDlpService implements YtDlpService {
   /// Resolves the local video file path, checking common locations if not explicitly provided.
   String resolveLocalVideoPath() {
     if (localVideoPath != null && File(localVideoPath!).existsSync()) {
-      return localVideoPath!;
+      return File(localVideoPath!).absolute.path;
     }
     // Check test assets
     const candidatePaths = [
       'test/assets/test_video.mp4',
       '../test_match_video.mp4',
+      '/home/geonix/Build/wtt-youtube-organizer/frontend/test/assets/test_video.mp4',
       '/home/geonix/Build/wtt-youtube-organizer/test_match_video.mp4',
       '/app/test_match_video.mp4',
     ];
     for (final path in candidatePaths) {
-      if (File(path).existsSync()) {
-        return path;
+      final f = File(path);
+      if (f.existsSync()) {
+        return f.absolute.path;
       }
     }
-    return localVideoPath ?? 'test/assets/test_video.mp4';
+    return localVideoPath != null ? File(localVideoPath!).absolute.path : File('test/assets/test_video.mp4').absolute.path;
   }
 
   @override

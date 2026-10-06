@@ -27,7 +27,7 @@ void main() {
       expect(metadata.videoStreams.length, 3);
       expect(metadata.availableResolutions, [1080, 720, 480]);
       expect(metadata.videoStreams.first.height, 1080);
-      expect(metadata.videoStreams.first.url, 'test/assets/test_video.mp4');
+      expect(metadata.videoStreams.first.url, endsWith('test/assets/test_video.mp4'));
       expect(metadata.audioUrl, 'test/assets/audio.m4a');
       expect(metadata.httpHeaders['User-Agent'], 'Test-Agent');
 
