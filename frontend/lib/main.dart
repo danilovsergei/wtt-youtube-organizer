@@ -304,7 +304,13 @@ class FilterController extends ChangeNotifier {
           _selectedMatch = _allMatches.first;
         } else {
           final updated = _allMatches.cast<Match?>().firstWhere(
-            (m) => m?.id == _selectedMatch!.id || (m?.youtubeId != null && m?.youtubeId == _selectedMatch!.youtubeId),
+            (m) {
+              if (m == null) return false;
+              if (m.youtubeId != null && _selectedMatch!.youtubeId != null) {
+                return m.youtubeId == _selectedMatch!.youtubeId;
+              }
+              return m.id == _selectedMatch!.id;
+            },
             orElse: () => null,
           );
           if (updated != null) {
@@ -1425,12 +1431,15 @@ class MatchDetails extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Text(
-                              tournament.name,
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                            Expanded(
+                              child: Text(
+                                tournament.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ],
@@ -1445,34 +1454,46 @@ class MatchDetails extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Row(
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Icon(
-                              Icons.visibility,
-                              size: 16,
-                              color: Colors.grey[400],
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.visibility,
+                                  size: 16,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${match.views} views',
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${match.views} views',
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Icon(
-                              Icons.schedule,
-                              size: 16,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              match.date,
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 13,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.schedule,
+                                  size: 16,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  match.date,
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -1488,7 +1509,7 @@ class MatchDetails extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (MediaQuery.of(context).size.width > 768) ...[
+                  if (MediaQuery.of(context).size.width >= 1024) ...[
                     const SizedBox(width: 24),
                     Row(
                       children: [
@@ -1541,16 +1562,21 @@ class UpNextSection extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    filteredMatches.isEmpty
-                        ? 'No matches found'
-                        : 'Explore Matches (${filteredMatches.length})',
-                    style: GoogleFonts.splineSans(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      filteredMatches.isEmpty
+                          ? 'No matches found'
+                          : 'Explore Matches (${filteredMatches.length})',
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.splineSans(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildNavButton(Icons.chevron_left),
                       const SizedBox(width: 8),

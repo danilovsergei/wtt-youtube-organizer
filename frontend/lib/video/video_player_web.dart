@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'video_player_service.dart';
 
 VideoPlayerWidget createVideoPlayer({
@@ -42,7 +40,6 @@ class _WebVideoPlayerWidget extends VideoPlayerWidget {
 class _WebVideoPlayerState extends State<_WebVideoPlayerWidget> {
   YoutubePlayerController? _controller;
   String? _lastMatchId;
-  int _lastTapTime = 0;
 
   @override
   void initState() {
