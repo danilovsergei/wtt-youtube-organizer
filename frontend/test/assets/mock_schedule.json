@@ -1,0 +1,44 @@
+[
+  {
+    "tournament": "WTT Champions Chongqing",
+    "year": 2026,
+    "location": "Chongqing, China",
+    "team_a": "Wang Chuqin",
+    "team_b": "Fan Zhendong",
+    "upload_date": "2026-06-01T15:00:00Z",
+    "youtube_id": "test_yt_hero",
+    "is_doubles": false,
+    "day": "Day 4 Finals",
+    "session": 2,
+    "video_offset_seconds": 0,
+    "match_time": "19:00"
+  },
+  {
+    "tournament": "WTT Champions Chongqing",
+    "year": 2026,
+    "location": "Chongqing, China",
+    "team_a": "Sun Yingsha",
+    "team_b": "Wang Manyu",
+    "upload_date": "2026-06-01T13:30:00Z",
+    "youtube_id": "test_yt_2",
+    "is_doubles": false,
+    "day": "Day 4 Finals",
+    "session": 2,
+    "video_offset_seconds": 1800,
+    "match_time": "17:30"
+  },
+  {
+    "tournament": "China Smash",
+    "year": 2025,
+    "location": "Beijing, China",
+    "team_a": "Lin Shidong",
+    "team_b": "Ma Long",
+    "upload_date": "2025-10-06T12:00:00Z",
+    "youtube_id": "test_yt_4",
+    "is_doubles": false,
+    "day": "Day 7 Finals",
+    "session": 2,
+    "video_offset_seconds": 120,
+    "match_time": "18:00"
+  }
+]

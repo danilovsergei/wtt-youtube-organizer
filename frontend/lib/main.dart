@@ -4,14 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'fullscreen/fullscreen_service.dart';
+import 'data/database_service.dart';
+import 'data/local_database.dart';
+import 'video/ytdlp/ytdlp_service.dart';
+import 'video/ytdlp/test_ytdlp.dart';
 import 'video/video_player_service.dart';
 
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
-Future<void> main() async {
+Future<void> main([List<String>? args]) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     MediaKit.ensureInitialized();
@@ -25,10 +28,17 @@ Future<void> main() async {
       await windowManager.focus();
     });
   }
-  await Supabase.initialize(
-    url: 'https://yxegxufjztnsogjrqsqw.supabase.co',
-    anonKey: 'sb_publishable_YLN9F1xMInlM8BbwF_dA3Q_rBU9V687',
-  );
+
+  final cliArgs = args ?? const <String>[];
+  const isHermeticEnv = bool.fromEnvironment('HERMETIC', defaultValue: false);
+  final useLocalDb = isHermeticEnv || cliArgs.contains('--local-db') || cliArgs.contains('--hermetic');
+
+  if (useLocalDb) {
+    DatabaseService.instance = LocalDatabaseService();
+    YtDlpService.instance = TestYtDlpService();
+  }
+
+  await DatabaseService.instance.initialize();
   runApp(const WttApp());
   filterController.fetchData();
 }
@@ -223,10 +233,7 @@ class FilterController extends ChangeNotifier {
     try {
       final List<dynamic> response = customDataFetcher != null
           ? await customDataFetcher!()
-          : await Supabase.instance.client
-              .from('v_tournament_schedule')
-              .select()
-              .order('upload_date', ascending: false);
+          : await DatabaseService.instance.fetchTournamentSchedule();
 
       final Map<String, Tournament> tournamentsMap = {};
       final List<Match> matches = [];
