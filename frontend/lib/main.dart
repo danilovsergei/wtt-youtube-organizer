@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'fullscreen/fullscreen_service.dart';
 import 'data/database_service.dart';
 import 'data/local_database.dart';
 import 'video/ytdlp/ytdlp_service.dart';
+import 'video/ytdlp/android_ytdlp.dart';
 import 'video/ytdlp/test_ytdlp.dart';
 import 'video/video_player_service.dart';
 
@@ -18,15 +20,17 @@ Future<void> main([List<String>? args]) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     MediaKit.ensureInitialized();
-    await windowManager.ensureInitialized();
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(1280, 720),
-      center: true,
-    );
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      await windowManager.ensureInitialized();
+      WindowOptions windowOptions = const WindowOptions(
+        size: Size(1280, 720),
+        center: true,
+      );
+      windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+    }
   }
 
   final cliArgs = args ?? const <String>[];
@@ -39,6 +43,13 @@ Future<void> main([List<String>? args]) async {
   }
 
   await DatabaseService.instance.initialize();
+  if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
+    (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {
+      debugPrint('Chaquopy yt-dlp auto-update: $status');
+    }).catchError((e) {
+      debugPrint('Chaquopy yt-dlp auto-update error: $e');
+    });
+  }
   runApp(const WttApp());
   filterController.fetchData();
 }

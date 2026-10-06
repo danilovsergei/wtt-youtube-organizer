@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -61,10 +62,12 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
     _player = Player();
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((isPlaying) {
-      if (isPlaying) {
-        LinuxScreenInhibitor.enable();
-      } else {
-        LinuxScreenInhibitor.disable();
+      if (Platform.isLinux) {
+        if (isPlaying) {
+          LinuxScreenInhibitor.enable();
+        } else {
+          if (Platform.isLinux) LinuxScreenInhibitor.disable();
+        }
       }
     });
   }

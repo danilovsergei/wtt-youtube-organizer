@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'ytdlp_models.dart';
 import 'linux_ytdlp.dart';
+import 'android_ytdlp.dart';
 
 export 'ytdlp_models.dart';
 
@@ -14,7 +16,9 @@ abstract class YtDlpService {
   }
 
   /// Active singleton/service instance.
-  /// Defaults to [LinuxYtDlpService], but can be swapped with [TestYtDlpService]
-  /// or platform-specific implementations (e.g. Android).
-  static YtDlpService instance = LinuxYtDlpService();
+  /// Automatically selects [AndroidYtDlpService] on Android (using Chaquopy)
+  /// and [LinuxYtDlpService] on Linux/Desktop, but can be swapped with [TestYtDlpService] in tests.
+  static YtDlpService instance = Platform.isAndroid
+      ? AndroidYtDlpService()
+      : LinuxYtDlpService();
 }

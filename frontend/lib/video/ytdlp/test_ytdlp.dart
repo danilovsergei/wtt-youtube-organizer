@@ -27,6 +27,7 @@ class TestYtDlpService implements YtDlpService {
     }
     // Check test assets
     const candidatePaths = [
+      '/data/local/tmp/test_video.mp4',
       'test/assets/test_video.mp4',
       '../test_match_video.mp4',
       '/home/geonix/Build/wtt-youtube-organizer/frontend/test/assets/test_video.mp4',
