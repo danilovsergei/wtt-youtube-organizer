@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
@@ -214,14 +215,18 @@ class FilterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<Map<String, dynamic>>> Function()? customDataFetcher;
+
   Future<void> fetchData() async {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await Supabase.instance.client
-          .from('v_tournament_schedule')
-          .select()
-          .order('upload_date', ascending: false);
+      final List<dynamic> response = customDataFetcher != null
+          ? await customDataFetcher!()
+          : await Supabase.instance.client
+              .from('v_tournament_schedule')
+              .select()
+              .order('upload_date', ascending: false);
 
       final Map<String, Tournament> tournamentsMap = {};
       final List<Match> matches = [];
@@ -293,9 +298,19 @@ class FilterController extends ChangeNotifier {
       _allTournaments = tournamentsMap.values.toList();
       _allMatches = matches;
 
-      // Update selected match if none selected
-      if (_allMatches.isNotEmpty && _selectedMatch == null) {
-        _selectedMatch = _allMatches.first;
+      // Update selected match if none selected, or re-link existing
+      if (_allMatches.isNotEmpty) {
+        if (_selectedMatch == null) {
+          _selectedMatch = _allMatches.first;
+        } else {
+          final updated = _allMatches.cast<Match?>().firstWhere(
+            (m) => m?.id == _selectedMatch!.id || (m?.youtubeId != null && m?.youtubeId == _selectedMatch!.youtubeId),
+            orElse: () => null,
+          );
+          if (updated != null) {
+            _selectedMatch = updated;
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error fetching data: $e');
@@ -426,20 +441,115 @@ class _MainScreenState extends State<MainScreen> {
   final ValueNotifier<bool> _resizingNotifier = ValueNotifier(false);
   final GlobalKey _videoHeroKey = GlobalKey();
 
+  bool _isRefreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _resizingNotifier.dispose();
     super.dispose();
   }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final isF5 = event.logicalKey == LogicalKeyboardKey.f5;
+      final isCtrlR = event.logicalKey == LogicalKeyboardKey.keyR &&
+          (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed);
+      if (isF5 || isCtrlR) {
+        _triggerRefresh();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _triggerRefresh() async {
+    if (_isRefreshing || !mounted) return;
+    _isRefreshing = true;
+
+    bool dialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: const Color(0xFF182634),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Color(0xFF223547)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0D7FF2)),
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Text(
+                    "Refreshing...",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ).then((_) {
+      dialogOpen = false;
+    });
+
+    try {
+      await Future.wait([
+        filterController.fetchData(),
+        Future.delayed(const Duration(milliseconds: 350)),
+      ]);
+    } catch (e) {
+      debugPrint("Error during F5 refresh: ");
+    } finally {
+      if (dialogOpen && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _isRefreshing = false;
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 768;
 
-    return ListenableBuilder(
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.f5): _triggerRefresh,
+        const SingleActivator(LogicalKeyboardKey.keyR, control: true): _triggerRefresh,
+      },
+      child: Focus(
+        autofocus: true,
+        child: ListenableBuilder(
       listenable: filterController,
       builder: (context, _) {
-        if (filterController.isLoading) {
+        if (filterController.isLoading && filterController.allTournaments.isEmpty) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
@@ -526,7 +636,9 @@ class _MainScreenState extends State<MainScreen> {
           },
         );
       },
-    );
+    ),
+  ),
+);
   }
 }
 
