@@ -273,7 +273,7 @@ def main():
         input_dir = os.path.join(script_dir, args.images_dir)
 
     dir_name = os.path.basename(os.path.normpath(input_dir))
-    verify_mode = (dir_name == 'testdata')
+    verify_mode = True
 
     # Determine crop setting: default false for testdata, true otherwise
     if args.crop is not None:

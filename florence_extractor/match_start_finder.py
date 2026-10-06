@@ -34,7 +34,7 @@ ALL_BACKENDS = ["pytorch-cpu"]
 BACKEND_PYTORCH = "pytorch-cpu"
 BACKEND_OPENVINO = "openvino"
 def get_default_backend(args=None): return "pytorch-cpu"
-def get_device(args=None): return "cuda:0" if args and getattr(args, "cuda_device_id", None) is not None else "cpu"
+def get_device(args=None): return "cuda"
 
 import tempfile
 import shutil
@@ -973,7 +973,7 @@ def main():
                     with open(args.output_json_file, 'w') as f:
                         json.dump(json_data, f, indent=2)
                     print(f"Error JSON written to: {args.output_json_file}")
-                sys.exit(1)
+                sys.exit(2)
                 
             print(f"Video Title: {video_title}")
             print(f"Upload Date: {upload_date}")
@@ -1027,6 +1027,20 @@ def main():
                     json.dump(json_data, f, indent=2)
                 print(f"Error JSON written to: {args.output_json_file}")
             sys.exit(1)
+            
+        if video_path == "SKIP_SHORT_VIDEO":
+            print("Video is too short to be a stream. Marking as successfully processed with 0 matches to remove it from the queue.")
+            if args.output_json_file:
+                json_data = {
+                    "video_id": video_id,
+                    "video_title": video_title,
+                    "upload_date": upload_date,
+                    "matches": [],
+                }
+                with open(args.output_json_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                print(f"JSON output written to: {args.output_json_file}")
+            sys.exit(0)
 
         if not video_path:
             error_msg = "Failed to download YouTube video"

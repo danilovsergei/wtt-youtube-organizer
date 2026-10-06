@@ -11,7 +11,7 @@ import json
 from PIL import Image
 import cv2
 import torch
-from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar
+from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar, process_and_verify_scoreboard
 from wtt_video_processor import WttVideoProcessor
 
 
@@ -121,7 +121,9 @@ class ScoreExtractor:
         print(f'Loading Fine-Tuned Qwen2.5-VL-3B-Instruct LoRA model (PyTorch on {self.device})...')
         try:
             model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-            lora_dir = "/home/geonix/Build/wtt-youtube-organizer/florence_extractor/output/qwen2.5-vl-3b-wtt-lora/v4-20260914-115927/checkpoint-1119"
+            import os
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            lora_dir = os.path.join(base_dir, "output", "qwen2.5-vl-3b-wtt-lora", "v16-20261005-112411", "checkpoint-1287")
             
             # We strictly load in bfloat16 to optimize for RTX 5070 Ti (Blackwell) VRAM
             base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -151,29 +153,63 @@ class ScoreExtractor:
         if not hasattr(self, "model") or not self.model or not hasattr(self, "processor") or not self.processor:
             self.initialize()
             
-        w, h = pil_image.size
-        
-        # Anamorphic Horizontal Pre-Scaling: Expand dense 8px glyphs past the 14x14 ViT patch limit
-        new_w = int(w * 2.0)
+        pil_image_original = pil_image.copy()
+        import cv2
+        import numpy as np
         from PIL import Image
-        pil_image = pil_image.resize((new_w, h), resample=Image.Resampling.LANCZOS)
         
-        # Apply vertical padding for 2D-RoPE spatial anchors
-        pad_total = max(0, 112 - h)
-        if pad_total > 0:
-            pad_top = pad_total // 2
-            pad_bottom = pad_total - pad_top
-            pil_image = ImageOps.expand(pil_image, border=(0, pad_top, 0, pad_bottom), fill=(30, 30, 30))
-
-        INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image. Extract the player names and scores into a valid JSON object matching this schema:
+        # Convert PIL to cv2 BGR
+        img_np = np.array(pil_image)
+        crop_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        
+        # 1. CLAHE on Y-Channel (Solution 3)
+        ycrcb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2YCrCb)
+        y, cr, cb = cv2.split(ycrcb)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        y_enhanced = clahe.apply(y)
+        merged = cv2.merge([y_enhanced, cr, cb])
+        enhanced_bgr = cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
+        
+        # 2. Patch-Grid Alignment & Anamorphic Stretch (Solution 1)
+        h, w = enhanced_bgr.shape[:2]
+        x_stretch = 2.0
+        target_h = 112
+        
+        new_w = int(w * x_stretch)
+        stretched = cv2.resize(enhanced_bgr, (new_w, h), interpolation=cv2.INTER_LANCZOS4)
+        
+        scale_y = target_h / h
+        scaled_w = int(new_w * scale_y)
+        
+        aligned_w = ((scaled_w + 27) // 28) * 28
+        
+        resized = cv2.resize(stretched, (aligned_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+        pil_image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
+        
+        # OpenCV Structure Gate: Reject images that are purely background noise / crowd
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        variance = np.var(gray)
+        edges = cv2.Canny(gray, 100, 200)
+        edge_density = np.sum(edges > 0) / edges.size
+        
+        # Real scoreboards have variance > 1900 and edge > 0.05. Empty crowds are < 800 and < 0.02.
+        if variance < 1500 or edge_density < 0.035:
+            return ScoreResult(success=False, error=f"No scoreboard detected. Variance: {variance:.1f}, Edges: {edge_density:.4f}")
+            
+        INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image.
+WARNING: Do not autocorrect or normalize spelling. Foreign names frequently contain unusual double consonants.
+You MUST transcribe the literal pixels exactly as printed, character-by-character.
+To prevent spelling errors, transcribe the player names by inserting a pipe '|' between EVERY SINGLE CHARACTER (e.g., M|O|H|A|M|M|E|D). Do not group letters into words.
+Output a valid JSON object matching this schema:
 {
-  "row_1_name": "string",
+  "row_1_name": "string (pipe-delimited)",
   "row_1_sets": integer,
   "row_1_points": integer,
-  "row_2_name": "string",
+  "row_2_name": "string (pipe-delimited)",
   "row_2_sets": integer,
   "row_2_points": integer
-}"""
+}
+If NO scoreboard is visible in the image, output an empty JSON object: {}"""
 
         conversation = [{
             "role": "user",
@@ -195,8 +231,8 @@ class ScoreExtractor:
         with torch.no_grad():
             output_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=90,
-                num_beams=2,  
+                max_new_tokens=200,
+                num_beams=1,  
                 do_sample=False,
                 temperature=None,
                 top_p=None,
@@ -205,35 +241,76 @@ class ScoreExtractor:
 
         generated_ids = output_ids[0][inputs.input_ids.shape[1] :]
         response_text = self.processor.decode(generated_ids, skip_special_tokens=True)
+        print(f"RAW QWEN OUTPUT: {response_text}")
 
-        cleaned_json_str = re.sub(
-            r"^```json\s*|\s*```$", "", response_text.strip(), flags=re.MULTILINE
-        )
+        json_match = re.search(r"(\{.*\})", response_text, re.DOTALL)
+        if json_match:
+            cleaned_json_str = json_match.group(1)
+        else:
+            cleaned_json_str = "{}"
+
+        def is_valid_player_name(name: str) -> bool:
+            name = name.strip().upper()
+            if not name:
+                return False
+            if len(name) > 30:
+                return False
+            if len(name.split()) > 4:
+                return False
+            banned = ["THE", "BEAUTIFUL", "PERFORMANCE", "LIVE", "SESSION", "TABLE", "TENNIS", "WTT", "FEEDER", "CONTENDER", "SMASH", "STAR", "CHAMPION", "MEN", "WOMEN", "SINGLES", "DOUBLES", "QUALIFYING", "VS", "SUBSCRIBE"]
+            for word in name.split():
+                if word in banned:
+                    return False
+            return True
 
         try:
             data = json.loads(cleaned_json_str)
+            p1 = str(data.get("row_1_name", "")).replace("|", "")
+            p2 = str(data.get("row_2_name", "")).replace("|", "")
+            
+            if not p1 and not p2:
+                return ScoreResult(
+                    success=False,
+                    player1="",
+                    set1=0,
+                    game1=0,
+                    player2="",
+                    set2=0,
+                    game2=0,
+                    error="No scoreboard detected (empty frame)"
+                )
+            
+            is_valid = is_valid_player_name(p1) and is_valid_player_name(p2)
+            
             return ScoreResult(
-                success=True,
-                player1=data.get("row_1_name", ""),
+                success=is_valid,
+                player1=p1,
                 set1=data.get("row_1_sets", 0),
                 game1=data.get("row_1_points", 0),
-                player2=data.get("row_2_name", ""),
+                player2=p2,
                 set2=data.get("row_2_sets", 0),
-                game2=data.get("row_2_points", 0)
+                game2=data.get("row_2_points", 0),
+                error="" if is_valid else f"Hallucinated names: {p1} vs {p2}"
             )
         except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            match = re.search(r"(\{.*\})", response_text, re.DOTALL)
             if match:
                 try:
                     data = json.loads(match.group(0))
+                    p1 = str(data.get("row_1_name", "")).replace("|", "")
+                    p2 = str(data.get("row_2_name", "")).replace("|", "")
+                    
+                    is_valid = is_valid_player_name(p1) and is_valid_player_name(p2)
+                    
                     return ScoreResult(
-                        success=True,
-                        player1=data.get("row_1_name", ""),
+                        success=is_valid,
+                        player1=p1,
                         set1=data.get("row_1_sets", 0),
                         game1=data.get("row_1_points", 0),
-                        player2=data.get("row_2_name", ""),
+                        player2=p2,
                         set2=data.get("row_2_sets", 0),
-                        game2=data.get("row_2_points", 0)
+                        game2=data.get("row_2_points", 0),
+                        error="" if is_valid else f"Hallucinated names fallback: {p1} vs {p2}"
                     )
                 except Exception:
                     pass
@@ -333,34 +410,41 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         start_time = time.time()
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([youtube_url])
+                info = ydl.extract_info(youtube_url, download=True)
+                duration = info.get('duration', 0) if info else 0
+            
             download_time = time.time() - start_time
+            
+            final_path = None
             if os.path.exists(video_path):
-                file_size = os.path.getsize(video_path) / (1024 * 1024)
-                if file_size < 100.0:
-                    print(f'Error: Downloaded video is suspiciously small ({file_size:.2f} MB). This is likely a failed or 403 Forbidden download.')
-                    # Delete the broken file so it doesn't get cached
-                    os.remove(video_path)
-                    return None
-                    
-                print(f'Download complete: {video_path}')
-                print(f'  Size: {file_size:.1f} MB')
-                print(f'  Time: {download_time:.1f}s')
-                return video_path
+                final_path = video_path
             else:
                 for ext in ['.mp4', '.mkv', '.webm']:
                     alt_path = video_path.rsplit('.', 1)[0] + ext
                     if os.path.exists(alt_path):
-                        file_size = os.path.getsize(alt_path) / (1024 * 1024)
-                        if file_size < 100.0:
-                            print(f'Error: Downloaded video is suspiciously small ({file_size:.2f} MB). This is likely a failed or 403 Forbidden download.')
-                            os.remove(alt_path)
-                            return None
-                        print(f'Download complete: {alt_path}')
-                        print(f'  Size: {file_size:.1f} MB')
-                        return alt_path
+                        final_path = alt_path
+                        break
+            
+            if not final_path:
                 print('Error: Video file not found after download.')
                 return None
+                
+            file_size = os.path.getsize(final_path) / (1024 * 1024)
+            
+            if duration and duration < 900:
+                print(f'Info: Video duration is only {duration} seconds (< 15 mins). It does not look like a long enough stream.')
+                os.remove(final_path)
+                return "SKIP_SHORT_VIDEO"
+            
+            if not duration and file_size < 100.0:
+                print(f'Error: Downloaded video is suspiciously small ({file_size:.2f} MB) and duration is unknown. This is likely a failed or 403 Forbidden download.')
+                os.remove(final_path)
+                return None
+                
+            print(f'Download complete: {final_path}')
+            print(f'  Size: {file_size:.1f} MB')
+            print(f'  Time: {download_time:.1f}s')
+            return final_path
         except Exception as e:
             print(f'Error downloading video: {e}')
             traceback.print_exc()

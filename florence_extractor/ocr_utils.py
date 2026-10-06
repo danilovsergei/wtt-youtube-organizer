@@ -195,3 +195,61 @@ def is_similar(str1, str2, threshold=0.92):
         return True
     ratio = difflib.SequenceMatcher(None, norm1, norm2).ratio()
     return ratio >= threshold
+
+import cv2
+import numpy as np
+
+def classify_6_vs_8(digit_crop_bgr: np.ndarray) -> int:
+    """Classifies 6 vs 8 in <1ms by checking if the top-right loop is physically open."""
+    gray = cv2.cvtColor(digit_crop_bgr, cv2.COLOR_BGR2GRAY)
+
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    coords = cv2.findNonZero(thresh)
+    if coords is None:
+        return 0
+    x, y, w, h = cv2.boundingRect(coords)
+    digit = thresh[y : y + h, x : x + w]
+
+    mid_y = h // 2
+    top_half = digit[0:mid_y, :]
+
+    col_cutoff = int(w * 0.7)
+    top_right_density = np.mean(top_half[:, col_cutoff:] == 255)
+
+    if top_right_density < 0.25:
+        return 6
+    return 8
+
+def crop_normalized_box(image, box: list[int], pad: int = 2) -> np.ndarray:
+    """Converts [ymin, xmin, ymax, xmax] (0-1000) into an exact numpy BGR pixel crop."""
+    w, h = image.size
+    ymin, xmin, ymax, xmax = box
+
+    y1 = max(0, int((ymin / 1000.0) * h) - pad)
+    x1 = max(0, int((xmin / 1000.0) * w) - pad)
+    y2 = min(h, int((ymax / 1000.0) * h) + pad)
+    x2 = min(w, int((xmax / 1000.0) * w) + pad)
+
+    img_np = np.array(image)
+    crop_rgb = img_np[y1:y2, x1:x2]
+    return cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
+
+def process_and_verify_scoreboard(image, raw_qwen_json: dict) -> dict:
+    """Pipes Qwen's grounded coordinate crops to the micro-classifier when scores are 6 or 8."""
+    data = raw_qwen_json
+
+    for row in ("row_1", "row_2"):
+        pts_key = f"{row}_points"
+        box_key = f"{row}_points_box"
+
+        if data.get(pts_key) in (6, 8) and box_key in data:
+            box = data[box_key]
+            if isinstance(box, list) and len(box) == 4:
+                digit_crop = crop_normalized_box(image, box)
+                corrected_digit = classify_6_vs_8(digit_crop)
+                data[pts_key] = corrected_digit
+
+        data.pop(box_key, None)
+
+    return data
