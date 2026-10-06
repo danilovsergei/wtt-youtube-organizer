@@ -1,6 +1,6 @@
 # Golden Test Data Generation
 
-This directory contains tools for generating highly accurate "golden" test data from WTT (World Table Tennis) videos. This test data maps every second of a video to its exact scoreboard state, enabling offline, instant unit testing of the `MatchStartFinder` logic without needing to run `yt-dlp`, `ffmpeg`, or local `Florence-2` models.
+This directory contains tools for generating highly accurate "golden" test data from WTT (World Table Tennis) videos. This test data maps every second of a video to its exact scoreboard state, enabling offline, instant unit testing of the `MatchStartFinder` logic without needing to run `yt-dlp`, `ffmpeg`, or local `Qwen2.5-VL` models.
 
 ## `generate_golden_testdata.py`
 
@@ -96,9 +96,9 @@ python florence_extractor/testing/generate_golden_testdata.py \
 
 ## `mine_new_players.py` (Automated Active Learning)
 
-This script automates the discovery and mining of new training data to make the Florence-2 model infinitely scalable. It queries the production database for matches played in the last `X` days, identifies players who are underrepresented in the `test_data_sample.csv` (e.g., they have fewer than 10 images), and automatically downloads their matches.
+This script automates the discovery and mining of new training data to make the Qwen2.5-VL model infinitely scalable. It queries the production database for matches played in the last `X` days, identifies players who are underrepresented in the `test_data_sample.csv` (e.g., they have fewer than 10 images), and automatically downloads their matches.
 
-To ensure pristine training data, it uses Florence-2 to actively scan the video at the exact start offset of the match, extracts highly distinct scoreboards using mathematical deduplication (ensuring no two identical scores are mined), and feeds those unique frames directly into the Gemini OCR pipeline (`generate_golden_testdata.py`) to organically append them to your CSV.
+To ensure pristine training data, it uses Qwen2.5-VL to actively scan the video at the exact start offset of the match, extracts highly distinct scoreboards using mathematical deduplication (ensuring no two identical scores are mined), and feeds those unique frames directly into the Gemini OCR pipeline (`generate_golden_testdata.py`) to organically append them to your CSV.
 
 ### Usage (Gemini Batch API Pipeline)
 
@@ -116,7 +116,7 @@ LD_PRELOAD= python florence_extractor/testing/mine_new_players.py
 # Retroactive: Scan last 30 days, 15 frames per player
 LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --days 30 --target_frames 15
 ```
-*(Note: `LD_PRELOAD=` is required because this script boots up the local PyTorch Florence-2 model for semantic frame deduplication before uploading them to Gemini).*
+*(Note: `LD_PRELOAD=` is required because this script boots up the local PyTorch Qwen2.5-VL model for semantic frame deduplication before uploading them to Gemini).*
 
 #### Step 2: Poll for Results (Every 5 minutes)
 Batch jobs enter a low-priority queue on Google's servers. It may take anywhere from 5 minutes to 2 hours for Google to process the images. 
@@ -135,7 +135,7 @@ python florence_extractor/testing/mine_new_players.py --list_players
 ```
 
 **Extract frames locally without calling Gemini**
-If you want to extract the deduplicated frames to your local drive to verify the Florence-2 extraction quality without burning any Gemini API tokens or altering your CSV:
+If you want to extract the deduplicated frames to your local drive to verify the Qwen2.5-VL extraction quality without burning any Gemini API tokens or altering your CSV:
 ```bash
 LD_PRELOAD= python florence_extractor/testing/mine_new_players.py --extract_frames
 ```

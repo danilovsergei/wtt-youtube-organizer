@@ -1,6 +1,6 @@
-# Florence Extractor - CUDA Docker Environment
+# Qwen Extractor - CUDA Docker Environment
 
-This directory contains the Docker configuration for running the Florence-2 Table Tennis score extractor using **NVIDIA GPUs** via CUDA acceleration.
+This directory contains the Docker configuration for running the Qwen2.5-VL Table Tennis score extractor using **NVIDIA GPUs** via CUDA acceleration.
 
 ## System Prerequisites
 
@@ -44,7 +44,7 @@ docker run --rm --gpus all ubuntu nvidia-smi
 
 You can build the image locally using the provided build script:
 ```bash
-./build.sh
+python3 build.py
 ```
 This builds an image tagged as `geonix/wtt-stream-match-finder-cuda:latest`.
 

@@ -1,4 +1,4 @@
-# Florence Extractor Docker
+# Legacy OpenVINO Extractor Docker
 
 Docker container for running `match_start_finder.py` with Intel GPU acceleration via OpenVINO.
 

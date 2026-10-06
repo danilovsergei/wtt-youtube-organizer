@@ -48,7 +48,7 @@ wtt-youtube-organizer matchfinder --output_json /path/to/results.json -- --youtu
 
 ## Docker Image
 
-The command uses the `wtt-stream-match-finder-openvino` Docker image. If not present, it will be built automatically from `florence_extractor/docker/`.
+The command uses the `wtt-stream-match-finder-cuda` (NVIDIA GPU) or `wtt-stream-match-finder-openvino` (Intel GPU) Docker image. If not present, it will be built automatically from `florence_extractor/docker/`.
 
 ## GPU Acceleration
 
@@ -56,7 +56,7 @@ The CLI automatically detects Intel GPU groups (`video`, `render`) and configure
 - `/dev/dri` device access
 - Appropriate group permissions
 
-This enables OpenVINO GPU acceleration for the Florence2 OCR model.
+This enables GPU acceleration (CUDA or OpenVINO) for the Qwen2.5-VL scoreboard model.
 
 ## Filtering & Settings
 

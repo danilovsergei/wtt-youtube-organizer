@@ -1,142 +1,94 @@
-# Florence Extractor
+# Qwen Scoreboard Extractor
 
-Score extraction and match start finder for table tennis videos using Florence-2 OCR.
+Score extraction and match start finder for table tennis broadcast streams using fine-tuned **Qwen2.5-VL-3B** Vision-Language Model with LoRA adapters.
+
+## Architecture & Overview
+
+The extractor leverages **Qwen2.5-VL-3B-Instruct** fine-tuned on curated WTT broadcast frames:
+* **Token-1 Early Escape Hatch:** On empty tables, crowd shots, or player celebrations, the model immediately outputs an empty JSON object `{}` within 2 tokens (~15 ms), preventing hallucinations.
+* **Character-Pipe Transcriptions:** Player names are transcribed with character pipe delimiters (e.g. `K|U|A|I | M|A|N`) to eliminate language-model spelling hallucinations on foreign names.
+* **Optical Conditioning Pipeline:** 
+  1. Luminance CLAHE dynamically expands contrast on washed-out graphics.
+  2. 2.0x horizontal anamorphic stretch expands compressed character glyphs across visual patches.
+  3. 28px patch-grid alignment (height 112, width multiple of 28) matches Qwen's Vision Transformer (ViT) patch structure.
 
 ## Usage
 
 ### Option A: Docker Container (Recommended)
 
-Pre-built Docker image with Intel GPU support via OpenVINO and pretrained model embedded.
-No local setup required!
-
-**Using wrapper script:**
-```bash
-cd florence_extractor/docker
-
-OUTPUT_DIR=/tmp ./wtt-stream-match-finder.sh \
-    --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w" \
-    --output_json_file /output/results.json
-```
-
-The script automatically:
-- Pulls the image from Docker Hub if not present
-- Detects video/render group IDs for GPU access
-- Mounts the output directory
-
-**Requirements:**
-- Intel GPU (integrated or discrete) with OpenVINO support
-- User must be in `video` and `render` groups: `sudo usermod -aG video,render $USER`
-
-**Output:**
-Results are saved to the mounted directory (`/tmp/matches/results.json`):
-```json
-[
-  {"timestamp": 720, "player1": "MA LONG", "player2": "FAN ZHENDONG"},
-  {"timestamp": 4140, "player1": "CHEN MENG", "player2": "SUN YINGSHA"}
-]
-```
-
-### Option B: Run with Python development environment
-Running without a docker will require to generate trained florence2 model using instructions below
-
-### Perform developer setup
-#### 1. Setup python venv
-Use florence_extractor/docker/Dockerfile file for reference which pip packages versions to install
-#### 2. Train the Model
-
-The repository does not include the trained Florence-2 model. Train it using the provided test data:
+Pre-built Docker image with NVIDIA GPU acceleration via CUDA:
 
 ```bash
-python train_florence2.py
+cd florence_extractor/docker/cuda
+python3 build.py
 ```
 
-This creates `florence2-tt-finetuned/` based on `test_data_sample.csv`.
+The Go CLI (`wtt-youtube-organizer matchfinder`) automatically runs this container with:
+- `--gpus all` access
+- Mapped HuggingFace model cache (`~/.config/wtt-youtube-organizer/cache:/root/.cache/huggingface`)
+- Embedded fine-tuned LoRA weights (`adapter_model.safetensors`)
 
-**Prompt Hijacking Architecture:**
-The training pipeline utilizes an advanced Vision-Language Model technique known as "Prompt Hijacking" (or Task Overriding). Instead of defining a custom task token (like `<WTT_SCORE>`), the script fine-tunes the foundational `<OCR>` token built into the Microsoft Florence-2 base model. 
-This forces the model to learn our strict spatial JSON formatting (`row 1: NAME, Set, Game`) while simultaneously keeping its massive 5-billion-image English spelling dictionary activated. This elegantly resolves visual BPE tokenizer collisions (e.g., hallucinating an extra 'T' in names due to squished WTT fonts) natively, inheriting the pre-trained language priors without requiring manual `bad_words_ids` blocking or programmatic aliases.
+### Option B: Local Python Environment
 
-#### 3. (Optional) Create OpenVINO Version
-
-By default, Florence-2 runs on NVIDIA/CUDA or CPU. For Intel GPUs, create an optimized OpenVINO version:
-
+#### 1. Setup Virtual Environment
 ```bash
-python convert_to_openvino.py
+python3 -m venv qwen_venv
+source qwen_venv/bin/activate
+pip install torch torchvision transformers peft qwen-vl-utils opencv-python-headless yt-dlp
 ```
 
-Even an integrated Intel GPU is ~4x faster than CPU!
-
-#### 4. (Optional) Verify Model
-
-Run verification against test data:
-
+#### 2. Train / Fine-Tune Qwen LoRA
 ```bash
-python score_extractor.py --images_dir=testdata
+./train_qwen.sh
+```
+This automatically:
+1. Prepares `qwen_train.json` and `qwen_val.json` from `test_data_sample.csv` (using grouped 85/15 train/val split).
+2. Runs LoRA SFT training using Swift/Transformers in `bfloat16`.
+3. Outputs checkpoints to `output/qwen2.5-vl-3b-wtt-lora/`.
+
+#### 3. Parse YouTube Video
+```bash
+python3 match_start_finder.py --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w"
 ```
 
-All images from `testdata/` should pass.
-
-#### Parse YouTube Video
-
+#### 4. Parse Local Video
 ```bash
-python match_start_finder.py --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w"
-```
-
-#### Parse Local Video
-add fake `video_id` and `video_title` if you are not planning to save results in the database
-
-```bash
-python match_start_finder.py --local_video "/path/to/video.mp4" \
+python3 match_start_finder.py --local_video "/path/to/video.mp4" \
     --video_id "i8OS-w44mrQ" \
     --video_title "WTT Star Contender Bangkok 2026 Day 1"
 ```
 
-#### Select Backend
-
-```bash
-# OpenVINO (Intel GPU)
-python match_start_finder.py --youtube_video "..." --backend openvino
-
-# PyTorch CPU
-python match_start_finder.py --youtube_video "..." --backend pytorch-cpu
-```
-
-
 ## Hermetic Testing (No ML / No Video Downloads)
 
-To instantly test changes to the match-finding logic (binary search, gap ignoring, phase transitions) without the heavy overhead of downloading videos or running `Florence-2` / PyTorch, you can use the hermetic testing mode with a pre-extracted "golden dataset".
+To instantly test changes to the match-finding logic (binary search, gap ignoring, phase transitions) without the heavy overhead of downloading videos or running Qwen / PyTorch, use the hermetic testing mode with a pre-extracted "golden dataset":
 
-**Run the CLI hermetically:**
 ```bash
 python match_start_finder.py \
     --youtube_video hJXfBULLDro \
     --test_golden_dataset testing/frames_hJXfBULLDro/hJXfBULLDro_golden.json \
     --output_json_file hermetic_output.json
 ```
-*Note: The script will fake the video download and feed the ML engine instant, cached OCR results from the golden JSON for every second sampled.*
 
 ### Running Unit Tests
-
-To run the automated test suite (which uses the hermetic testing mode to instantly verify the core match-finding logic against golden datasets):
 
 ```bash
 cd florence_extractor
 
-# Run the specific match finder tests:
+# Run processor tests
+python -m unittest prod_video_processor_test.py
+
+# Run match finder tests
 python -m unittest match_start_finder_test.py
-
-# Or discover and run all tests in the project:
-python -m unittest discover -p "*_test.py"
 ```
-*For details on how to generate new golden datasets for other videos, see `testing/README.md`.*
 
-## Add new Test Data to Retrain the model
+## Add New Training Data
 
+### 1. Extract & Augment Empty Frames
+```bash
+python3 add_empty_frames.py /path/to/empty_crops/
+```
 
-### 1. Extract Frames (Automated Workflow)
-
-To rapidly extract exactly 15 crisp frames of a specific matchup without manually copying files, use the targeted Gemini Golden Dataset generator. This automatically downloads the video, runs Gemini OCR, and appends the exact expected values into your CSV for you!
-
+### 2. Targeted Golden Frame Mining
 ```bash
 python florence_extractor/testing/generate_golden_testdata.py \
     --video "https://www.youtube.com/watch?v=VIDEO_ID" \
@@ -149,69 +101,18 @@ python florence_extractor/testing/generate_golden_testdata.py \
     --max_append 15
 ```
 
-### 2. Manual Extraction (Fallback)
-
-If you prefer to extract frames manually without Gemini:
-```bash
-python match_start_finder.py --youtube_video "https://..." --keep_cropped
-```
-Then move images from `match_starts/cropped_frames/` to `testdata/` and manually update `test_data_sample.csv` with expected values.
-
-### 3. Retrain Model
-
-```bash
-python train_florence2.py
-
-# If using OpenVINO:
-python convert_to_openvino.py
-```
-
 ## Directory Structure
 
 ```
 florence_extractor/
-├── match_start_finder.py    # Main video parser
-├── score_extractor.py       # Score extraction utilities
-├── train_florence2.py       # Model training script
-├── convert_to_openvino.py   # OpenVINO conversion
-├── test_data_sample.csv     # Training/test data
-├── testdata/                # Test images
-├── cropped_images/          # Temporary cropped images
-├── florence2-tt-finetuned/  # Trained model
-│   └── openvino/            # OpenVINO converted model
-└── backends/                # Inference backends
-    ├── base.py
-    ├── pytorch_backend.py
-    └── openvino_backend.py
-```
-
-
-## Other useful commands
-### 
-Finds and processes all matches found at live streams after match with youtube id HYB4y7xADMY and writes output to `match.json`
-
-```
-python3 florence_extractor/match_start_finder.py --process_all_matches_after HYB4y7xADMY --output_json_file match.json
-```
-
-`--only_extract_video_metadata` does dry run and only prints videos to process and adds them to `--output_json_file`
-
-```
-python3 florence_extractor/match_start_finder.py --process_all_matches_after HYB4y7xADMY --only_extract_video_metadata --output_json_file match.json
-```
-
-outputs
-
-```
-Found 7 videos to process:
-
-UPLOAD_DATE  VIDEO_ID        TITLE
-----------------------------------------------------------------------------------------------------
-2026-02-14   11ZDP_A0Ado     LIVE! | T1 | Day 3 | WTT Star Contender Chennai 2026 | Singles QF & Doubles F
-2026-02-14   UDT641nBU90     LIVE! | T2 | Day 3 | WTT Star Contender Chennai 2026 | Singles QF
-2026-02-14   7UepN9zbe0s     LIVE! | T2 | Day 3 | WTT Star Contender Chennai 2026 | Session 1
-2026-02-14   UkYviSmVNoA     LIVE! | T1 | Day 3 | WTT Star Contender Chennai 2026 | Session 1
-2026-02-14   uNDVePxSfng     LIVE! | T4 | Day 3 | WTT Star Contender Chennai 2026
-2026-02-14   9jeGCqs1Sns     LIVE! | T3 | Day 3 | WTT Star Contender Chennai 2026
-2026-02-13   T1Ykn6kv7y0     LIVE! | T1 | Day 4 | WTT Youth Contender Vila Real 2026 | Session 2
+├── match_start_finder.py       # Main video parser and match finder
+├── prod_video_processor.py     # Production Qwen2.5-VL scoreboard processor
+├── prepare_qwen_dataset.py     # Dataset formatting & prompt builder
+├── train_qwen.sh               # LoRA fine-tuning training script
+├── add_empty_frames.py         # Negative sample ingestion & enhancement
+├── test_data_sample.csv        # Golden dataset catalog
+├── testdata/                   # Golden crop images (positives & negatives)
+├── output/                     # Saved Qwen LoRA checkpoints
+└── docker/
+    └── cuda/                   # Production CUDA Docker image & build script
 ```
