@@ -211,5 +211,27 @@ void main() {
         findsOneWidget,
       );
     });
+    testWidgets('Mobile Android Viewport: verifies SafeArea wraps header and navigation bar to avoid status bar overlap', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(392, 850);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(const WttApp());
+      await tester.pump();
+
+      // MobileHeader should have SafeArea to protect from status bar
+      expect(
+        find.descendant(of: find.byType(MobileHeader), matching: find.byType(SafeArea)),
+        findsOneWidget,
+      );
+
+      // MobileBottomNav should have SafeArea to protect from system navigation bar
+      expect(
+        find.descendant(of: find.byType(MobileBottomNav), matching: find.byType(SafeArea)),
+        findsOneWidget,
+      );
+    });
   });
 }

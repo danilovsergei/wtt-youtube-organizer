@@ -674,33 +674,38 @@ class MobileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
         color: Color(0xFF101922),
         border: Border(bottom: BorderSide(color: Color(0xFF223649))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.sports_tennis, color: Color(0xFF0D7FF2)),
-              const SizedBox(width: 8),
-              Text(
-                'TT World',
-                style: GoogleFonts.splineSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.sports_tennis, color: Color(0xFF0D7FF2)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'TT World',
+                    style: GoogleFonts.splineSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                icon: const Icon(Icons.menu, color: Colors.white),
               ),
             ],
           ),
-          IconButton(
-            onPressed: () => Scaffold.of(context).openDrawer(),
-            icon: const Icon(Icons.menu, color: Colors.white),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -722,8 +727,10 @@ class Sidebar extends StatelessWidget {
             color: const Color(0xFF101922).withValues(alpha: 0.95),
             border: const Border(right: BorderSide(color: Color(0xFF223649))),
           ),
-          child: Column(
-            children: [
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
               // Logo Area
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -1339,10 +1346,11 @@ class Sidebar extends StatelessWidget {
               ),
             ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 }
 
 class VideoHero extends StatefulWidget {
@@ -1804,14 +1812,19 @@ class MobileBottomNav extends StatelessWidget {
         color: Color(0xFF101922),
         border: Border(top: BorderSide(color: Color(0xFF223649))),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildNavItem(Icons.play_circle, 'Live', isActive: true),
-          _buildNavItem(Icons.bookmarks, 'Saved'),
-          _buildNavItem(Icons.person, 'Profile'),
-        ],
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(Icons.play_circle, 'Live', isActive: true),
+              _buildNavItem(Icons.bookmarks, 'Saved'),
+              _buildNavItem(Icons.person, 'Profile'),
+            ],
+          ),
+        ),
       ),
     );
   }
