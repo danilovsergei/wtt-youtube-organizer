@@ -6,6 +6,8 @@ import "package:flutter/services.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:flutter_app/main.dart";
 import "package:media_kit/media_kit.dart";
+import "package:flutter_app/video/ytdlp/ytdlp_service.dart";
+import "package:flutter_app/video/ytdlp/test_ytdlp.dart";
 
 // 1x1 transparent PNG bytes for mock Image responses
 final Uint8List _transparentPng = Uint8List.fromList(<int>[
@@ -105,6 +107,7 @@ class _MockHttpClientResponse extends Stream<List<int>> implements HttpClientRes
 
 void main() {
   setUpAll(() {
+    YtDlpService.instance = TestYtDlpService();
     HttpOverrides.global = _TestHttpOverrides();
     MediaKit.ensureInitialized();
   });

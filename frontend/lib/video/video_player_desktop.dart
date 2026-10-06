@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'screen_inhibitor.dart';
 import 'video_player_service.dart';
+import 'ytdlp/ytdlp_service.dart';
 
 VideoPlayerWidget createVideoPlayer({
   Key? key,
@@ -27,11 +26,7 @@ VideoPlayerWidget createVideoPlayer({
   );
 }
 
-class YtStreamInfo {
-  final int height;
-  final String url;
-  YtStreamInfo(this.height, this.url);
-}
+
 
 class _DesktopVideoPlayerWidget extends VideoPlayerWidget {
   const _DesktopVideoPlayerWidget({
@@ -86,88 +81,37 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
 
   void _loadVideo(String youtubeId, int startSeconds, [YtStreamInfo? specificStream]) async {
     try {
-      final dataHome = Platform.environment['XDG_DATA_HOME'];
-      String ytdlpPath = 'yt-dlp';
-      if (dataHome != null && File('$dataHome/yt-dlp/yt-dlp_linux').existsSync()) {
-        ytdlpPath = '$dataHome/yt-dlp/yt-dlp_linux';
-      } else if (File('/app/bin/yt-dlp_linux').existsSync()) {
-        ytdlpPath = '/app/bin/yt-dlp_linux';
-      } else if (File('/usr/local/bin/yt-dlp_linux').existsSync()) {
-        ytdlpPath = '/usr/local/bin/yt-dlp_linux';
-      }
-
-      // Log the yt-dlp version to guarantee we are executing the updated binary and not an obsolete system package
-      final versionResult = await Process.run(ytdlpPath, ['--version']);
-      debugPrint('DIAGNOSTICS: yt-dlp binary path: $ytdlpPath');
-      debugPrint('DIAGNOSTICS: yt-dlp version executing: ${versionResult.stdout.toString().trim()}');
-
-      final result = await Process.run(ytdlpPath, [
-        '-j',
-        'https://www.youtube.com/watch?v=$youtubeId'
-      ]);
-
-      if (result.exitCode != 0) {
-        debugPrint('yt-dlp extraction failed: ${result.stderr}');
+      final metadata = await YtDlpService.instance.getVideoStreamMetadata(youtubeId);
+      if (metadata.videoStreams.isEmpty) {
+        debugPrint('No video streams extracted for $youtubeId');
         return;
       }
 
-      debugPrint('yt-dlp successfully extracted JSON manifest for $youtubeId');
-      final manifest = jsonDecode(result.stdout);
-      final formats = manifest['formats'] as List<dynamic>;
-
-      // Extract adaptive video streams
-      final videoFormats = formats.where((f) => 
-        f['vcodec'] != 'none' && 
-        f['acodec'] == 'none' && 
-        f['height'] != null
-      ).toList();
-
-      // Extract adaptive audio streams
-      final audioFormats = formats.where((f) => 
-        f['acodec'] != 'none' && 
-        f['vcodec'] == 'none'
-      ).toList();
-
-      if (videoFormats.isEmpty || audioFormats.isEmpty) return;
-
-      videoFormats.sort((a, b) => (b['height'] as int).compareTo(a['height'] as int));
-      audioFormats.sort((a, b) => ((b['abr'] ?? 0) as num).compareTo((a['abr'] ?? 0) as num));
-
-      final videoStreams = videoFormats.map((f) => YtStreamInfo(f['height'] as int, f['url'] as String)).toList();
-      final bestAudio = audioFormats.first['url'] as String;
-
       if (mounted) {
         setState(() {
-          // Remove duplicate resolutions
-          final uniqueHeights = <int>{};
-          _availableStreams = videoStreams.where((s) {
-            if (uniqueHeights.contains(s.height)) return false;
-            uniqueHeights.add(s.height);
-            return true;
-          }).toList();
-
+          _availableStreams = metadata.videoStreams;
           _selectedStream = specificStream ?? _availableStreams.first;
-          _audioUrl = bestAudio;
-          
+          _audioUrl = metadata.audioUrl;
+
           debugPrint('====================================');
           debugPrint('Selected Resolution: ${_selectedStream!.height}p');
-          debugPrint('Video Stream URL: ${_selectedStream!.url.substring(0, 50)}... (truncated)');
-          debugPrint('Audio Stream URL: ${_audioUrl!.substring(0, 50)}... (truncated)');
+          debugPrint('Video Stream URL: ${_selectedStream!.url.length > 50 ? _selectedStream!.url.substring(0, 50) : _selectedStream!.url}... (truncated)');
+          debugPrint('Audio Stream URL: ${_audioUrl != null && _audioUrl!.length > 50 ? _audioUrl!.substring(0, 50) : _audioUrl}... (truncated)');
           debugPrint('====================================');
         });
       }
 
       _durationSub?.cancel();
-    _singleClickTimer?.cancel();
-      
+      _singleClickTimer?.cancel();
+
       final nativePlayer = _player.platform as dynamic;
       try { nativePlayer.setProperty('ytdl', 'no'); } catch (e) { debugPrint('MPV prop err: $e'); }
       try { nativePlayer.setProperty('tls-verify', 'no'); } catch (e) { debugPrint('MPV prop err: $e'); }
-      
+
       try {
         String userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
-        if (manifest['http_headers'] != null && manifest['http_headers']['User-Agent'] != null) {
-          userAgent = manifest['http_headers']['User-Agent'].toString().replaceAll(',', '');
+        if (metadata.httpHeaders['User-Agent'] != null) {
+          userAgent = metadata.httpHeaders['User-Agent']!.replaceAll(',', '');
         }
         final headers = 'User-Agent: $userAgent,Referer: https://www.youtube.com/';
         nativePlayer.setProperty('http-header-fields', headers);
@@ -175,14 +119,11 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
         debugPrint('MPV prop err: $e');
       }
 
-      Map<String, String> mediaHeaders = {
-        'Referer': 'https://www.youtube.com/'
-      };
-      if (manifest['http_headers'] != null && manifest['http_headers']['User-Agent'] != null) {
-        mediaHeaders['User-Agent'] = manifest['http_headers']['User-Agent'].toString();
-        debugPrint('yt-dlp User-Agent extracted: ${mediaHeaders['User-Agent']}');
+      Map<String, String> mediaHeaders = Map<String, String>.from(metadata.httpHeaders);
+      if (!mediaHeaders.containsKey('Referer')) {
+        mediaHeaders['Referer'] = 'https://www.youtube.com/';
       }
-      
+
       debugPrint('Initializing libmpv Media with video URL and ${mediaHeaders.length} custom headers...');
 
       await _player.open(Media(_selectedStream!.url, httpHeaders: mediaHeaders), play: false);
