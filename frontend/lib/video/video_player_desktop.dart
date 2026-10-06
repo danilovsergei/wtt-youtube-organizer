@@ -129,28 +129,23 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
 
       debugPrint('Initializing libmpv Media with video URL and ${mediaHeaders.length} custom headers...');
 
-      await _player.open(Media(_selectedStream!.url, httpHeaders: mediaHeaders), play: false);
+      await _player.open(
+        Media(
+          _selectedStream!.url,
+          httpHeaders: mediaHeaders,
+          start: Duration(seconds: startSeconds),
+        ),
+        play: false,
+      );
       
-      if (_audioUrl != null) {
+      if (_audioUrl != null && _audioUrl!.isNotEmpty) {
         await _player.setAudioTrack(AudioTrack.uri(_audioUrl!));
       }
-      
-      Future<void> playAndSeek() async {
-        await _player.seek(Duration(seconds: startSeconds));
-        await _player.play();
-      }
 
-      if (_player.state.duration.inSeconds > 0) {
-        await playAndSeek();
-      } else {
-        _durationSub = _player.stream.duration.listen((duration) async {
-          if (duration.inSeconds > 0) {
-            _durationSub?.cancel();
-    _singleClickTimer?.cancel();
-            await playAndSeek();
-          }
-        });
+      if (startSeconds > 0) {
+        await _player.seek(Duration(seconds: startSeconds));
       }
+      await _player.play();
     } catch (e) {
       debugPrint('Failed to load youtube video: $e');
     }
@@ -206,6 +201,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
     
     if (isDifferentMatch && widget.youtubeId != null) {
       _lastMatchId = widget.matchId;
+      debugPrint('DIAGNOSTICS: Loading video for ${widget.matchId}: youtubeId=${widget.youtubeId}, offsetSeconds=${widget.offsetSeconds}');
       _loadVideo(widget.youtubeId!, widget.offsetSeconds);
     }
 
