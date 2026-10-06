@@ -53,4 +53,5 @@ app.*.map.json
 /macos/Flutter/GeneratedPluginRegistrant.swift
 
 # Linux specific
-/linux/flutter/ephemeral/
+/linux/flutter/ephemeral/recordings/
+/recordings/
