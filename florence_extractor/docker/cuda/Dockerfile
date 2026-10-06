@@ -1,5 +1,5 @@
 # Use NVIDIA CUDA 12.8 base for Blackwell (RTX 5070 Ti) support
-FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:13.0.0-runtime-ubuntu22.04
 
 # Arguments for Flash Attention and GPU SM
 ARG FLASH_REQUIRED=false
@@ -11,6 +11,8 @@ ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
     python3-pip \
     python3-dev \
     curl \
@@ -32,11 +34,6 @@ RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel packaging
 RUN mkdir -p /tmp/wheels
 COPY wheels/*.whl* /tmp/wheels/
 
-# 2. Hard-Lock Installation of local Torch 2.10.0
-# We do this FIRST so all subsequent installs see this specific version
-RUN echo "🔥 FORCING LOCAL TORCH 2.10.0 ---" && \
-    pip3 install --no-cache-dir --no-index --find-links=/tmp/wheels/ torch==2.10.0
-
 # 3. Install Flash Attention if requested (Blackwell sm_120)
 RUN if [ "$FLASH_REQUIRED" = "true" ]; then \
     WHEEL=$(ls /tmp/wheels/flash_attn*sm120*.whl 2>/dev/null | head -n 1); \
@@ -49,38 +46,26 @@ RUN if [ "$FLASH_REQUIRED" = "true" ]; then \
     fi
 
 # 4. Install other dependencies with STRICT pinning
-RUN echo "📦 Installing remaining dependencies..." && \
+RUN echo "📦 Installing dependencies..." && \
     pip3 install --no-cache-dir \
-    einops \
-    "huggingface_hub>=0.23.2,<1.0" \
-    "tokenizers>=0.19,<0.20" \
-    safetensors \
-    numpy \
+    av \
     opencv-python-headless \
-    pandas \
-    Pillow \
-    tqdm \
-    requests \
-    pyyaml \
-    regex \
+    einops \
+    huggingface_hub \
+    tokenizers \
+    httpx \
+    ninja \
     packaging \
-    filelock && \
-    echo "🖼️  Installing Torchvision (FORCING 2.10 compatibility)..." && \
-    # THE CRITICAL CHANGE: We explicitly tell pip that torch MUST be 2.10.0 
-    # while it looks for a compatible torchvision.
-    pip3 install --no-cache-dir "torch==2.10.0" torchvision --index-url https://download.pytorch.org/whl/cu128 && \
-    echo "🤖 Installing Transformers stack..." && \
-    pip3 install --no-cache-dir --no-deps timm "transformers==4.44.2"
-
-# 5. FINAL VERIFICATION: Universal shell syntax (works in Dash and Bash)
-# This confirms the version didn't drift during the torchvision/transformers steps
-RUN echo "🛡️ FINAL VERSION CHECK ---" && \
-    INSTALLED_VER=$(python3 -c "import torch; print(torch.__version__)") && \
-    echo "Detected Torch: $INSTALLED_VER" && \
-    case "$INSTALLED_VER" in \
-    2.10.0*) echo "✅ Version Verified." ;; \
-    *) echo "❌ FATAL: Torch version drift! Expected 2.10.0, got $INSTALLED_VER"; exit 1 ;; \
-    esac
+    pillow \
+    "transformers>=4.49.0" \
+    qwen-vl-utils \
+    accelerate \
+    peft \
+    timm && \
+    echo "🤖 Installing PyTorch cu130 LAST to override any CPU versions..." && \
+    pip3 install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130 --force-reinstall
+ENV HF_HOME="/root/.cache/huggingface"
+ENV HF_HUB_OFFLINE=1
 
 # Clean up wheels to keep image size down
 RUN rm -rf /tmp/wheels

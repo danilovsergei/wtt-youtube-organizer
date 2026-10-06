@@ -13,3 +13,16 @@ repo/
 .metadata
 flutter_sdk/
 flutter_path
+qwen_venv/
+
+florence_extractor/output/
+florence_extractor/testdata_enhanced/
+florence_extractor/qwen_train.json
+florence_extractor/qwen_val.json
+local_wheels/
+matches-local-test.json
+test_match_video.mp4
+florence_extractor/__pycache__/
+
+florence_extractor/testdata_*
+florence_extractor/testing/*.backup*

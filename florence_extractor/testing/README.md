@@ -71,16 +71,21 @@ python florence_extractor/testing/generate_golden_testdata.py \
 
 
 #### 5. Automatically Append OCR Results to Training Dataset (`--append_csv`)
-If you want to use the OCR results to fine-tune the Florence-2 model, you can automatically copy the processed images into your `testdata` folder, assign them unique UUID filenames, and strictly append the scores into your `test_data_sample.csv`. 
-You can also use `--override_p1` and `--override_p2` to hardcode the exact player names in the ground-truth data, preventing Gemini from accidentally injecting typos.
+If you want to use the OCR results to fine-tune the model, you can automatically copy the processed images into your `testdata` folder, assign them unique UUID filenames, and strictly append the scores into your `test_data_sample.csv`. 
+
+**Targeted Oversampling & Early Exit:**
+To prevent data poisoning when processing full broadcasts containing multiple matches, you should use the `--target_p1` and `--target_p2` flags. This forces the script to verify (via fuzzy matching) that Gemini actually detected the target players before it applies the override names. You can also use `--max_append N` to forcefully stop querying Gemini and exit immediately once `N` valid frames have been successfully extracted, saving massive amounts of API quota.
 
 ```bash
 python florence_extractor/testing/generate_golden_testdata.py \
     --image_dir /home/geonix/frames_ovtcharov/unique \
     --output_file /home/geonix/frames_ovtcharov/ovtcharov_scoreboard.json \
     --append_csv florence_extractor/test_data_sample.csv \
+    --target_p1 "SOME OPPONENT" \
+    --target_p2 "OVTCHAROV" \
     --override_p1 "SOME OPPONENT" \
-    --override_p2 "DIMITRIJ OVTCHAROV"
+    --override_p2 "DIMITRIJ OVTCHAROV" \
+    --max_append 15
 ```
 
 ### Generated Artifacts

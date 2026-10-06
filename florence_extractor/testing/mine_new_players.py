@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from prod_video_processor import ProdWttVideoProcessor
 import os
 import sys
 import argparse
@@ -12,7 +16,10 @@ import glob
 import shutil
 import uuid
 
-DATABASE_URL = os.environ.get("DATABASE_URL")\nif not DATABASE_URL:\n    print("DATABASE_URL environment variable is not set.")\n    sys.exit(1)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    print("DATABASE_URL environment variable is not set.")
+    sys.exit(1)
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 DIFF_THRESHOLD = 3.0
@@ -89,6 +96,7 @@ def extract_and_dedup(video_path, start_sec, out_dir, player_name, processor, ma
         '-ss', str(start_sec + 60),
         '-t', '3600',
         '-i', video_path,
+        '-strict', 'unofficial',
         '-vf', 'fps=1/30',
         '-q:v', '2',
         os.path.join(raw_dir, 'raw_frame_%05d.jpg')
@@ -423,6 +431,8 @@ def main():
                         help="Poll for completed Gemini Batch jobs and append their results to the CSV")
     parser.add_argument("--submit_local_frames", action="store_true",
                         help="Upload already extracted frames from ~/.config/wtt-youtube-organizer/mined_frames to Gemini Batch API")
+    parser.add_argument("--force_matches", type=str,
+                        help="Comma separated list of vid:offset:player to bypass DB")
     args = parser.parse_args()
 
     csv_path = os.path.join(os.path.dirname(os.path.dirname(
@@ -438,8 +448,24 @@ def main():
         submit_local_frames_to_batch()
         return
 
-    print(f"Fetching matches from the last {args.days} days...")
-    recent_matches = get_recent_matches(args.days)
+    if args.force_matches:
+        print("Using forced matches...")
+        recent_matches = []
+        for match in args.force_matches.split(","):
+            parts = match.split(":")
+            if len(parts) == 3:
+                vid, offset, player = parts
+                recent_matches.append((int(offset), vid, player))
+            elif len(parts) == 2:
+                vid, player = parts
+                # We need to find the offset dynamically later inside the loop
+                recent_matches.append((None, vid, player))
+            else:
+                print(f"Invalid force_matches format: {match}")
+                sys.exit(1)
+    else:
+        print(f"Fetching matches from the last {args.days} days...")
+        recent_matches = get_recent_matches(args.days)
     player_counts = get_player_counts(csv_path)
 
     underrepresented = {}
@@ -538,6 +564,20 @@ def main():
             continue
 
         for player, offset in tasks:
+            if offset is None:
+                from match_start_finder import MatchStartFinder
+                from ocr_utils import is_similar
+                print(f"  Dynamically finding match start offset for {player}...")
+                finder = MatchStartFinder(video_path=video_path, output_dir=work_dir, processor=processor)
+                matches = finder.find_match_starts()
+                for m in matches:
+                    if is_similar(player, m.player1) or is_similar(player, m.player2):
+                        offset = int(m.timestamp_seconds)
+                        break
+                if offset is None:
+                    print(f"  [ERROR] Could not find match start for {player} in {youtube_id}. Skipping.")
+                    continue
+                    
             print(f"  Extracting frames for {player} at offset {offset}s...")
             player_dir = os.path.join(work_dir, player.replace(" ", "_"))
             unique_dir, count = extract_and_dedup(
@@ -550,40 +590,41 @@ def main():
                 if not args.extract_frames:
                     frames = sorted(
                         glob.glob(os.path.join(unique_dir, '*.jpg')))
-        import concurrent.futures
-
-        def _upload_frame(f_path, r_name, p_name):
-            up_file = client.files.upload(file=f_path)
-            req = types.InlinedRequest(
-                metadata={"req_id": r_name},
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_uri(
-                            file_uri=up_file.uri, mime_type=up_file.mime_type),
-                        types.Part.from_text(text=prompt)
-                    ])
-                ]
-            )
-            return r_name, {"local_path": f_path, "player": p_name}, req
-
-        print(f"Uploading {len(frames)} frames for {player} concurrently...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = []
-            for f in frames:
-                req_name = f"req_{req_index}"
-                req_index += 1
-                futures.append(executor.submit(
-                    _upload_frame, f, req_name, player_name))
-
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    r_name, mapping_entry, req = future.result()
-                    local_mapping[r_name] = mapping_entry
-                    inlined_requests.append(req)
-                except Exception as e:
-                    print(f"  Error uploading frame: {e}")
-            else:
-                print(f"  No valid frames found for {player}.")
+        if not args.extract_frames:
+            import concurrent.futures
+    
+            def _upload_frame(f_path, r_name, p_name):
+                up_file = client.files.upload(file=f_path)
+                req = types.InlinedRequest(
+                    metadata={"req_id": r_name},
+                    contents=[
+                        types.Content(role="user", parts=[
+                            types.Part.from_uri(
+                                file_uri=up_file.uri, mime_type=up_file.mime_type),
+                            types.Part.from_text(text=prompt)
+                        ])
+                    ]
+                )
+                return r_name, {"local_path": f_path, "player": p_name}, req
+    
+            print(f"Uploading {len(frames)} frames for {player} concurrently...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = []
+                for f in frames:
+                    req_name = f"req_{req_index}"
+                    req_index += 1
+                    futures.append(executor.submit(
+                        _upload_frame, f, req_name, player_name))
+    
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        r_name, mapping_entry, req = future.result()
+                        local_mapping[r_name] = mapping_entry
+                        inlined_requests.append(req)
+                    except Exception as e:
+                        print(f"  Error uploading frame: {e}")
+                else:
+                    print(f"  No valid frames found for {player}.")
 
         # Clean up huge video file immediately after processing its tasks
         try:

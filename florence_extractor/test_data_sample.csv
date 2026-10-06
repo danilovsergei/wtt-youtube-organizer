@@ -307,7 +307,6 @@ testdata/cropped_4860.0-8b82a639-7835-4745-80fe-11a363b1b2ba.jpg,SHIN YUBIN,JIEN
 testdata/cropped_5580.0-96998253-cb4b-4fa4-9439-96986aed028f.jpg,SHIN YUBIN,JIENI SHAO,2,0,9,3
 testdata/cropped_10440.0-c762bb6f-0763-4d2b-a957-b6f83cf7589d.jpg,PAL / JEE,GOMEZ / ORTEGA,0,0,2,2
 testdata/cropped_10620.0-765d013f-42d1-4ad2-9235-e8d18fc9aa7e.jpg,PAL / JEE,GOMEZ / ORTEGA,0,0,10,5
-testdata/cropped_6840.0-6a2561eb-7515-4b74-86f4-aaebe1a2b59a.jpg,SREEJA AKULA,ANNA HURSEY,0,2,4,5
 testdata/cropped_12240.0-c5026d30-d9b2-4afd-b346-497abba9f141.jpg,QIU / WINTER,MATSUSHIMA / HARIMOTO,0,0,3,5
 testdata/cropped_12420.0-1b66f4d9-4214-41c9-8260-b674ae5b7210.jpg,QIU / WINTER,MATSUSHIMA / HARIMOTO,0,0,11,7
 testdata/cropped_12600.0-739309af-9f42-4d72-a2f7-dd5164e22926.jpg,QIU / WINTER,MATSUSHIMA / HARIMOTO,1,0,4,2
@@ -321,15 +320,6 @@ testdata/cropped_16380.0-7e39e306-ab9e-4cf9-8fd1-b9c1dbad5e1e.jpg,SHIN / LIM,ODO
 testdata/cropped_17280.0-26ee5255-d514-482c-9a7c-50b6a7e56ef5.jpg,SHIN / LIM,ODO / LEBRUN,0,2,9,6
 testdata/cropped_18180.0-74966bc6-9e4f-4ce0-8288-a298d1e5532d.jpg,SHIN / LIM,ODO / LEBRUN,2,2,5,3
 testdata/cropped_18360.0-acebc663-28a0-490f-b05e-418276e6d3f9.jpg,SHIN / LIM,ODO / LEBRUN,2,2,7,6
-testdata/cropped_900.0-86f5f382-2e13-4d64-a8b5-9b944bd93090.jpg,CASTRO / SAREEN,KALLBERG / KARLSSON,0,0,3,5
-testdata/cropped_1260.0-4cd3e434-2fa4-422d-a100-ba75167d12c1.jpg,CASTRO / SAREEN,KALLBERG / KARLSSON,0,1,0,2
-testdata/cropped_1800.0-7f2de5f5-78f1-49dd-bc56-1261e03c8176.jpg,CASTRO / SAREEN,KALLBERG / KARLSSON,0,2,3,9
-testdata/cropped_6840.0-d7bd99f0-7eda-4caf-9e96-09acd24fd48c.jpg,TRULS MOREGARD,CHO SEUNGMIN,0,0,6,7
-testdata/cropped_7380.0-bbe2058f-a87e-4c4e-b57f-a896536b3cea.jpg,TRULS MOREGARD,CHO SEUNGMIN,0,1,8,7
-testdata/cropped_11700.0-ebf7767d-c430-4e8f-be1f-f192fd35ea25.jpg,PAL / JEE,HUANG / CHEN,0,0,3,1
-testdata/cropped_11880.0-67a7f367-b3ba-4edf-9d55-c03e8ee3d727.jpg,PAL / JEE,HUANG / CHEN,0,0,6,9
-testdata/cropped_12060.0-64168544-8012-4dcc-8966-1b7f95f9ed1b.jpg,PAL / JEE,HUANG / CHEN,0,1,0,4
-testdata/cropped_12420.0-5b803c72-dd6e-48e8-bb84-e0a5fcfc7cbc.jpg,PAL / JEE,HUANG / CHEN,0,2,2,7
 testdata/cropped_2160.0-b9b1abdf-8ed6-4b77-adee-0d26a7802635.jpg,LIN TZU YU,CAKOROVA TEREZA,0,0,6,11
 testdata/cropped_3600.0-fc5dd866-684b-4e32-a660-fe23deae9cbb.jpg,BERTHIER CLEMENT,LEE CALEB JIA XUAN,0,0,8,2
 testdata/cropped_3780.0-3816434f-ba98-4ee5-b9c1-18c975d878a5.jpg,BERTHIER CLEMENT,LEE CALEB JIA XUAN,1,0,2,0
@@ -347,86 +337,15 @@ testdata/cropped_4320.0-83fb1ec1-427d-4fdd-8f19-7a67528df584.jpg,ABE HAYUMA,CHUD
 testdata/cropped_4680.0-acc2a5a7-d31a-4e09-bd08-c0f68fc1dec2.jpg,ABE HAYUMA,CHUDZICKI MAKSYM,2,0,4,4
 testdata/cropped_5580.0-a2e21f16-f96e-477d-85db-fc08fd530432.jpg,ABE HAYUMA,CHUDZICKI MAKSYM,2,1,11,10
 testdata/cropped_4140.0-653408e6-7c80-4f50-a9a2-220052e1b0c7.jpg,ABE HAYUMA,CHUDZICKI MAKSYM,1,0,2,1
-testdata/cropped_720.0-fb7bc242-46e1-489f-89ee-734b48559a1f.jpg,TIAN SHIAU WEN,KOSTENEVICH ANASTASIA,0,1,2,1
-testdata/cropped_1260.0-d307324e-c942-441e-b5fe-e32f706ea00d.jpg,TIAN SHIAU WEN,KOSTENEVICH ANASTASIA,0,2,5,4
-testdata/cropped_1800.0-e43c87c1-f426-44f5-9ba5-f6a7b4f86c33.jpg,TIAN SHIAU WEN,KOSTENEVICH ANASTASIA,1,2,9,6
-testdata/cropped_2700.0-6ee8b98b-9f22-4698-b8be-ddd4d8cfccaa.jpg,PARTYKA NATALIA,HANDEN ANJA,0,0,5,0
-testdata/cropped_4320.0-126572a2-d928-4e0d-bd70-52b0298c78d5.jpg,ABE HAYUMA,GUARNIERI LUIZ FILIPE,0,0,5,1
-testdata/cropped_4680.0-b7fbb958-dff5-41ae-9917-2544f21577d2.jpg,ABE HAYUMA,GUARNIERI LUIZ FILIPE,1,0,6,2
-testdata/cropped_4860.0-8db5166d-a449-4735-8986-4c41ba8b2db1.jpg,ABE HAYUMA,GUARNIERI LUIZ FILIPE,1,0,11,6
-testdata/cropped_5040.0-c62c3f65-23a6-4002-ab73-a17380ede2c3.jpg,ABE HAYUMA,GUARNIERI LUIZ FILIPE,2,0,3,4
-testdata/cropped_5940.0-846deed1-857a-4bf5-9fcf-385955ded295.jpg,ZOHIL BORNA,BOUVAIS THOMAS,0,0,6,5
-testdata/cropped_6840.0-00512fe8-bdf2-4bab-9b7d-6cd6a0593ed1.jpg,ZOHIL BORNA,BOUVAIS THOMAS,1,1,6,6
-testdata/cropped_7020.0-aa586957-94c6-4169-98d4-f78e746fe373.jpg,ZOHIL BORNA,BOUVAIS THOMAS,1,2,0,0
-testdata/cropped_7380.0-99ed212d-b2c4-4a68-8fce-e97f9cb4077d.jpg,ZOHIL BORNA,BOUVAIS THOMAS,1,2,6,8
 testdata/cropped_3240.0-beb1f891-5667-44d1-9882-632791b6dc77.jpg,PARTYKA NATALIA,LIN TZU YU,1,0,7,3
 testdata/cropped_3780.0-b0f7e217-ebd8-4197-81e4-e1859bfc832a.jpg,GUARNIERI LUIZ FILIPE,LEE CALEB JIA XUAN,0,0,3,1
 testdata/cropped_4500.0-3e3dd2a8-6521-4659-8555-c92af232dd4f.jpg,GUARNIERI LUIZ FILIPE,LEE CALEB JIA XUAN,1,0,11,8
-testdata/cropped_4680.0-70e4d24d-e648-47c8-ad80-62ad23a1b41b.jpg,DUDA / QIU,ABDELAZIZ / ELBEIALI,2,1,6,7
-testdata/cropped_5220.0-f6c377ef-91d8-4937-9fb2-25a035167ead.jpg,DUDA / QIU,ABDELAZIZ / ELBEIALI,2,2,5,6
-testdata/cropped_11700.0-5155f539-20e2-419a-b20b-a9189d27055e.jpg,JANG WOOJIN,VLADIMIR SIDORENKO,0,0,9,10
-testdata/cropped_12420.0-0cd53f90-56ca-4b08-8346-493c6bdce63d.jpg,JANG WOOJIN,VLADIMIR SIDORENKO,1,1,6,5
 testdata/cropped_720.0-a94eef1d-b901-4f5a-9be3-9cb97028a758.jpg,DIACONU / XIAO,ODO / JOO,0,0,6,5
 testdata/cropped_2340.0-2fdebd43-0449-4a5f-a23b-0420020bc998.jpg,DIACONU / XIAO,ODO / JOO,2,2,1,1
 testdata/cropped_2520.0-e98bdc90-3f03-4dc1-ae00-09451639421a.jpg,DIACONU / XIAO,ODO / JOO,2,2,5,3
 testdata/cropped_2340.0-442d8d4d-85cc-4550-a34a-fbe56ad5156c.jpg,LIN TZU YU,HANDEN ANJA,0,0,8,6
 testdata/cropped_2880.0-013a2dac-06db-4b33-8411-bec7b097dc68.jpg,LIN TZU YU,HANDEN ANJA,0,2,1,1
 testdata/cropped_2880.0-3e149138-b0ce-49fc-9895-52df01e2fc6f.jpg,WONG CHUN TING,HUGO CALDERANO,0,0,6,5
-testdata/cropped_1085.0-cae438b4-6966-41cb-83ff-fc255f0a9339.jpg,ANJA HANDEN,TIAN SHIAU WEN,0,1,0,1
-testdata/cropped_900.0-6164291d-91f9-471f-9932-d451bcdbb337.jpg,MURAMATSU COCONA,LI CHING,1,0,6,3
-testdata/cropped_10440.0-03be2d3e-6543-42be-97c7-66f14b6abfd7.jpg,HEO YERIM,ISHIDA KOKOMI,3,1,0,1
-testdata/cropped_11520.0-af44b794-809e-4dd4-a56d-23396cfc163c.jpg,MA YEONGMIN,HONG YU TEY,1,1,4,0
-testdata/cropped_12240.0-2e4ae12f-4c0d-4dab-b425-93b52e419359.jpg,MA YEONGMIN,HONG YU TEY,3,2,0,2
-testdata/cropped_14220.0-204eee69-b22c-44c4-a12e-485cfac0addc.jpg,BHOWMICK DIVYANSHI,YU TIANER,1,2,2,4
-testdata/cropped_14400.0-d20f1ffe-fef3-46e0-8449-c68b51098489.jpg,BHOWMICK DIVYANSHI,YU TIANER,1,2,6,5
-testdata/cropped_2700.0-fa52d104-7def-4416-97e8-cadbc985f842.jpg,LEE SEUNGSOO,SAMARAWEERA TAAVI,0,0,4,1
-testdata/cropped_2880.0-b2f52f16-b6dc-461b-8092-815f96bd8e59.jpg,LEE SEUNGSOO,SAMARAWEERA TAAVI,1,0,2,2
-testdata/cropped_3240.0-b6222453-2e06-48e0-aa0e-c189db6023d3.jpg,LEE SEUNGSOO,SAMARAWEERA TAAVI,3,0,0,0
-testdata/cropped_3780.0-d90e0a60-8a08-4634-bf21-1b5d13761fd4.jpg,MATSUSHIMA MIKU,HOCHART LEANA,0,0,2,1
-testdata/cropped_4500.0-92d09e43-d905-48ac-b13b-fa132bfb076c.jpg,MATSUSHIMA MIKU,HOCHART LEANA,2,0,4,8
-testdata/cropped_5040.0-5e3bb278-4e46-4a79-b850-bba7cbea8e56.jpg,MATSUSHIMA MIKU,HOCHART LEANA,2,2,3,3
-testdata/cropped_10620.0-1250c9c9-92db-4cc1-b171-65577dbb989f.jpg,PILARD NATHAN,LEE HONG AN,3,0,6,7
-testdata/cropped_12960.0-51d23df8-941e-4280-b685-a05c238e9ac8.jpg,SU TSZ TUNG,MOYLAND SALLY,3,1,5,6
-testdata/cropped_14940.0-bb0588db-2de1-4f9f-86c0-f8852a697b28.jpg,YAN YUTONG,LOY MING YING,2,3,1,4
-testdata/cropped_3780.0-a725181c-ec01-48a0-bd35-49385186fbb5.jpg,MOHD DANIA,KOH GISELE,4,0,7,4
-testdata/cropped_6660.0-be0167aa-718f-459b-9d46-f0dcc85987f2.jpg,HUNG JING-KAI,SUN YANG,0,1,0,3
-testdata/cropped_6840.0-77170adb-308c-4708-bd70-342bbf7e5b97.jpg,HUNG JING-KAI,SUN YANG,0,1,4,6
-testdata/cropped_7020.0-62010f6f-dfb9-4049-af44-b6982a10bae7.jpg,HUNG JING-KAI,SUN YANG,0,2,1,1
-testdata/cropped_7380.0-3204d905-09d5-493f-aedb-f161f56c8590.jpg,HUNG JING-KAI,SUN YANG,0,2,5,7
-testdata/cropped_7560.0-63b5bead-6094-4d40-8a78-ad592d269504.jpg,HUNG JING-KAI,SUN YANG,0,3,2,2
-testdata/cropped_7740.0-72846b5e-3030-4bf2-bd9e-b9d693d46ac4.jpg,HUNG JING-KAI,SUN YANG,0,3,6,6
-testdata/cropped_8460.0-1c94339d-ba05-4be9-bb94-1fa4495f32ec.jpg,HSU HSIEN-CHIA,ZHOU GUANHONG,0,0,5,6
-testdata/cropped_8820.0-c20be99e-f607-4a53-9f4f-84b0f491e291.jpg,HSU HSIEN-CHIA,ZHOU GUANHONG,2,0,2,2
-testdata/cropped_10080.0-cc456c79-60e5-4312-be15-fd3d7601582d.jpg,PSIHOGIOS CONSTANTINA,LAI CHLOE,0,1,5,7
-testdata/cropped_10440.0-7237c5ff-388a-4ffc-b2ee-a7fd6960b74d.jpg,PSIHOGIOS CONSTANTINA,LAI CHLOE,1,2,0,0
-testdata/cropped_14405.0-507128d0-ac0b-4d93-9e81-5a2450d6cb71.jpg,YOO YERIN,MOHD DANIA,3,0,6,5
-testdata/cropped_1080.0-f34a93a2-54cf-4669-822a-40133a50b960.jpg,KUAI / CHEN,HARIMOTO / HAYATA,0,0,8,10
-testdata/cropped_1980.0-bca11fdc-ab1f-45e1-bb5a-e46dc93eb637.jpg,KUAI / CHEN,HARIMOTO / HAYATA,1,1,5,6
-testdata/cropped_2160.0-1c3ed933-e8b0-4470-bd30-f8b38f501153.jpg,KUAI / CHEN,HARIMOTO / HAYATA,1,1,6,10
-testdata/cropped_2340.0-b0282f6c-5414-4e95-924c-80de191e2b18.jpg,KUAI / CHEN,HARIMOTO / HAYATA,1,2,1,1
-testdata/cropped_2700.0-f4b9deca-5fc6-4c51-87db-bdb6afa3730a.jpg,KUAI / CHEN,HARIMOTO / HAYATA,1,2,6,9
-testdata/cropped_1805.0-ba840e27-aee8-414d-8bf0-cd73cc1c6766.jpg,HEO YERIM,DING YIJIE,1,2,1,2
-testdata/cropped_3240.0-3247d8c8-383d-4a3e-9bd9-543721c3fa72.jpg,HSU HSIEN-CHIA,OCAL GORKEM,0,0,2,3
-testdata/cropped_3420.0-261dd110-edc8-48a4-b977-cde0df1972dc.jpg,HSU HSIEN-CHIA,OCAL GORKEM,1,0,0,2
-testdata/cropped_7740.0-902d772e-36b1-4242-b0c9-3e494f49d3fc.jpg,LI HECHEN,SAREEN ADITYA,1,2,3,2
-testdata/cropped_8100.0-1468fea9-aaa3-4039-bc27-616b06df69b6.jpg,LI HECHEN,SAREEN ADITYA,2,2,7,2
-testdata/cropped_8640.0-29707f48-829d-4093-a74a-0e984d7c1d09.jpg,LI HECHEN,SAREEN ADITYA,3,3,3,6
-testdata/cropped_1800.0-42467369-0a5f-45ef-9ba1-95d1293a03a8.jpg,KURMANGALIYEV ALAN,YU HAIYANG,2,0,5,4
-testdata/cropped_2160.0-c04c17d9-fff8-4952-8365-f5552964b771.jpg,KURMANGALIYEV ALAN,YU HAIYANG,3,0,3,4
-testdata/cropped_2340.0-02d764ec-f781-440c-b1eb-05d153d730f0.jpg,KURMANGALIYEV ALAN,YU HAIYANG,3,0,6,7
-testdata/cropped_3600.0-5cd29dd6-b788-4acf-962f-39d72b9cb9a8.jpg,HUNG JING-KAI,MORENO STEVEN,2,0,0,1
-testdata/cropped_4680.0-1b6f158b-1437-4654-b201-9ab41b8062b9.jpg,HUNG JING-KAI,MORENO STEVEN,2,2,6,2
-testdata/cropped_5040.0-aaad9f12-f8b4-48f1-bc31-6390da9ff2af.jpg,HUNG JING-KAI,MORENO STEVEN,3,2,4,7
-testdata/cropped_5400.0-a3c5936d-a213-4c96-947a-9a6ef32879f6.jpg,HUNG JING-KAI,MORENO STEVEN,3,3,3,6
-testdata/cropped_6665.0-e54fd005-8d10-4453-b7e7-2c05f3a17370.jpg,KUO GUAN-HONG,MA YEONGMIN,3,0,6,0
-testdata/cropped_7745.0-f4752944-d3d8-4c8b-8875-a2aca18f64ae.jpg,BHOWMICK DIVYANSHI,YOO YERIN,1,1,0,0
-testdata/cropped_8460.0-ab0942c3-9072-43da-9a93-bed722b633ef.jpg,BHOWMICK DIVYANSHI,YOO YERIN,2,2,6,3
-testdata/cropped_9180.0-afb128bf-218e-45c9-bf15-bfd92b81cb6d.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,0,0,3,1
-testdata/cropped_9360.0-521a17fa-8d40-461a-bd56-4ee313ee056e.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,1,0,0,1
-testdata/cropped_9720.0-f31fcfcd-4e65-4672-8ba6-8fba64abdbf3.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,1,1,2,4
-testdata/cropped_10080.0-95c2f66e-46bf-4b4b-a5a9-8af5b5692a80.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,2,1,3,5
-testdata/cropped_10260.0-66f0d6ed-36a9-41ae-8cc6-d8eb742c1c34.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,3,1,1,0
-testdata/cropped_10440.0-a88329b3-0cb0-416a-b7a8-6ffff79595a1.jpg,PREECHAYAN THITAPHAT,LEE HONG AN,4,1,7,3
 testdata/cropped_1080.0-b70d9002-370c-40c4-a674-a07416605957.jpg,DING YIJIE,ISHIDA KOKOMI,1,0,0,0
 testdata/cropped_1260.0-82795b8c-d176-49d8-8011-3b3e4a1cc37c.jpg,DING YIJIE,ISHIDA KOKOMI,1,0,7,2
 testdata/cropped_1440.0-45012042-84ac-4c3f-8502-e774b8bfa72f.jpg,DING YIJIE,ISHIDA KOKOMI,2,0,3,2
@@ -459,12 +378,11 @@ testdata/cropped_5220.0-d33b502f-735e-43fc-ba69-ab6d7a18bba3.jpg,DORR / BOURRASS
 testdata/cropped_5400.0-a7cbfee9-7ad6-4fa1-bec8-ef079ede09cf.jpg,DORR / BOURRASSAUD,HAMADA / YOKOTANI,2,1,0,0
 testdata/cropped_5760.0-16a5d5ec-2ab6-4249-a06c-ce758975cfaf.jpg,DORR / BOURRASSAUD,HAMADA / YOKOTANI,2,1,7,4
 testdata/cropped_5940.0-96553b0e-0e42-40e6-87e4-e0b9b7d367e4.jpg,DORR / BOURRASSAUD,HAMADA / YOKOTANI,2,1,10,7
-testdata/cropped_11520.0-a05ed28c-b78a-4b40-843a-90a30e6fd0cf.jpg,HUGO DESCHAMPS,DRAGOS BULJOR,1,0,2,5
+testdata/cropped_11520.0-a05ed28c-b78a-4b40-843a-90a30e6fd0cf.jpg,HUGO DESCHAMPS,DRAGOS BUJOR,1,0,2,5
 testdata/cropped_12960.0-6d51bc10-a487-4774-b4bc-0b60a8a7806b.jpg,IBRAHIM GUNDUZ,KIRILL SKACHKOV,0,0,2,2
 testdata/cropped_13320.0-c5add3ac-ca04-4100-ba43-74ac7f9ff216.jpg,IBRAHIM GUNDUZ,KIRILL SKACHKOV,0,1,0,0
 testdata/cropped_3780.0-cf56c73d-eb64-4da2-9409-9351f0aabeaf.jpg,NINA GUOZHENG,SZU-YU CHEN,0,1,2,3
 testdata/cropped_5580.0-aaa557ee-e5cd-4fca-96b4-a06773c32526.jpg,NINA GUO ZHENG,SZU-YU CHEN,2,2,4,9
-testdata/cropped_15480.0-784cc01d-0873-4c7d-967f-687e6c589919.jpg,ABRAAMIAN / PANFILOVA,TAILAKOVA / SHCHERBATYKH,0,1,9,7
 testdata/cropped_1440.0-a783befc-502f-4349-a1b8-f02333c3b4e5.jpg,TAKEYA / KANEYOSHI,GUO ZHENG / HOCHART,2,0,8,5
 testdata/cropped_1620.0-36450c26-7115-40de-9452-e1a065f59e62.jpg,TAKEYA / KANEYOSHI,GUO ZHENG / HOCHART,2,0,8,11
 testdata/cropped_9720.0-3001ff86-26ab-4af3-b844-d8909667de7a.jpg,VLADISLAV URSU,FLORIAN BOURRASSAUD,1,0,8,10
@@ -472,8 +390,6 @@ testdata/cropped_10080.0-616bdc55-da08-4d03-9607-cb2603521739.jpg,VLADISLAV URSU
 testdata/cropped_10980.0-eaed0744-59b0-44a2-9f04-e2e225559bd7.jpg,VLADISLAV URSU,FLORIAN BOURRASSAUD,2,2,1,0
 testdata/cropped_2880.0-3ec3eda7-c1e7-498e-b04c-7b65c3d8ec59.jpg,DECHEV KALOYAN,POSTOLACHE NICHITA,0,1,0,0
 testdata/cropped_19620.0-a6987da3-51c3-4c77-b028-a14f119c4257.jpg,BUCUR / CUCIUC,BONCHEV / ENCHEVA,0,1,4,2
-testdata/cropped_10620.0-e02e6a4c-ca66-4078-8472-031078a57b1a.jpg,BOURRASSAUD / DORR,CAMARA / CHAMBET-WEIL,1,0,3,1
-testdata/cropped_11340.0-caefa57a-57ec-44ec-b3d9-dc650720ad31.jpg,BOURRASSAUD / DORR,CAMARA / CHAMBET-WEIL,2,0,7,10
 testdata/cropped_7380.0-62a587a6-9c42-4bff-859b-2cfb48b20fb3.jpg,FLORIAN BOURRASSAUD,HIROTO SHINOZUKA,0,1,3,11
 testdata/cropped_900.0-0d751f6b-3c81-4617-877b-590898c604a9.jpg,KAROVA KAROLA,PROHOROVICI ANDREEA,0,1,3,8
 testdata/cropped_8460.0-b1334bbf-1b3a-4158-a8e0-e397b0e2324b.jpg,MARGARYTA PESOTSKA,XIAONA SHAN,1,1,10,8
@@ -496,12 +412,6 @@ testdata/cropped_7020.0-48590b41-11ea-4de5-809c-287ab3e960b2.jpg,GUNDOGDU KUZEY,
 testdata/cropped_1260.0-3c36dff0-3053-4338-8878-5cec0037f1e1.jpg,KARAKASEVIC / USLJEBRKA,DELCA / STOIAN,1,2,0,0
 testdata/cropped_14220.0-f1222185-9f0d-4ab0-8e46-23a7274b0a27.jpg,ZSIGMOND / FEGYVER,NAGY / BACSOVA,0,0,8,7
 testdata/cropped_17640.0-8cafa509-aeb9-41b2-9bfa-69cddad3f8cc.jpg,POOR / DOHOCZKI,NAGY / PRECUP,1,1,7,9
-testdata/cropped_540.0-6199e727-a9b3-41df-8c68-25622148a2d6.jpg,AIDARBEK ALEM BI,PETO MAKSIM,0,0,0,0
-testdata/cropped_720.0-b7114d75-48ed-4500-8780-e3f4158a3489.jpg,AIDARBEK ALEM BI,PETO MAKSIM,0,0,3,8
-testdata/cropped_1080.0-787d8fac-d2ad-4b7f-a78c-cb88dce87185.jpg,AIDARBEK ALEM BI,PETO MAKSIM,0,1,6,8
-testdata/cropped_1260.0-1a3aedd2-9125-49ae-b6ae-79586cce64f5.jpg,AIDARBEK ALEM BI,PETO MAKSIM,0,1,11,13
-testdata/cropped_4680.0-41e6833c-0098-4e84-8746-ce8d6bb851e2.jpg,AGYANSZKI KARINA,VARGA HANNA,1,0,1,3
-testdata/cropped_5760.0-a8c3c813-0cf0-44ee-9481-88f2b35b26d7.jpg,AGYANSZKI KARINA,VARGA HANNA,2,1,10,9
 testdata/cropped_10260.0-e76bc446-9a54-49eb-89c1-d0267c5e1e5a.jpg,DRAGOLJEVIC BRANKO,SAFTOIU TUDOR,0,1,7,11
 testdata/cropped_11160.0-e0df222c-111f-428a-a4c4-9a093643921e.jpg,DRAGOLJEVIC BRANKO,SAFTOIU TUDOR,1,2,6,9
 testdata/cropped_1260.0-9c9886da-05cc-4d5b-af34-5acd24ee439a.jpg,KSIAZEK MAKSYMILIAN,JOVANOVIC DANILO,1,0,5,3
@@ -526,16 +436,6 @@ testdata/cropped_2340.0-3d6bb061-5bb0-41dc-8eae-aaac2d2a6145.jpg,LUM / LAM,MA / 
 testdata/cropped_11520.0-3da5a902-c71d-429f-93b2-84d24ee72b0c.jpg,KAREN LYNE,TSZ LAM KONG,0,0,0,0
 testdata/cropped_12240.0-411eef77-c34f-4cd5-825e-5161208b2a69.jpg,KAREN LYNE,TSZ LAM KONG,0,1,10,10
 testdata/cropped_12960.0-b98caf2c-cbc8-45d7-8711-964b41d042e1.jpg,KAREN LYNE,TSZ LAM KONG,1,1,10,10
-testdata/cropped_8100.0-77c8fd73-b714-4acc-af6b-20d33c950ba7.jpg,AI XIN TEE,LI SIAN CHANG,0,0,5,1
-testdata/cropped_8460.0-22ee26f3-2937-4c8b-960b-3115ba48c48c.jpg,AI XIN TEE,LI SIAN CHANG,1,0,3,0
-testdata/cropped_8820.0-d28ecff7-8df3-4804-97ff-62f4e5bce9ad.jpg,AI XIN TEE,LI SIAN CHANG,1,0,10,8
-testdata/cropped_11520.0-c06e2972-f666-48bd-95f2-6f7c7160b5e8.jpg,KAREN LYNE,TSZ LAM KONG,0,0,0,0
-testdata/cropped_8100.0-8646f2a8-0e19-4eaf-a68a-3b6a24a40c92.jpg,AI XIN TEE,LI SIAN CHANG,0,0,5,1
-testdata/cropped_8460.0-764a8b58-86ec-4254-ba2b-26e7582401bc.jpg,AI XIN TEE,LI SIAN CHANG,1,0,3,0
-testdata/cropped_8820.0-5d1425c2-67de-4d9a-95dd-0ee389f2699c.jpg,AI XIN TEE,LI SIAN CHANG,1,0,10,8
-testdata/cropped_8100.0-f9b38457-59c4-4497-84ac-41c936ec363c.jpg,AI XIN TEE,LI SIAN CHANG,0,0,5,1
-testdata/cropped_8460.0-246af73a-5469-4d4f-9d25-b70bc725ba20.jpg,AI XIN TEE,LI SIAN CHANG,1,0,3,0
-testdata/cropped_8820.0-83d74427-04e0-4ea1-9d66-cdc8f72270fa.jpg,AI XIN TEE,LI SIAN CHANG,1,0,10,8
 testdata/cropped_2520.0-99db46e3-af13-4fc0-b2fb-a6010c68cdf6.jpg,KENAN KAHRAMAN,BERK OZTOPRAK,0,0,2,2
 testdata/cropped_5040.0-916a0d0a-a877-4d7d-b171-6856a5e49ab0.jpg,DOUARAN SACHA,VAN DEN BERG TIJL,0,0,7,5
 testdata/cropped_5580.0-17fca0ff-958f-4c4f-9a07-3803577914ed.jpg,DOUARAN SACHA,VAN DEN BERG TIJL,1,0,13,13
@@ -546,12 +446,6 @@ testdata/cropped_16020.0-3457a05b-991b-477e-aed7-098560889afa.jpg,CHANG / LI YIN
 testdata/cropped_16200.0-899cf73c-265a-4aa3-b3ee-030bf56fee1d.jpg,CHANG / LI YING,KIHARA / HIRANO,0,1,2,1
 testdata/cropped_16560.0-dfc9a45d-67f7-48d4-bdf8-28b0c3ed721b.jpg,CHANG / LI YING,KIHARA / HIRANO,0,1,7,7
 testdata/cropped_16920.0-8321e706-ca1e-4cce-bb93-dd68939443eb.jpg,CHANG / LI YING,KIHARA / HIRANO,0,2,2,3
-testdata/cropped_1620.0-a93a0d3e-8304-462e-a28f-fee07789b5e7.jpg,CHEN / QIN,SAKAI / TAKAMORI,0,2,3,3
-testdata/cropped_12240.0-189db0f8-9cc0-41c3-95df-2bf5f8ca1bbd.jpg,HUIZE YANG,YEE LOK LAM,0,0,1,0
-testdata/cropped_12420.0-936483c1-55b6-4957-8f77-dd7e2c950a6b.jpg,HUIZE YANG,YEE LOK LAM,0,0,5,6
-testdata/cropped_12600.0-245d7f47-6e15-4ef4-884b-d88cbd3c6807.jpg,HUIZE YANG,YEE LOK LAM,0,0,11,8
-testdata/cropped_12960.0-7b72c811-72ac-4f13-a852-73e515cd53b3.jpg,HUIZE YANG,YEE LOK LAM,1,0,6,5
-testdata/cropped_13140.0-ad33ef62-73db-4dfa-a0aa-cb4f454e4901.jpg,HUIZE YANG,YEE LOK LAM,1,0,10,8
 testdata/cropped_8820.0-92fc0c0b-2d71-424f-9f18-739bd8190503.jpg,RYOICHI YOSHIYAMA,YOUZHENG HUANG,1,1,7,8
 testdata/cropped_2160.0-cb72d7fb-3507-46e8-a47b-efe3ce407963.jpg,ABDULRAHMAN AL TAHER,CSABA ANDRAS,0,1,1,5
 testdata/cropped_4320.0-a2098965-59b9-4d9d-b541-9e4cd28346e3.jpg,SNEHIT SURAVAJJULA,DAVID SZANTOSI,2,1,2,1
@@ -560,7 +454,6 @@ testdata/cropped_2880.0-61544c01-c183-40af-8042-07f27c1de8ad.jpg,EILING / DE MEY
 testdata/cropped_3240.0-137fd195-ac67-4a95-a439-9bde3d117f91.jpg,EILING / DE MEYER,DIJOU / VOOIJS,2,0,0,0
 testdata/cropped_3420.0-9ff0f3ee-9d44-4e0b-9964-9ef1807b6603.jpg,EILING / DE MEYER,DIJOU / VOOIJS,2,0,6,5
 testdata/cropped_5580.0-ce5705a9-2b28-47b1-9afe-52e2369f96ff.jpg,ANDRADE / PENG,MORAIS / SOUSA,1,0,9,9
-testdata/cropped_15120.0-d9ca2b7c-5648-4372-80db-8dc53d4c104b.jpg,TOMA BIANCA,ADOLFF AGATHE,0,0,10,4
 testdata/cropped_13500.0-3c59ad83-c3c7-435e-8a9b-8034ff9145df.jpg,ZENG / SER,DOO / NG,0,0,13,14
 testdata/cropped_13680.0-da7574f8-a7d4-4a44-ab8d-b6f2a573c7dd.jpg,ZENG / SER,DOO / NG,1,0,1,0
 testdata/cropped_14040.0-e7753ede-9f27-4374-aa35-79f1c908e358.jpg,ZENG / SER,DOO / NG,1,1,1,2
@@ -571,21 +464,6 @@ testdata/cropped_15840.0-d1237c10-251b-4156-aea6-111ca5219ad3.jpg,ODO / YOKOI,SU
 testdata/cropped_16020.0-734ddb36-0b74-4873-bdd8-c660916580f3.jpg,ODO / YOKOI,SU / WONG,2,0,3,1
 testdata/cropped_16380.0-ace263ba-f562-46ed-90d1-717900e6d3cf.jpg,ODO / YOKOI,SU / WONG,2,1,1,2
 testdata/cropped_16560.0-c5bfb84a-c9e6-418b-8990-82ff2c260e7d.jpg,ODO / YOKOI,SU / WONG,2,1,2,11
-testdata/cropped_5580.0-33b82a1d-31f5-4294-93d9-59dd27df2557.jpg,GIRLINGER BENJAMIN,DIJOU CEDRIC,0,0,7,5
-testdata/cropped_5940.0-f5fadc7b-bce2-44e4-9600-a1a42492153e.jpg,GIRLINGER BENJAMIN,DIJOU CEDRIC,2,0,0,1
-testdata/cropped_6120.0-29c243fe-b460-48d5-9d12-345147a0cbc9.jpg,GIRLINGER BENJAMIN,DIJOU CEDRIC,2,0,9,6
-testdata/cropped_2880.0-127e5460-bcba-4b10-aa0e-ce1b759318cd.jpg,SILVA IRINA,SEBBE BLANCHE,0,1,11,4
-testdata/cropped_3060.0-9f78db3a-387f-4508-9863-e3590f08ecb8.jpg,SILVA IRINA,SEBBE BLANCHE,1,1,6,5
-testdata/cropped_3240.0-00b8e4e8-aa53-4a24-82e0-44e11a8e5a50.jpg,SILVA IRINA,SEBBE BLANCHE,2,1,0,0
-testdata/cropped_8820.0-0e95b87b-72bb-4ad7-a409-ea95ea832d5a.jpg,SCHLOTTHAUER VINCENT,ZHANG BRYAN,0,0,6,7
-testdata/cropped_9180.0-5498b2fc-9313-464b-9f27-6bf3880fc15e.jpg,SCHLOTTHAUER VINCENT,ZHANG BRYAN,0,1,5,9
-testdata/cropped_7740.0-669c2e97-2d58-4771-8aaf-213267a0ddf9.jpg,BAN / ANDRAS,DESAI / SURAVAJJULA,2,1,0,0
-testdata/cropped_8100.0-9797c1da-2997-443a-bbd5-a8ac69b84b76.jpg,BAN / ANDRAS,DESAI / SURAVAJJULA,2,1,9,6
-testdata/cropped_17100.0-ea1200ee-8976-4fd5-997d-c2c3e711e558.jpg,SNEHIT SURAVAJJULA,IVOR BAN,1,2,4,4
-testdata/cropped_4860.0-b80331b3-7d03-4ba1-a93f-b04583e987b2.jpg,HEO / CHOI,MUKHERJEE / MUKHERJEE,0,1,5,5
-testdata/cropped_5040.0-8023602d-04a4-487b-b7a0-e6dee4bec91e.jpg,HEO / CHOI,MUKHERJEE / MUKHERJEE,0,2,0,0
-testdata/cropped_5940.0-90d8d859-7aba-403b-a203-ccdd5cd3de0e.jpg,HEO / CHOI,MUKHERJEE / MUKHERJEE,1,2,7,10
-testdata/cropped_6840.0-eff5cecc-5ccf-43d6-968f-2a9d8f46788a.jpg,YOKOTANI / KIHO,JANG / KWON,1,0,0,0
 testdata/cropped_6300.0-fb84ffcb-63e3-4bd6-a905-a4975d4b47ef.jpg,GUNDOGDU KUZEY,ZUBOR PETER,1,0,0,0
 testdata/cropped_7020.0-aa58fdde-bbbb-4504-a4d3-9dc36f18075c.jpg,GUNDOGDU KUZEY,ZUBOR PETER,2,0,10,6
 testdata/cropped_17640.0-7830fc68-70bf-4312-a506-affe24064527.jpg,POOR / DOHOCZKI,NAGY / PRECUP,1,1,7,9
@@ -602,14 +480,6 @@ testdata/cropped_8100.0-cbd7054d-b452-464f-8af8-1a01ddabb870.jpg,ALZHANOVA ADELY
 testdata/cropped_8460.0-1e685fdc-93b0-490c-8aec-2ff3c1730180.jpg,ALZHANOVA ADELYA,FAZEKAS LIZETT,0,1,1,4
 testdata/cropped_8820.0-bfce2523-669d-4a75-b3d9-49f0b5c42fde.jpg,ALZHANOVA ADELYA,FAZEKAS LIZETT,0,2,1,4
 testdata/cropped_16380.0-3a2aa5ab-7704-41bb-9904-41812fe5041d.jpg,ZHANG / REN,CUI / YANG,2,1,2,5
-testdata/cropped_2700.0-cf80f019-cc1e-4885-95b4-19736f5a22db.jpg,SMOLIKJ MATEJA,LIAO XIAOQING,0,1,3,4
-testdata/cropped_15300.0-29befea0-2db5-4075-bc50-79cd0cffe013.jpg,CHEN / XIANG,XU / ZHAO,0,0,6,2
-testdata/cropped_15480.0-dbf70a66-9fb8-4847-90a8-57b8b343fdb9.jpg,CHEN / XIANG,XU / ZHAO,0,0,10,8
-testdata/cropped_16020.0-b8f1819d-128c-4eed-9bb5-c3d06db4dbf6.jpg,CHEN / XIANG,XU / ZHAO,1,0,10,8
-testdata/cropped_16200.0-d7798522-df9e-4a5a-a9f8-f3dd34a065d9.jpg,CHEN / XIANG,XU / ZHAO,2,0,0,4
-testdata/cropped_16740.0-91269afa-c186-41a7-9ac2-22e76a8136f0.jpg,CHEN / XIANG,XU / ZHAO,2,0,9,11
-testdata/cropped_16920.0-7e3d52ad-eb56-43b6-8e87-9271deab0fbd.jpg,CHEN / XIANG,XU / ZHAO,2,1,4,3
-testdata/cropped_17100.0-a645b1dd-29a2-4570-a137-e345980fb545.jpg,CHEN / XIANG,XU / ZHAO,3,1,11,4
 testdata/cropped_900.0-ba6b3c37-bdb5-479f-a5a6-d231f00f13f2.jpg,HARAC / YILMAZ,MUKHERJEE / MUKHERJEE,1,0,2,3
 testdata/cropped_1260.0-f4ca2b81-c5ee-46f6-8308-7a310d340e7d.jpg,HARAC / YILMAZ,MUKHERJEE / MUKHERJEE,1,1,4,3
 testdata/cropped_00474.0-b5ec6a0c-47be-44af-8a77-a70ea457f9c6.jpg,PISTEJ / DE NUTTE,KAHRAMAN / KAHRAMAN,0,0,1,0
@@ -628,7 +498,6 @@ testdata/cropped_00886.0-5c24e6cc-1b98-42be-ab3b-deab51ca5736.jpg,PISTEJ / DE NU
 testdata/cropped_01046.0-c4846d13-943f-4164-8773-da5d3aac4e4a.jpg,PISTEJ / DE NUTTE,KAHRAMAN / KAHRAMAN,0,1,7,4
 testdata/cropped_00922.0-6294fa5e-df0c-4962-9108-bcd4db2452dc.jpg,PISTEJ / DE NUTTE,KAHRAMAN / KAHRAMAN,0,1,3,0
 testdata/cropped_00663.0-305c5214-fa41-43e2-9f12-a82983c395dd.jpg,PISTEJ / DE NUTTE,KAHRAMAN / KAHRAMAN,0,0,7,6
-testdata/cropped_15480.0-086525c6-f2f4-4621-9854-f561127a9faa.jpg,FEGERL LOUIS,DIMITROV DIMITAR,0,0,0,0
 testdata/cropped_15723.0-bfa95c4a-88ee-4cac-9cfe-aab3cc033aba.jpg,FEGERL LOUIS,DIMITROV DIMITAR,0,0,2,1
 testdata/cropped_15778.0-301af89e-0397-4090-877b-887760b8f56a.jpg,FEGERL LOUIS,DIMITROV DIMITAR,0,0,4,3
 testdata/cropped_15815.0-a2e53722-36f6-4051-b402-c5e25fc0f729.jpg,FEGERL LOUIS,DIMITROV DIMITAR,0,0,5,5
@@ -7084,3 +6953,938 @@ testdata/cropped_caa0d30c.jpg,AFRAKHTEH ALI,SUN PATRICK,1,0,2,0
 testdata/cropped_8f6444d1.jpg,AFRAKHTEH ALI,SUN PATRICK,1,0,8,2
 testdata/cropped_ac8db8d7.jpg,AFRAKHTEH ALI,SUN PATRICK,1,0,0,0
 testdata/cropped_6546b84c.jpg,AFRAKHTEH ALI,SUN PATRICK,2,0,0,0
+testdata/cropped_5afbbff3.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,2,1,3,5
+testdata/cropped_7b201575.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,2,2,0,2
+testdata/cropped_8181e1bf.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,2,1,6,8
+testdata/cropped_85769914.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,0,0,10,10
+testdata/cropped_b944c8bb.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,0,0,10,8
+testdata/cropped_bafd47f4.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,2,2,2,3
+testdata/cropped_f498bdb8.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,5,7
+testdata/cropped_5360908a.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,2,3
+testdata/cropped_a8c958f5.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,2,2,0,0
+testdata/cropped_38f4c685.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,0,0,3,3
+testdata/cropped_813b93f3.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,10,8
+testdata/cropped_86d96969.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,0,0
+testdata/cropped_ea174f28.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,0,9,10
+testdata/cropped_dfb9b7e4.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,3,6
+testdata/cropped_18337b8e.jpg,MEHDI BOULOUSSA,PANAGIOTIS GIONIS,1,1,11,9
+testdata/cropped_ea8a6492.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,5,6
+testdata/cropped_c96cd38d.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,5,6
+testdata/cropped_ff9b3b18.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,1,0
+testdata/cropped_33dce804.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,1,0,1,0
+testdata/cropped_5b2fe83a.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,2,3
+testdata/cropped_61bf9d48.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,0,0,7,4
+testdata/cropped_d8795742.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,8,7
+testdata/cropped_110ec28a.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,1,0,7,3
+testdata/cropped_c3adc767.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,0,0,6,3
+testdata/cropped_4415b70f.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,2,6
+testdata/cropped_495d9497.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,5,6
+testdata/cropped_c37504ce.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,1,0,10,4
+testdata/cropped_b14bc7a6.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,2,0,9,7
+testdata/cropped_ca299113.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,1,0,4,3
+testdata/cropped_a471487a.jpg,SORA MATSUSHIMA,MOHAMMED ABDULWAHHAB,1,0,1,1
+testdata/cropped_10.0-0ce097bb-d3c5-4aab-ab18-f2409d51f973.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10075.0-c0f1139b-d9d3-48db-9bd5-3b0e652b65e8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10090.0-4dd3db04-6ab0-4a1b-9485-f1751616e8c5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10255.0-0e512e4f-3925-4fe5-b8dd-d05a414de69e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10255.0-e4a1cd6e-9e10-4ddf-85cd-9ce1305da649.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10260.0-41bad7c1-3458-4265-8ac4-14561aa8e127.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10265.0-d7f0631d-4a65-447a-a9cb-fac2e5964071.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10270.0-341cc669-866f-4940-ba6c-3e263a50fb45.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10435.0-81fd3e66-0f3c-41f6-833d-47a6668181cc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10435.0-d2eb7e8f-ff64-4828-aeec-f3116e57e434.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10440.0-d7260a45-1082-47e6-a8fe-74a5c87db37b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10625.0-c166b23c-46d1-4447-9237-0e7210343b8b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10625.0-c6a1235d-1b11-4b8b-9613-fd806336914d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10625.6-320a4af2-33fc-4ab3-b6cf-385e1d85faab.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1075.0-8625eec0-8d77-4507-96b6-4108630c27e5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10795.0-635a46a0-d5f9-48a7-8cc9-7356a66e6a5b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10800.0-3f5a148a-7dc2-4980-af45-a83fa29f482f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10800.0-6ab9b3c9-2a20-472e-8b87-5b1a191be1dc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10800.0-a9056d9f-60f5-4590-921b-245566821485.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10805.0-120e9cd7-a0b8-49a9-b6bb-6152f1be969f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10911.7-ee2396df-e3f4-42f2-95a5-b8bda1c80919.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_10975.0-de48a353-eb0f-47c3-b5f8-7d4cc3964670.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11021.9-d651ed06-5b6c-4fdd-92b1-966eb0e3a901.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1107.5-7760397a-efb9-4913-8190-99eb955db058.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11160.0-b4dcae8d-319d-41f7-a388-403db2fe1c44.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11340.0-7680c0a8-c567-4dc3-9b31-53fe96100146.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11345.0-f0bfd93b-26ea-4d1d-b05c-e795881354f6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11350.0-f42bba7c-207d-4e3f-8be2-cba4c8c5e21e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11530.0-6fee187d-5616-4519-b65d-910738fb0a43.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11530.0-e99b7625-e683-4dca-bfb2-06abddb9392a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11563.8-2cb59af3-1347-4600-ae3b-c2c3030a571c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11614.5-ac46c374-1579-4f02-8473-0d2daea920de.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11700.0-5e096952-8174-43f8-b38a-a766f349f463.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11705.0-5f38bb5d-286b-42ce-a811-60b555b26a92.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11880.0-5e01c672-e3e1-4040-8b1f-1d6e3c60d447.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11880.0-8d0f959d-5a97-4b01-86b4-da3217cfbfc8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11885.0-49a72bd6-28c4-4f6b-9d7c-3e928440d3ac.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11885.0-4e6a60fe-d3e5-415b-9c21-69df1ed23851.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_11928.8-c1f2f54e-cc5c-487e-90bc-ffbbbd021072.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12150.0-ec2feba7-1731-434b-bd12-2ac176f99902.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12280.0-2f16d558-3081-4fdd-b341-1ef416a59daa.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1255.0-db276520-8f4f-4402-957f-208cf817410e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1260.0-0035cea8-353f-4fc2-a801-9bf8234aba91.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1260.0-3baa1ad2-12fe-46fb-91b2-54c52840247e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1260.0-be1b9429-e379-48a8-87f8-d552256d9444.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12600.0-6afb92f5-befe-4c40-942b-0829a4438e09.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1265.0-d2782f3c-4c0d-4d66-8edf-b4d23fb63434.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1270.0-62614694-516c-4df2-903b-7fe83c7d48fa.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12785.0-0cf4016a-0c29-4734-a990-920fb476c520.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12790.0-4d2dd6af-8e64-408b-9e57-6b8944df6aa5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12970.0-6d972a17-9c86-4643-84f3-2d2966b77ed0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_12975.6-a5768c36-1715-4142-a347-3d9e241f1b5b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13140.0-39a91aad-7280-4133-aa6a-68d017f74eb1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13320.0-6d47a16e-c0ae-4f57-8abe-465743ee524c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13495.0-18c2b426-fe67-411e-b5ee-3cddc7308912.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13510.0-34f4f9f2-f4a7-4bc1-a55e-9aa65ec79c56.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13595.0-fcea3d54-703d-4750-a496-3521c8d46b0a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13862.5-2d926cf6-3d90-4e63-a003-806076cd31c4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13865.0-6f5f1c09-fa18-4001-93e4-e5f400135f62.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_13865.0-8df2c650-6638-481b-b875-f3634ec97dc8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14014.4-a05db9dd-2059-470b-aedb-683378cacd0c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14230.0-bc0439d9-c84b-4334-8fe0-3c7919a5c22e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1435.0-3b995616-0d81-4aa6-88a9-761b3b80a5bd.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14405.0-05feb471-07bf-4823-9201-2593cfea2fa6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1445.0-dc8abe37-6445-4584-9c58-aabb05051a95.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14566.2-73ef9894-d334-400d-bc18-ff1c60baa800.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14580.0-6c58a8cc-bbb0-47df-bbc4-2c9555fd5b0f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14585.0-a3f1bb8f-f15b-4e35-9be0-9ff5f5726ce4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14590.0-9eeca959-26f6-4404-9775-be36629be680.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14765.0-0af12718-49ea-409e-bec5-a3eaf04e1790.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14862.5-a1d3b077-a66e-4c88-871e-82c2a41e9bcd.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14912.5-a19cec8b-b605-4060-8172-b2ceed33e772.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_14940.0-89b8e30b-a63a-4538-9023-94cb378684d8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15295.0-38ddc3eb-dc25-4b13-af21-068e3bbc8795.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15310.0-115579d3-7213-488c-816d-4bb5f29faf4b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15475.0-5f6bf536-63ba-454b-b991-87ec5556d860.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15480.0-ff80773c-528e-491d-912d-4a5596982bbc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15670.0-34eefea2-cf47-4562-b40d-7b764ad5bc2c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15840.0-6dfd2a9b-7eaa-4ec9-b205-c3a3e960d544.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_15871.9-efc109fe-bc16-4df2-abd5-2fe32d806bef.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1615.0-39d5d759-2ad3-4062-923e-ef4f40e6edbb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1620.0-7e7d4bf5-547e-41ca-9228-8071d34be02d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_16210.0-d5546d5b-7d05-4c26-a370-26fefc6654cc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1630.0-7cf09216-4729-4702-bcf1-3b16e1f80ed9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_16555.0-a4ae9f05-1bbf-4e9b-999f-d3ad06cb0740.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1693.8-c25a56ce-702c-4f8d-9312-465e8cbf7fec.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17275.0-bafd69b9-81bf-4966-ad79-feb096dca6e9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17280.0-48ba284b-cb0c-4b73-b0cf-fdc52f0e9c46.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17285.0-4c2eddb0-83ba-4e61-b180-eb6c835124b7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17460.0-33eecd72-0955-417c-b322-cdc4407aefb0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17465.0-7c841eb5-101d-4427-9bab-641ef458b45e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17470.5-cb7303ef-b6ef-4d2e-a7d9-b9a4797eb2be.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17471.2-a2024747-4eed-4eb0-9289-ab0812cb1d99.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_17995.0-894d20c1-4300-4593-97c5-bd6dc6cdc9df.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_180.0-d3744e15-d0ce-459a-bd86-2ff1193a48e8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1800.0-38ab9e12-f0db-423b-b4da-12428ffcafa8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18005.0-99cdf745-84d1-4a56-9493-bba5a1c88849.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18010.0-219658b2-f84a-4859-b417-1e402bd80f80.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1810.0-7330e1ac-c505-410c-a83e-d12d5a28ea66.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18180.0-d2ed3e8e-0513-46ca-a40b-1641d558de44.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18185.0-11accb5e-0851-4222-9eef-9bd359e9ea8e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18326.2-0c742e59-4521-425f-b864-a8e6bce7ce89.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18336.2-91f2fb12-e1f5-4616-b61c-705592df104d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18360.0-b25d6a09-0bfb-4afc-b354-72f995e2aec4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18481.6-cab89f09-4198-492c-8fa4-1f0cc2d6a75d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18540.0-0f0d5bae-170f-4c48-aa00-53166539b96a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18545.0-f2ed612b-0923-4789-bb26-bdb39902293d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18550.0-c335410d-07bf-40fb-967a-74262ca27af3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18742.5-9cbfe28f-dc47-4bed-be45-b039a25ca489.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18895.0-f0811dd0-31c4-4407-926d-238b56188b94.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18900.0-97fb2a3a-e4d2-4797-b754-965c5a0799b6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_18905.0-5fdef4ad-7ff3-4ab4-a490-bccf64f6a52d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_19255.0-67a818c4-df70-4c87-9b64-9646bc9e1a4d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_19568.9-7e8c60bd-2822-4e29-8dae-a45a4e787ddc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1975.0-438ea905-73ac-4d88-9153-4414fed60e46.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1975.0-c405f4f6-9b0d-459d-a6f0-57b542f3dd65.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_1980.0-db47872e-1a43-4290-81eb-38d8d51ea31d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_20695.0-643700ca-3b41-41a2-8ad2-dbb561011978.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_20710.0-b334eb29-7919-455a-9339-60d14dbfaa26.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_21070.0-69e98eea-743f-4e51-8f97-6cf97bd796d2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_21955.0-1dacbbe0-1988-426d-a70e-496b0b75a3b3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_21960.0-88f6bf42-02ef-413a-910e-e029d2f12f45.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_22135.0-8420ab94-ec8c-47fd-b4d2-3e5feddad897.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2267.5-6f27c0aa-1e78-4266-8d56-ea839c64d383.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_231.2-a11ff3d9-5152-4fdd-b99b-c3b2701f92c6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2335.0-325efde5-035c-4838-85d8-9814ff4cb457.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2335.0-e2ee15a7-e8a6-4437-b47d-ee7003ef3528.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2340.0-167a3a31-08a8-48eb-9c2e-a5f14be9c8c3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2340.0-cd93912a-d090-4888-a267-999736e8dba4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2350.0-4b80578b-653c-4b77-b573-3ae69184e54f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2515.0-b95b4cd1-1125-4aae-a986-b58b85aa69da.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2520.0-74fd8496-2666-46a1-811d-a8a252d08ce8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_25200.0-30108cfb-63bb-4126-932b-578d75a04eee.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2525.0-13eeea7d-c7e5-41e6-815f-2b5beb690c9d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2558.8-78161a53-371c-423a-a8d5-2881b6a3079f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2578.8-04c7c701-fff5-4907-a56d-4585275ec9b0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_258.8-3c088ed4-5d73-4944-a0b6-f6b83e19358c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2622.5-0a256244-5c48-4de2-b9c9-ae125136910a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_265.0-2bec3a9b-8180-4532-ae83-bf82a030b007.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2696.9-6652ae15-5bf5-4312-9027-50827d57dc3e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_270.0-57ecb229-ca9e-451a-88d6-a6657b3196c3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2705.0-ff4fb25d-219c-4fca-9fe0-6a51e46312a0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2710.0-0002ba83-bd7c-495a-946e-3078950c41ef.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2710.0-78dfe3c7-a7f1-46f5-bd3b-1ed38d2dada9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2710.0-d61f550a-0ded-44d1-98da-adf19f144da9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2755.0-6cf5dee6-8777-4bab-9c4a-b419666e8899.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_280.0-79bd68d1-3dbc-400c-abd6-cb031dce9095.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2880.0-eda6d99b-0178-4002-b12f-0ff68f7df92f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2885.0-4ad19147-b556-4e52-a263-41f2e291a698.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2885.0-51a523f4-0fad-4a8d-97c4-ffe04cd7c6df.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2890.0-d53cef61-c356-482b-b713-4f91d89aab39.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_2897.5-d51245bf-4aba-41d1-b2b9-dce0d4d2b206.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3055.0-3a265192-6666-48a3-a164-06ced82f815f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3055.0-7059b54a-5f0b-4f6f-b89c-d0305310bfcd.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3055.0-d4c739a0-41d4-4859-b84f-fbe181af36cb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3060.0-6df345d0-1548-453c-81e6-18b4f76d7f07.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3065.0-fbbbc8ec-0cdc-489a-8d44-5d46aa77913f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3070.0-800ae7d9-4406-4ca4-89f3-5edbe31e9272.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3105.0-b94717ae-b380-4f51-9a6c-f57b9d568640.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3118.8-52a5b868-11a0-4164-8a1c-e4bdcd32cb42.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3235.0-58e8af42-f182-44a8-9e9b-ed09b14b68ae.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3245.0-91b1bee6-1d78-42bf-9ab2-d03e05c98250.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_328.0-a6c76342-4fa4-4bba-a41d-c0d9e324f201.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3389.7-cfeedd20-d227-44c8-bd84-236e24e6e66a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3415.0-0263d3b8-3568-4841-8d64-e473e4ca0cd2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3415.0-321e9b6f-33fb-44ab-bf60-f8e992e0e7c0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3420.0-906bfdad-ac2c-44e2-9595-67123f9db99e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3420.0-931dd832-c74e-45cf-a2f2-d4d1a6a0542d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3425.0-c0833680-0008-4345-838c-e792d16a22b1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3429.2-60773258-c488-41ea-9883-f22f83d57d67.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3430.0-2b601479-a07f-4a6c-8185-4a13a173cf75.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3430.0-c0e9fc39-a56f-41d7-bdd4-e4dbcfed6591.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3594.2-48c8ce69-2c47-4063-b958-73f2dcd586f1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3600.0-fd16a595-73b8-46f6-8231-52597f5fd587.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3605.0-3eb9fdf8-8b9a-49cc-adaa-a6d2f22f3eba.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3641.2-82014d99-61b7-4173-a054-4655cd09d529.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_370.0-f59a7d56-7d1c-41c4-963d-2212acf51226.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3775.0-b36681ef-d384-49bf-a2e7-2bd56f0f49cc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3828.4-3b2eb5f9-7dc1-4930-985e-59c56d9ad4f2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3955.0-52bec84b-3acc-463e-aeb3-21186e3fbf72.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3955.0-e4f66a93-5196-49b6-8161-25d13cafdf15.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3957.5-0621a4bd-6924-4f6e-af2a-cb0ea6c340e8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3965.0-c5a652bf-6948-4ce0-b4db-b25fd59c8a85.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_3970.0-4ff564c5-87fd-4273-ac56-e0d0db7b67ac.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4015.5-d80dd3d3-b4cc-43ea-bdd9-2c6812fb10d2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_405.0-12831900-7c1e-44ad-8cae-141e40ae1cac.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_408.4-2c5590dc-e92a-40e5-b739-0c4642945f04.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_413.4-142259d8-9a6e-46c3-a3cb-442560c97c64.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4145.0-27bf0c73-3730-4e6e-84e7-96c6211d44c6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4150.0-0ba43f7c-3dba-425d-a188-fb3e379d7696.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_416.9-1a8eb0b8-78db-484b-92a4-455d57ea9814.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4185.0-a1ab4859-826f-4046-b8ed-8a3c85d856eb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4330.0-607739bb-27bd-486a-b7b1-bd546ceb7cc5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4388.1-27bdd900-7cc9-4983-a247-55642db42859.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4415.0-3d424e74-dd87-4466-a7a8-ed7cae93be61.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4495.0-34690eac-cd65-4cb4-9a6c-8a93b4c9efdb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_464.1-59aae6fb-e5dd-4422-b109-9969e3d679f8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4675.0-5edafcab-66f8-4d35-9596-86ae53d0a7e6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4675.0-88c6c287-7ff7-494b-86d0-2c45963b4e44.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4680.0-a1f32e74-b89e-4d5c-a9f1-f1565294f8b7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4685.0-693541c1-6360-40eb-ac6e-77248e2f52a9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4685.0-697afa6b-f8cf-4a01-93d0-1bb0f1b5c4e0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4690.0-5c1f41f2-002e-427e-8cab-10ba13800fc7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4690.0-7911270f-7213-4073-b51b-4f9637736db0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4735.0-e992738d-46d9-4aa3-b13f-648e036fd9b8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4820.0-3b2e3952-8202-443a-8828-af9cc9306c02.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4855.0-ac3622b9-ae2a-4908-bcfa-b5eba4d2849b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4860.0-18341df3-2744-4767-95e7-4f667ca5274b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4860.0-6f8ec593-f77a-401a-b197-9c87bb8e538a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4860.0-f1a40d6e-99a8-4780-9b3a-af1179899d7d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4865.0-6aecffbb-00af-40bc-839e-4126ae3efcb3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4865.0-d8c71120-f0b4-45ff-a701-be54641e472b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4865.0-f35edf5f-7319-4d33-9eea-5e35c41b9592.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4870.0-4cf55735-3ba2-4d07-b653-8424e76d51ad.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_4920.6-667d37e0-8da0-4130-8365-f036a8069b47.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5035.0-d3aa49e9-12ed-4bd8-bdf0-8eacd8831baa.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5040.0-43ecd9a3-2a78-4408-a616-563f36bc66d0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5040.0-afd8a250-2bb4-478b-aef4-99768b7b26a6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5220.0-41e8893b-a7bf-4eca-b0c9-9b01235c50a1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5220.0-91bde67c-ce8b-403b-adf6-e4127fb03c46.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5225.0-80e9e887-7557-41a0-b596-bf206aa3eaa9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5230.0-1e5bc366-af0d-4056-b448-3ce611cb2798.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5230.0-e8778d70-c41f-400b-b365-8dabd452f4bb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5261.2-94dcac0a-339f-4b8f-8ef3-c6c5f6aaeda9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5395.0-6c570ebf-1bba-4d28-a39c-4e61ceb2acb1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5400.0-835b7af8-113d-4d20-a96c-466b960d4997.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5410.0-6a7ff9f6-3d83-44e6-be9d-d3a56cbda244.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5495.0-146a66e8-26f7-4237-bb69-9a9b2afe7937.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_550.0-dd732330-8b5a-4b24-8b36-ef7d32748bc3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_553.8-8f7473b2-204c-4edb-8a47-5d0537ac2c9f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5575.0-7cd0df9c-ecbb-45f0-b6b6-44b9756381b7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5585.0-d7a863ab-3a8a-4bb1-9708-1ce44bc5012d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5585.0-ea269b2d-1d15-449c-b22c-3a8c524e6d8e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5590.0-87d4f15f-6b5a-44d4-b90e-1a0b3f9bc6e3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5760.0-98b5bd6a-ebaa-4079-9c62-18b50d9b4076.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_5935.0-1804ff41-88f4-443e-9e6c-23c93df67436.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6115.0-45e8b940-28a6-4c17-8362-9ec69f42e8f7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6120.0-5bcd5a43-157d-4194-85d9-dbce5b07cecb.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6120.0-771f38b7-82b3-4614-9af2-7919b3093c21.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6120.0-7d119f0f-5cdd-49cc-bf63-4b8c073333c6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6125.0-3ee5a8b2-3539-4cd7-aa68-06aab161267f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_613.1-66ee9ec3-ac4e-41d5-9945-f36e43bca5d5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6305.0-7f58105e-df35-4879-aa77-7e22a9958531.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6305.0-d2db8b42-7e74-4218-95dc-cbbf4aa6cc42.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6310.0-acb2f2bb-f7aa-49d9-b02c-884cad1d72db.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6475.0-101ed643-18ee-45df-a027-8bc6bac6bc95.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6485.0-e5cdfb12-ccb2-40b9-add0-16540adec1e8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6655.0-2deee83b-c234-442c-8535-883ac79faf1b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6665.0-23841a51-e99b-43db-a2e2-1c9b85addf4d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6665.0-6bd4b0e6-72ba-4d78-9969-c6d5cf85aa01.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6670.0-dfc2cbeb-f9a7-45ee-be91-94c7fa9a2706.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6835.0-8cb4bc81-3f0e-466e-9277-1b2fa3310138.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6845.0-72f73fb2-3e16-4aa3-ac78-8baf1462e954.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_6845.0-c1a97acb-28b3-48ce-a284-1233212c966c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7015.0-e6c7891f-69e4-4e45-9133-078b5ae4e603.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7020.0-3800a0dc-fb1c-4f91-bb3f-44b99e7824f4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_715.0-00ba16ff-ef9c-4e1f-b51a-f7081209540b.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_715.0-57ea9c16-8b0b-42b0-968d-0f638827164a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_715.0-b9e8b727-721a-4651-9b6b-e49c013ceca4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_720.0-64953929-3132-46bf-b4cf-ba556b10dfe5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7200.0-5097a865-03cc-422a-b1c2-8157dae7d8f7.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7200.0-bfdb269e-c096-4acb-93ed-d9958d182142.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7200.0-fe943eaa-f2c0-4322-8fa8-0d970e025f6c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7233.8-9c12e506-b29d-410a-81af-ab8c83e1b48c.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7234.4-5a0e2c7a-09ae-4896-af2b-9a3eca194a56.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_725.0-3bb076be-3bfb-4f40-a7d8-cb4f3e60a7d6.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_725.0-699415d3-e2c9-4926-b418-ac74c2adaa78.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_725.0-70134367-591f-42b3-a742-ad5d898c4bb0.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_725.0-bf48647b-2636-41a2-b7a6-4f76f1025e55.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7290.0-15aaef09-e4a7-4e12-aee8-396c2c1456d4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_730.0-21b05df7-517c-4079-9a81-315150616e2e.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_730.0-5a3523a3-07e6-4849-adaf-11fdb98ce1e1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7385.0-7dc69389-7047-48f9-9184-0e34360e03aa.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7555.0-a8437b4e-1aae-471d-8b10-c515ef679be3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7560.0-eefbf346-4d34-4055-93ca-7c1c2a34ec4f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7599.4-44004ef4-b57e-444d-9991-dca344a9ddd3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7735.0-587a6a15-0a33-467f-8b7b-b5cd1f70c0d3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7740.0-8fa20fec-6b26-441d-b1df-8daab63c8568.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7740.0-95d9119f-f595-401e-ad72-3763f6d43b0d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7767.9-6a9c7275-4ce2-4b2f-99d4-bb0c5cb0ee40.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7802.5-5afea72f-62a5-49ca-880e-e47548a5bb79.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_7802.5-8121fc9f-e520-41ff-94fc-57eca0c72ecf.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8105.0-8464c6cd-2093-405c-aff3-898343887fa3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8110.0-2172e2c6-44df-4911-8b6f-aa0a4242a1ba.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8110.0-83713b2e-8045-45e2-8f97-a5994c0b3527.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8238.8-033369ed-c0ea-4956-b925-497a87c91838.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8455.0-2b6737f1-d5f7-48c7-b565-a0840390d6af.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8460.0-71d0e50f-d6d9-41bd-9c44-509f09fd72da.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8460.0-dd55bda3-7c81-4cc5-83cc-e0fe0f538ec2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8460.0-e0f5bbc6-a6b0-4171-898c-774011bea911.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8465.0-188f688c-3577-4bd6-be76-946c38beb883.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8470.0-27cfc5a3-8a33-4f48-87c4-bdf093b17a22.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8470.0-438ad25a-4365-492e-8a07-d7352450a7f5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8470.0-fd645bed-8967-4893-a5ad-55082a7ace02.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8545.0-c5453474-52ae-46a1-97d5-6b04447ea5df.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8635.0-d511d14c-db32-476f-b3ec-70ebba406532.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8691.2-35b94ff9-7195-447f-bbbd-21484e6a55af.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8730.0-ca1857ea-cb08-46ad-89d7-27e6b1de8c77.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_880.9-106fd883-1b66-41b5-98c0-4179d515f677.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8820.0-4c29b397-929f-4fec-9ee7-4d81e08b848f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_8826.2-8305f42a-d197-41af-b59e-f9d2a4b385e8.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_895.0-b1488e93-b6d7-4cad-8c77-9373493035a5.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_905.0-444ec206-02dd-4c5a-8d3b-69fb4dc1a22f.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_910.0-a88ada99-0100-4d94-9245-598e3bbd0ba9.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9180.0-49d37cf7-bd1d-4f2e-b644-cc3d14b85d21.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9241.9-e3c4fa7d-5443-46ec-9094-1b7ed283c29d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9355.0-2ce814d2-6e91-47e1-ae45-2e25755a1c71.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9355.0-694627b3-444c-47b7-8e60-dfeb1044c52a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9355.0-9d4296eb-9fab-41b4-889b-d0fcab70d520.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9365.0-1f478829-cfbf-49e2-bd78-1946cc9ad657.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9370.0-45e72285-135d-406b-9cee-2cc84c1e6e23.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9415.0-be2ebc35-c88c-4e38-8ac0-acf6e796f21d.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9457.5-a45bd3ff-5eec-479c-bf64-2c7be75d1636.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_955.0-904ff2f6-865c-48cd-89a3-ba8adc8ddb46.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9730.0-3e927859-25df-42f3-a634-94f1ce420cbc.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/cropped_9775.0-6ddb8252-c752-447f-9a28-46f677fe379a.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00000.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_000001.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00000_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00000_11.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00002.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00003.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00009.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00042.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00073.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00094.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00108.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00109.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00110.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00111.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00112.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00157.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00183.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00184.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00185.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00186.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00187.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00188.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00189.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00189_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00190.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00190_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00191.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00191_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00192.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00193.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00193_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00194.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00194_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00195.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00195_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00196.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00196_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00197.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00197_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00198.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00199.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00199_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00200.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00200_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00201.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00201_21.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00202.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00202_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00203.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00203_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00203_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00204.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00204_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00205.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00205_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00206.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00206_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00206_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00207.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00207_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00208.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00208_.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00208_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00209.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00209_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00210.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00210_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00211.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00211_`.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00212.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00212_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00213.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00213_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00213_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00214.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00214_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00214_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00215.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00215_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00216.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00216_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00217.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00218.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00218_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00218_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00219.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00219_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00219_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00220.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00220_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00220_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00221.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00222.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00223.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00224.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00224_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00225.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00225_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00225_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00226.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00226_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00227.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00227_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00227_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00228.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00228_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00228_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00229.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00230.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00230_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00231.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00232.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00232_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00232_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00233.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00233_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00233_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00234.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00234_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00234_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00235.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00236.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00237.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00238.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00238_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00239.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00239_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00239_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00240.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00240_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00241.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00241_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00241_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00241_1_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00242.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00242_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00242_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00243.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00243_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00244.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00244_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00245.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00245_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00245_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00246.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00246_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00246_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00247.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00247_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00248.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00248_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00249.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00249_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00250.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00250_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00251.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00251_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00252.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00252_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00253.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00253_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00254.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00254_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00254_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00255.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00255_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00256.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00256_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00256_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00256_1_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00257.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00257_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00257_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00257_1_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00258.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00258_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00258_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00258_1_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00259.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00260.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00261.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_002611.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00261_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00262.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00262_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00262_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00262_1_1_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00263.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00263_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00263_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00264.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00264_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00264_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00265.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00266.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00266_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00266_1_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00267.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00267_4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00268.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00268_3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00269.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00269_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00269_3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00270.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00270_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00270_23.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00271.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00272.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00272_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00272_1_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00273.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00273_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00274.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00274_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00275.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00275_3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00276.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00276_34.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00277.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00277_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00278.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00278_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00278_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00279.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00279_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00280.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00280_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00281.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00281_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00281_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00282.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00282_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00282_4.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00283.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00283_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00283_3.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00284.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00284_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00284_1_2.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00285.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00285_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00286.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00286_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00287.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00287_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00288.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00288_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00289.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00289_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00290.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00290_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00291.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00291_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00292.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00293.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00294.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00295.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00296.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00297.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00298.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00299.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00300.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00301.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00302.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00303.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00304.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00306.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00307.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00309.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00311.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00354.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00360.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00361.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00379.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00381.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00383.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00390.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00391.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00392.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00398.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00401.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00402.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00403.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00407.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00409.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00412.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00412_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00424.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00430.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00431.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00440.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00441.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00446.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00476.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00480.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00481.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00482.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00483.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00484.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00485.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00486.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00487.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00488.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00489.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00490.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00491.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00492.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00493.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00503.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00504.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00505.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00506.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00507.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00508.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00509.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00533.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00534.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00535.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00560.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00561.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00562.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00685.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00745.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00767.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00768.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00769.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00796.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00797.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00872.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00873.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00917.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00939.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00941.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_00979.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01017.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01091.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01137.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01140.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01160.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01231.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01291.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01292.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01294.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01298.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01302.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01304.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01308.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01309.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01310.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01319.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01324.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01401.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01403.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01444.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01449.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01480.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01531.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01533.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01607.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01609.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01610.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01633.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01734.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01736.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01794.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01819.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01871.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01911.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01912.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01937.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01938.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01963.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01965.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_01966.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02008.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02010.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02054.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02055.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02056.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02113.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02164.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02199.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02200.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02201.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02202.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02203.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02204.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02205.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02251.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02252.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02253.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02254.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02255.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02257.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_02451.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_04762.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_04886.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05382.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05387.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05388.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05395.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05396.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05397.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05398.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05399.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05400.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05401.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05407.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05408.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05409.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05410.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05411.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05412.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_05442.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_07075.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_07081.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08099.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08100.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08212.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08213.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08272.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08541.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08549.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08550.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08551.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08552.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08553.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_08557.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_11367.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_11672.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_11676.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_11677.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_11732.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13591.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13592.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13593.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13594.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13595.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13598.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13600.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13601.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13602.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13603.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13604.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13605.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13606.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13607.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13608.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13609.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13610.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13614.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13615.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13616.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13617.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13618.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13619.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13620.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13621.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13622.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13623.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13625.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13626.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13627.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13628.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13630.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13631.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13632.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13633.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13634.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13635.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13636.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13637.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13638.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13639.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13640.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13641.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13643.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13644.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13645.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13854.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13879.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13950.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13951.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13973.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13974.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13978.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13981.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_13982.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14027.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14060.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14069.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14133.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14159.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14166.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14186.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14194.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14197.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14220.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14273.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14317.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14348.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14360.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14384.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14408.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14417.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14424.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14435.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14439.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14454.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14482.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14488.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14490.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14493.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14494.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14506.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14521.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14523.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14529.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14530.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14535.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14539.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14541.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14546.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14547.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14548.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14548_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14549.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14550.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14551.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14551_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14552.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14554.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14555.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14556.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14556_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14557.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14557_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14558.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14559.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14560.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14560_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14561.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14563.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14563_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14564.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14565.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14565_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14566.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14570.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14571.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14571_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14572.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14572_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14573.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14576.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14577.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14578.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14578_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14579.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14581.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14581_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14582.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14583.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14584.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14585.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14586.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14587.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14588.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14588_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14589.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14590.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14591.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14591_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14592.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14593.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14593_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14594.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14595.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14596.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14596_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14597.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14598.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14599.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14599_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14601.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14603.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_14603_1.jpg,EMPTY,EMPTY,-1,-1,-1,-1
+testdata/frame_15099.jpg,EMPTY,EMPTY,-1,-1,-1,-1

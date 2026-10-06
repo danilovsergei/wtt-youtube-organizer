@@ -32,10 +32,10 @@ def build_golden_wheel(sm, wheel_path):
         f"-v {os.getcwd()}/local_wheels:/out "
         f"-e TORCH_CUDA_ARCH_LIST='{torch_arch}' "
         f"-e MAX_JOBS=3 "
-        f"nvidia/cuda:12.8.0-devel-ubuntu22.04 "
+        f"nvidia/cuda:13.0.0-devel-ubuntu22.04 "
         f"bash -c 'apt update && apt install -y python3-pip python3-dev && "
-        f"pip install --upgrade pip && "
-        f"pip install torch packaging ninja --extra-index-url https://download.pytorch.org/whl/cu128 && "
+        f"pip install --upgrade pip setuptools wheel && "
+        f"pip install torch packaging ninja --extra-index-url https://download.pytorch.org/whl/cu130 && "
         f"pip wheel flash-attn --no-build-isolation -w /out'"
     )
 
@@ -76,36 +76,10 @@ def main():
     print(f"🔍 [DIAGNOSTIC] Wheel Directory: {local_wheels_dir}")
 
     # --- GPU Detection & Wheel Selection ---
-    if not sm or int(sm) < 80:
-        print(
-            f"✅ [INFO] Hardware (sm_{sm}) is legacy. Flash Attention skipped.")
-        flash_required = False
-        wheel_source = None
-    else:
-        print(f"⚡ [INFO] Modern GPU (sm_{sm}) detected.")
-        pattern = re.compile(
-            rf"flash_attn.*[+_]sm_?{sm}.*\.whl", re.IGNORECASE)
-
-        found_wheel = None
-        for f in os.listdir(local_wheels_dir):
-            if pattern.search(f):
-                found_wheel = f
-                break
-
-        if found_wheel:
-            wheel_name = found_wheel
-            wheel_source = os.path.join(local_wheels_dir, wheel_name)
-            print(f"✨ [MATCH] Found existing wheel: {wheel_name}")
-            flash_required = True
-        elif args.build_wheel:
-            wheel_name = f"flash_attn-2.8.3+sm{sm}-cp310-cp310-linux_x86_64.whl"
-            wheel_source = os.path.join(local_wheels_dir, wheel_name)
-            build_golden_wheel(sm, wheel_source)
-            flash_required = True
-        else:
-            print(
-                f"🛑 [ERROR] Missing wheel for sm_{sm}. Run with --build_wheel")
-            sys.exit(1)
+    # Force bypass Flash Attention since it fails to compile against PyTorch 2.14 nightlies
+    print(f"✅ [INFO] GPU sm_{sm} detected. Bypassing flash-attn in favor of PyTorch native SDPA.")
+    flash_required = False
+    wheel_source = None
 
     # --- Staging Area ---
     if os.path.exists(build_context_dir):
@@ -119,8 +93,15 @@ def main():
                          os.path.join(build_context_dir, "wheels", f))
 
     app_src = os.path.join(root_dir, "florence_extractor")
-    shutil.copytree(app_src, os.path.join(build_context_dir,
-                    "florence_extractor"), dirs_exist_ok=True)
+    # Only copy the required checkpoint to save massive amounts of Docker build time and image size
+    ignore_patterns = shutil.ignore_patterns(
+        "v0-*", "v1-*", "v2-*", "v3-*", "v4-*", "v5-*", "v6-*", "v7-*", "v8-*", "v9-*", "v10-*", "v11-*", "v12-*", "v13-*", "v14-*", "v15-*",
+        "checkpoint-500", "checkpoint-1000", "optimizer.pt",
+        "testdata", "testdata_hard*", "testdata_enhanced"
+    )
+    shutil.copytree(app_src, os.path.join(build_context_dir, "florence_extractor"), ignore=ignore_patterns, dirs_exist_ok=True)
+
+
 
     config_src_path = os.path.join(app_src, "docker", "cuda")
     for filename in ['Dockerfile', 'entrypoint.sh']:

@@ -10,7 +10,7 @@ docker run --rm -v "$(pwd)":/app -w /app flutter_linux_builder bash -c "
     flutter clean &&
     flutter pub get &&
     flutter build linux --release &&
-    chown -R 1000:1000 build/ .dart_tool/ pubspec.lock
+    chown -R 1000:1000 /app
 "
 
 echo "🔨 Running flatpak-builder using standard io.github.danilovsergei.wtt.json manifest..."

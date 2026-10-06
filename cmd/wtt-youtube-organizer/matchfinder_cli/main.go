@@ -4,6 +4,7 @@ package matchfinder_cli
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -451,10 +452,18 @@ func runMatchFinder(extraArgs []string) error {
 
 		var candidateVideoIDs []string
 		if len(existingQueue) > 0 {
-			// Queue exists: use top entry (newest) as cutoff
-			candidateVideoIDs = []string{existingQueue[0].VideoID}
+			// Queue exists: use all entries from newest to oldest as candidates
+			for _, e := range existingQueue {
+				candidateVideoIDs = append(candidateVideoIDs, e.VideoID)
+			}
 			logPrintf("Queue exists with %d entries. Using top video ID: %s\n",
 				len(existingQueue), candidateVideoIDs[0])
+			// Also append recent database video IDs as fallbacks
+			if providedVideoID == "" {
+				if dbIDs, dbErr := importer.GetRecentUploadDateVideoIDs(10); dbErr == nil {
+					candidateVideoIDs = append(candidateVideoIDs, dbIDs...)
+				}
+			}
 		} else if providedVideoID != "" {
 			// New queue with provided video_id
 			candidateVideoIDs = []string{providedVideoID}
@@ -480,22 +489,9 @@ func runMatchFinder(extraArgs []string) error {
 		// (docker may return duplicates from the latest upload_date that are already in DB)
 		checker := &dbProcessedChecker{}
 		var count int
-		var afterVideoID string
-		
-		for _, vid := range candidateVideoIDs {
-			afterVideoID = vid
-			logPrintf("Using video ID as cutoff: %s\n", afterVideoID)
-			
-			count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker)
-			if err != nil {
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-					logPrintf("Video %s is unavailable (likely deleted). Trying next oldest video...\n", afterVideoID)
-					continue
-				}
-				return err
-			}
-			break // Success
+		count, err = AddNewStreamsWithFallback(queuePath, candidateVideoIDs, fetcher, filterTitle, checker)
+		if err != nil {
+			return err
 		}
 
 		logPrintf("\n=== Queue Update ===\n")
@@ -680,6 +676,31 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		containerArgs = append(containerArgs, extraArgs...)
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
+			var exitErr *exec.ExitError
+			isUnavailable := false
+			if errors.As(dockerErr, &exitErr) && exitErr.ExitCode() == 2 {
+				isUnavailable = true
+			}
+			if !isUnavailable {
+				if data, readErr := os.ReadFile(outputFile); readErr == nil {
+					var res struct {
+						Error string `json:"error"`
+					}
+					if json.Unmarshal(data, &res) == nil && strings.Contains(strings.ToLower(res.Error), "unavailable") {
+						isUnavailable = true
+					}
+				}
+			}
+
+			if isUnavailable {
+				logPrintf("Video %s is unavailable (deleted/private). Removing from queue...\n", entry.VideoID)
+				queue = append(queue[:i], queue[i+1:]...)
+				if err := SaveQueue(queuePath, queue); err != nil {
+					return fmt.Errorf("failed to update queue: %w", err)
+				}
+				continue
+			}
+
 			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
 			logPrintf("Video %s kept in queue for retry. Continuing to next video...\n", entry.VideoID)
 			failedCount++
@@ -964,7 +985,9 @@ func buildDockerRunArgs(imageName, outputDir string, videoGID, renderGID int, co
 		"-v", fmt.Sprintf("%s:/output", outputDir),
 		"-v", fmt.Sprintf("%s:/log", cropLogDir))
 
-	args = append(args, imageName)
+	// Mapped HuggingFace Cache
+    args = append(args, "-v", "/home/geonix/.config/wtt-youtube-organizer/cache:/root/.cache/huggingface")
+    args = append(args, imageName)
 
 	// Always pass --crop_output_dir so cropped images are saved
 	containerArgs = append(containerArgs, "--crop_output_dir", "/log")
@@ -992,7 +1015,9 @@ func buildDockerRunArgsNoOutput(imageName string, videoGID, renderGID int, conta
 		args = append(args, "-v", cookieFile+":/tmp/cookies.txt")
 	}
 
-	args = append(args, imageName)
+	// Mapped HuggingFace Cache
+    args = append(args, "-v", "/home/geonix/.config/wtt-youtube-organizer/cache:/root/.cache/huggingface")
+    args = append(args, imageName)
 	args = append(args, containerArgs...)
 
 	return args
