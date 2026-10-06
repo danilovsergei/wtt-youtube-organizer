@@ -908,3 +908,45 @@ func TestProcessQueue_WithFilter_SkipsNonMatching(t *testing.T) {
 		t.Errorf("Expected video 2 to remain in queue, got %s", queue[0].VideoID)
 	}
 }
+
+
+// TestProcessQueue_RemovesUnavailableVideo tests that when docker fails with
+// an unavailable video error (e.g. private/deleted video), it is removed from the queue.
+func TestProcessQueue_RemovesUnavailableVideo(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	queue := []QueueEntry{
+		entry("DEAD", "Dead Video", "1771200000"),
+		entry("ALIVE", "Alive Video", "1771113600"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			for _, arg := range containerArgs {
+				if strings.Contains(arg, "DEAD") {
+					// Simulate writing unavailable error to outputFile
+					_ = os.WriteFile(outputFile, []byte(`{"video_id":"DEAD","error":"Failed to fetch video title (video unavailable)"}`), 0644)
+					return fmt.Errorf("docker run failed: exit status 1")
+				}
+			}
+			return nil
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("expected 0 entries (DEAD removed as unavailable, ALIVE processed), got %d", len(remaining))
+	}
+}

@@ -2,8 +2,10 @@ package matchfinder_cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"wtt-youtube-organizer/config"
@@ -246,4 +248,44 @@ func VideosToQueueEntries(videos []importer.VideoJSON) []QueueEntry {
 		}
 	}
 	return entries
+}
+
+// RemoveVideoFromQueue removes all occurrences of the specified videoID from the queue file.
+func RemoveVideoFromQueue(queuePath string, videoID string) error {
+	q, err := LoadQueue(queuePath)
+	if err != nil {
+		return err
+	}
+	var updatedQ []QueueEntry
+	for _, item := range q {
+		if item.VideoID != videoID {
+			updatedQ = append(updatedQ, item)
+		}
+	}
+	return SaveQueue(queuePath, updatedQ)
+}
+
+// AddNewStreamsWithFallback attempts to add new streams using candidate video IDs in order.
+// If a candidate returns an exit code 2 error (unavailable/deleted video), it removes that
+// candidate from the queue file and tries the next candidate.
+func AddNewStreamsWithFallback(queuePath string, candidateVideoIDs []string, fetcher StreamFetcher, filterTitle string, checker ...ProcessedChecker) (int, error) {
+	var count int
+	var err error
+	for _, vid := range candidateVideoIDs {
+		afterVideoID := vid
+		logPrintf("Using video ID as cutoff: %s\n", afterVideoID)
+
+		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker...)
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+				logPrintf("Video %s is unavailable (likely deleted). Removing from queue and trying next candidate...\n", afterVideoID)
+				_ = RemoveVideoFromQueue(queuePath, afterVideoID)
+				continue
+			}
+			return 0, err
+		}
+		return count, nil // Success
+	}
+	return count, err
 }
