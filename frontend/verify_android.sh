@@ -38,17 +38,19 @@ echo "📱 [ANDROID SUITE] Running Pixel 9 Pro XL Verification"
 echo "   (Watchdog Timeout: $WATCHDOG_TIMEOUT | Recording: $RECORD)"
 echo "=================================================="
 
+DEVICE_SERIAL="emulator-5554"
+
 # Ensure emulator is booted
-if ! adb devices | grep -q "emulator-"; then
+if ! adb devices | grep -q "$DEVICE_SERIAL"; then
     echo "Starting Pixel_9_Pro_XL emulator in background..."
-    nohup emulator -avd Pixel_9_Pro_XL -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect > /tmp/emulator.log 2>&1 &
-    adb wait-for-device shell "while [[ \$(getprop sys.boot_completed) != 1 ]]; do sleep 2; done"
+    nohup emulator -avd Pixel_9_Pro_XL -port 5554 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect > /tmp/emulator.log 2>&1 &
+    adb -s "$DEVICE_SERIAL" wait-for-device shell "while [[ \$(getprop sys.boot_completed) != 1 ]]; do sleep 2; done"
     echo "Emulator booted!"
 fi
 
 # Ensure hermetic test video is on device
-adb push test/assets/test_video.mp4 /data/local/tmp/test_video.mp4 >/dev/null 2>&1
-adb shell chmod 666 /data/local/tmp/test_video.mp4
+adb -s "$DEVICE_SERIAL" push test/assets/test_video.mp4 /data/local/tmp/test_video.mp4 >/dev/null 2>&1
+adb -s "$DEVICE_SERIAL" shell chmod 666 /data/local/tmp/test_video.mp4
 
 mkdir -p recordings
 
