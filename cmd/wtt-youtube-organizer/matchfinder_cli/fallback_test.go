@@ -222,3 +222,70 @@ func TestProcessQueue_RemovesUnavailableVideo_ExitCode2(t *testing.T) {
 		t.Fatalf("expected 0 entries (DEAD_EXIT2 removed as exit code 2, ALIVE_VID processed), got %d: %+v", len(remaining), remaining)
 	}
 }
+
+// TestAddNewStreamsWithFallback_BotConfirmationErrorDoesNotPurge tests that when yt-dlp returns
+// "Sign in to confirm you’re not a bot", the candidate video is NOT purged from the queue.
+func TestAddNewStreamsWithFallback_BotConfirmationErrorDoesNotPurge(t *testing.T) {
+        tmpDir := t.TempDir()
+        queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+        initialQueue := []QueueEntry{
+                entry("BOT_CHALLENGED_VID", "Valid Stream", "1771200000"),
+        }
+        if err := SaveQueue(queuePath, initialQueue); err != nil {
+                t.Fatalf("SaveQueue failed: %v", err)
+        }
+
+        botErr := fmt.Errorf("ERROR: [youtube] BOT_CHALLENGED_VID: Sign in to confirm you’re not a bot. Use --cookies-from-browser")
+
+        fetcher := &mockFallbackFetcher{
+                errors: map[string]error{
+                        "BOT_CHALLENGED_VID": botErr,
+                },
+        }
+
+        candidates := []string{"BOT_CHALLENGED_VID"}
+        _, err := AddNewStreamsWithFallback(queuePath, candidates, fetcher, "")
+        if err == nil {
+                t.Fatalf("expected error, got nil")
+        }
+
+        // BOT_CHALLENGED_VID must NOT be purged from the queue
+        remainingQueue, _ := LoadQueue(queuePath)
+        if len(remainingQueue) != 1 || remainingQueue[0].VideoID != "BOT_CHALLENGED_VID" {
+                t.Fatalf("expected BOT_CHALLENGED_VID to remain in queue, got: %+v", remainingQueue)
+        }
+}
+
+// TestProcessQueue_BotConfirmationErrorKeepsVideoInQueue tests that when yt-dlp encounters
+// a bot challenge during processQueueVideos, the video is kept in the queue for retry instead of being deleted.
+func TestProcessQueue_BotConfirmationErrorKeepsVideoInQueue(t *testing.T) {
+        tmpDir := t.TempDir()
+        queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+        queue := []QueueEntry{
+                entry("BOT_VID", "Challenged Video", "1771200000"),
+        }
+        if err := SaveQueue(queuePath, queue); err != nil {
+                t.Fatalf("SaveQueue failed: %v", err)
+        }
+
+        deps := queueProcessorDeps{
+                runDocker: func(outputFile string, containerArgs []string) error {
+                        return fmt.Errorf("ERROR: [youtube] BOT_VID: Sign in to confirm you’re not a bot.")
+                },
+                importJSON: func(jsonFilePath string) error {
+                        return nil
+                },
+        }
+
+        err := processQueueVideosWithDeps(queuePath, deps, nil, "")
+        if err != nil {
+                t.Fatalf("expected nil error, got: %v", err)
+        }
+
+        remaining, _ := LoadQueue(queuePath)
+        if len(remaining) != 1 || remaining[0].VideoID != "BOT_VID" {
+                t.Fatalf("expected BOT_VID to remain in queue for retry, got: %+v", remaining)
+        }
+}

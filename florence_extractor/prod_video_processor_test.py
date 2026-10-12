@@ -141,6 +141,24 @@ class TestProdVideoProcessor(unittest.TestCase):
             self.assertIsNone(result)
             self.assertTrue(mock_remove.called)
 
+    @patch("yt_dlp.YoutubeDL")
+    def test_fetch_video_info_bot_challenge_detected(self, mock_ytdl):
+        mock_instance = MagicMock()
+        mock_instance.extract_info.side_effect = Exception("ERROR: [youtube] 123: Sign in to confirm you’re not a bot. Use --cookies-from-browser")
+        mock_ytdl.return_value.__enter__.return_value = mock_instance
+
+        title, upload_date = self.processor.fetch_video_info("https://youtube.com/watch?v=123")
+        self.assertIsNone(title)
+        self.assertIsNone(upload_date)
+        self.assertTrue(self.processor.last_fetch_is_bot_blocked)
+
+    @patch.object(ProdWttVideoProcessor, "fetch_video_info")
+    def test_get_videos_after_bot_challenge_returns_bot_blocked(self, mock_fetch):
+        self.processor.last_fetch_is_bot_blocked = True
+        mock_fetch.return_value = (None, None)
+
+        status = self.processor.get_videos_after("123")
+        self.assertEqual(status, "BOT_BLOCKED")
+
 if __name__ == '__main__':
     unittest.main()
-

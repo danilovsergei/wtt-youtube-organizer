@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS matches (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 	tournament_id BIGINT NOT NULL REFERENCES tournaments(id),
 	video_offset_seconds INTEGER NOT NULL DEFAULT 0,
+	duration_seconds INTEGER,
 	is_doubles BOOLEAN NOT NULL DEFAULT false,
 	video_id BIGINT NOT NULL REFERENCES videos(id),
 	session INTEGER
@@ -768,5 +769,67 @@ func TestGetVideoIDsWithLatestUploadDate(t *testing.T) {
 	// bjeo13vJALg should NOT be in the result
 	if latestIDs["bjeo13vJALg"] {
 		t.Fatal("bjeo13vJALg should NOT be in latest upload date (it's from 12-18, not 12-19)")
+	}
+}
+
+func TestImport_CalculatesMatchDuration(t *testing.T) {
+	ctx := context.Background()
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "duration_test.json")
+
+	jsonData := `{
+		"video_id": "dur_test_vid",
+		"video_title": "LIVE! | T4 | Day 1 | WTT Champions Incheon 2026 | Session 1",
+		"upload_date": "1768435200",
+		"video_duration": 3600,
+		"matches": [
+			{"timestamp": 100, "player1": "ALICE", "player2": "BOB"},
+			{"timestamp": 900, "player1": "CHARLIE", "player2": "DAVE"},
+			{"timestamp": 2500, "player1": "EVE", "player2": "FRANK"}
+		]
+	}`
+
+	if err := os.WriteFile(path, []byte(jsonData), 0644); err != nil {
+		t.Fatalf("failed to write test json: %v", err)
+	}
+
+	if err := ImportMatchesFromJSONWithConn(ctx, conn, path); err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+
+	rows, err := conn.Query(ctx, "SELECT video_offset_seconds, duration_seconds FROM matches ORDER BY video_offset_seconds ASC")
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	defer rows.Close()
+
+	expectedDurations := map[int]int{
+		100:  800,  // 900 - 100
+		900:  1600, // 2500 - 900
+		2500: 1100, // 3600 - 2500 (last match uses video_duration)
+	}
+
+	count := 0
+	for rows.Next() {
+		var offset int
+		var duration *int
+		if err := rows.Scan(&offset, &duration); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		count++
+		if duration == nil {
+			t.Errorf("expected duration for offset %d, got nil", offset)
+			continue
+		}
+		if *duration != expectedDurations[offset] {
+			t.Errorf("offset %d: expected duration %d, got %d", offset, expectedDurations[offset], *duration)
+		}
+	}
+
+	if count != 3 {
+		t.Fatalf("expected 3 matches, got %d", count)
 	}
 }

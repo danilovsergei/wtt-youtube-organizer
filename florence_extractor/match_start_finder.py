@@ -142,6 +142,7 @@ class MatchStartFinder:
         self.processor = processor
         self.temp_dir = tempfile.mkdtemp(prefix="match_finder_")
         self.found_matches: List[MatchStart] = []
+        self.video_duration: float = 0.0
 
     def cleanup(self):
         """Remove temporary directory."""
@@ -355,6 +356,7 @@ class MatchStartFinder:
             return []
 
         duration = self.processor.get_video_duration(self.video_path)
+        self.video_duration = duration
         if duration <= 0:
             print("Could not determine video duration")
             return []
@@ -782,7 +784,11 @@ def main():
             f"Fetching videos newer than {args.process_all_matches_after}...")
         videos = processor.get_videos_after(args.process_all_matches_after)
 
-        if videos is None:
+        if videos == "BOT_BLOCKED":
+            print(f"YouTube requires bot confirmation or sign-in for video ID '{args.process_all_matches_after}'.")
+            print("Retaining video in queue and aborting to retry later.")
+            sys.exit(1)
+        elif videos is None:
             print(f"Video ID '{args.process_all_matches_after}' does not exist or was deleted.")
             sys.exit(2)
         elif len(videos) == 0:
@@ -960,7 +966,25 @@ def main():
             video_title, upload_date = processor.fetch_video_info(args.youtube_video, args.cookies_file)
             
             if not video_title or not upload_date:
-                error_msg = "Failed to fetch video title or upload date (yt-dlp may be blocked or video unavailable)"
+                if getattr(processor, 'last_fetch_is_bot_blocked', False):
+                    error_msg = f"Sign in to confirm you are not a bot (YouTube bot challenge: {getattr(processor, 'last_fetch_error', '')})"
+                    print(f"Warning: {error_msg}")
+                    print("Video is NOT deleted. Keeping video in queue to retry.")
+                    if args.output_json_file:
+                        json_data = {
+                            "video_id": video_id,
+                            "video_title": None,
+                            "upload_date": None,
+                            "matches": [],
+                            "error": error_msg,
+                            "is_bot_blocked": True,
+                        }
+                        with open(args.output_json_file, 'w') as f:
+                            json.dump(json_data, f, indent=2)
+                        print(f"Bot challenge JSON written to: {args.output_json_file}")
+                    sys.exit(1)
+
+                error_msg = f"Video '{video_id}' does not exist or is unavailable: {getattr(processor, 'last_fetch_error', '')}"
                 print(f"Error: {error_msg}")
                 if args.output_json_file:
                     json_data = {
@@ -1103,6 +1127,7 @@ def main():
                 "video_id": video_id,
                 "video_title": video_title,
                 "upload_date": upload_date,
+                "video_duration": int(finder.video_duration),
                 "matches": [
                     {
                         "timestamp": int(

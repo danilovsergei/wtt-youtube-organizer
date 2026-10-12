@@ -678,21 +678,41 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		if dockerErr != nil {
 			var exitErr *exec.ExitError
 			isUnavailable := false
-			if errors.As(dockerErr, &exitErr) && exitErr.ExitCode() == 2 {
-				isUnavailable = true
-			}
-			if !isUnavailable {
-				if data, readErr := os.ReadFile(outputFile); readErr == nil {
-					var res struct {
-						Error string `json:"error"`
-					}
-					if json.Unmarshal(data, &res) == nil && strings.Contains(strings.ToLower(res.Error), "unavailable") {
+			isBotBlocked := false
+			if data, readErr := os.ReadFile(outputFile); readErr == nil {
+				var res struct {
+					Error        string 
+					IsBotBlocked bool   
+				}
+				if json.Unmarshal(data, &res) == nil {
+					errLower := strings.ToLower(res.Error)
+					if res.IsBotBlocked ||
+						strings.Contains(errLower, "sign in to confirm") ||
+						strings.Contains(errLower, "not a bot") ||
+						strings.Contains(errLower, "bot challenge") ||
+						strings.Contains(errLower, "captcha") {
+						isBotBlocked = true
+					} else if strings.Contains(errLower, "unavailable") ||
+						strings.Contains(errLower, "deleted") ||
+						strings.Contains(errLower, "private") {
 						isUnavailable = true
 					}
 				}
 			}
 
-			if isUnavailable {
+			dockerErrLower := strings.ToLower(dockerErr.Error())
+			if strings.Contains(dockerErrLower, "sign in to confirm") ||
+				strings.Contains(dockerErrLower, "not a bot") ||
+				strings.Contains(dockerErrLower, "bot") ||
+				strings.Contains(dockerErrLower, "captcha") {
+				isBotBlocked = true
+			}
+
+			if errors.As(dockerErr, &exitErr) && exitErr.ExitCode() == 2 && !isBotBlocked {
+				isUnavailable = true
+			}
+
+			if isUnavailable && !isBotBlocked {
 				logPrintf("Video %s is unavailable (deleted/private). Removing from queue...\n", entry.VideoID)
 				queue = append(queue[:i], queue[i+1:]...)
 				if err := SaveQueue(queuePath, queue); err != nil {
@@ -701,8 +721,13 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 				continue
 			}
 
-			logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
-			logPrintf("Video %s kept in queue for retry. Continuing to next video...\n", entry.VideoID)
+			if isBotBlocked {
+				logPrintf("WARNING: yt-dlp requested sign-in / bot confirmation for video %s.\n", entry.VideoID)
+				logPrintf("Video %s is NOT deleted. Retaining in queue for retry.\n", entry.VideoID)
+			} else {
+				logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
+				logPrintf("Video %s kept in queue for retry. Continuing to next video...\n", entry.VideoID)
+			}
 			failedCount++
 			continue
 		}

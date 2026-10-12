@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,11 +19,12 @@ var sessionRe = regexp.MustCompile(`(?i)\s*session\s*\d+`)
 
 // VideoJSON represents the structure of the match.json file
 type VideoJSON struct {
-	VideoID    string      `json:"video_id"`
-	VideoTitle string      `json:"video_title"`
-	UploadDate string      `json:"upload_date"` // Unix UTC timestamp string (e.g., "1747745671")
-	Matches    []MatchJSON `json:"matches"`
-	Error      string      `json:"error,omitempty"` // Processing error (e.g., "No match starts found")
+	VideoID       string      `json:"video_id"`
+	VideoTitle    string      `json:"video_title"`
+	UploadDate    string      `json:"upload_date"` // Unix UTC timestamp string (e.g., "1747745671")
+	VideoDuration int         `json:"video_duration,omitempty"` // Total video length in seconds
+	Matches       []MatchJSON `json:"matches"`
+	Error         string      `json:"error,omitempty"` // Processing error (e.g., "No match starts found")
 }
 
 // MatchJSON represents a single match entry in the JSON file
@@ -451,16 +453,37 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 			return fmt.Errorf("failed to clear processing_error: %w", err)
 		}
 
+		// Sort matches by timestamp chronologically
+		sort.Slice(videoJSON.Matches, func(i, j int) bool {
+			return videoJSON.Matches[i].Timestamp < videoJSON.Matches[j].Timestamp
+		})
+
 		for i, matchJSON := range videoJSON.Matches {
 			teamA := parsePlayerName(matchJSON.Player1)
 			teamB := parsePlayerName(matchJSON.Player2)
 			isDoubles := len(teamA) > 1 || len(teamB) > 1
+
+			// Calculate match duration:
+			// Next match start - current match start, or videoDuration - current match start for the last match.
+			var durationSeconds *int
+			if i+1 < len(videoJSON.Matches) {
+				d := videoJSON.Matches[i+1].Timestamp - matchJSON.Timestamp
+				if d > 0 {
+					durationSeconds = &d
+				}
+			} else if videoJSON.VideoDuration > matchJSON.Timestamp {
+				d := videoJSON.VideoDuration - matchJSON.Timestamp
+				if d > 0 {
+					durationSeconds = &d
+				}
+			}
+
 			var matchID int
 			err = tx.QueryRow(ctx, `
-				INSERT INTO matches (tournament_id, video_offset_seconds, is_doubles, video_id)
-				VALUES ($1, $2, $3, $4)
+				INSERT INTO matches (tournament_id, video_offset_seconds, duration_seconds, is_doubles, video_id)
+				VALUES ($1, $2, $3, $4, $5)
 				RETURNING id`,
-				tournamentID, matchJSON.Timestamp, isDoubles, videoID).Scan(&matchID)
+				tournamentID, matchJSON.Timestamp, durationSeconds, isDoubles, videoID).Scan(&matchID)
 			if err != nil {
 				return fmt.Errorf("failed to create match %d: %w", i+1, err)
 			}

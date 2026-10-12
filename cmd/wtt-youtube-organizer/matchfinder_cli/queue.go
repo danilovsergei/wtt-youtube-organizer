@@ -278,6 +278,17 @@ func AddNewStreamsWithFallback(queuePath string, candidateVideoIDs []string, fet
 		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker...)
 		if err != nil {
 			var exitErr *exec.ExitError
+			errLower := strings.ToLower(err.Error())
+			isBotBlocked := strings.Contains(errLower, "sign in to confirm") ||
+				strings.Contains(errLower, "not a bot") ||
+				strings.Contains(errLower, "bot") ||
+				strings.Contains(errLower, "captcha")
+
+			if isBotBlocked {
+				logPrintf("WARNING: yt-dlp reported bot confirmation / sign-in challenge for video %s. Retaining in queue and aborting.\n", afterVideoID)
+				return 0, err
+			}
+
 			if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
 				logPrintf("Video %s is unavailable (likely deleted). Removing from queue and trying next candidate...\n", afterVideoID)
 				_ = RemoveVideoFromQueue(queuePath, afterVideoID)

@@ -319,6 +319,24 @@ class ProdWttVideoProcessor(WttVideoProcessor):
     def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None):
         self.extractor = ScoreExtractor(backend=backend, device=device)
         self.cropped_dir = cropped_dir
+        self.last_fetch_error = None
+        self.last_fetch_is_bot_blocked = False
+
+    def is_bot_or_sign_in_error(self, err_msg: str) -> bool:
+        if not err_msg:
+            return False
+        err_lower = str(err_msg).lower()
+        bot_keywords = [
+            'sign in to confirm',
+            'not a bot',
+            "confirm you're not a bot",
+            'confirm you’re not a bot',
+            'bot',
+            'captcha',
+            'too many requests',
+            'http error 429',
+        ]
+        return any(k in err_lower for k in bot_keywords)
 
     def fetch_video_info(self, youtube_url: str, cookies_file: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -334,8 +352,18 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         except ImportError:
             print('Error: yt-dlp not installed. Run: pip install yt-dlp')
             return (None, None)
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extractor_args': {
-            'youtubetab': ['approximate_date']}, 'remote_components': ['ejs:github']}
+        self.last_fetch_error = None
+        self.last_fetch_is_bot_blocked = False
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'extractor_args': {
+                'youtubetab': ['approximate_date'],
+                'youtube': {'player_client': ['android', 'web']},
+            },
+            'remote_components': ['ejs:github'],
+        }
         if cookies_file:
             if os.path.exists(cookies_file):
                 ydl_opts['cookiefile'] = cookies_file
@@ -357,7 +385,10 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                         upload_date = None
                 return (title, upload_date)
         except Exception as e:
-            print(f'Warning: Could not fetch video info: {e}')
+            err_str = str(e)
+            print(f'Warning: Could not fetch video info: {err_str}')
+            self.last_fetch_error = err_str
+            self.last_fetch_is_bot_blocked = self.is_bot_or_sign_in_error(err_str)
             return (None, None)
 
     def download_video(self, youtube_url: str, output_dir: str, cookies_file: Optional[str] = None) -> Optional[str]:
@@ -506,6 +537,10 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             return []
         print(f'Validating video ID: {after_video_id}...')
         if not self.validate_video_exists(after_video_id):
+            if self.last_fetch_is_bot_blocked:
+                print(
+                    f"Warning: YouTube requested bot confirmation / sign-in for video '{after_video_id}'. Video is NOT deleted.")
+                return "BOT_BLOCKED"
             print(
                 f"Error: Video '{after_video_id}' does not exist or is not accessible.")
             return None
