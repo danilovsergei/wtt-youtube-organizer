@@ -14,16 +14,26 @@ def extract_stream_metadata(youtube_id):
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "default"],
+            }
+        },
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         manifest = ydl.extract_info(url, download=False)
         formats = manifest.get("formats", [])
-        http_headers = manifest.get("http_headers", {})
+        http_headers = manifest.get("http_headers")
+        if not http_headers and formats:
+            for f in formats:
+                if f.get("http_headers"):
+                    http_headers = f.get("http_headers")
+                    break
         result = {
             "id": manifest.get("id", youtube_id),
             "title": manifest.get("title", ""),
             "formats": formats,
-            "http_headers": http_headers,
+            "http_headers": http_headers or {},
         }
         return json.dumps(result)
 

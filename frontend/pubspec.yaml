@@ -46,6 +46,9 @@ dependencies:
   http: ^1.6.0
   flutter_svg: ^2.0.10
   wakelock_plus: ^1.8.0
+  qr_flutter: ^4.1.0
+  native_surface_view:
+    path: packages/native_surface_view
 
 dev_dependencies:
   flutter_test:

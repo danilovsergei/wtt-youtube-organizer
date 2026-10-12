@@ -1,0 +1,19 @@
+name: native_surface_view
+description: Native SurfaceView PlatformView for hardware video overlay.
+version: 0.0.1
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.example.native_surface_view
+        pluginClass: NativeSurfaceViewPlugin
