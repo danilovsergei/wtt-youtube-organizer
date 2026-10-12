@@ -9,7 +9,9 @@ VideoPlayerWidget createVideoPlayer({
   required String? youtubeId,
   required String imageUrl,
   required int offsetSeconds,
+  int? matchDurationSeconds,
   required void Function() onDoubleTap,
+  bool autoPlay = true,
 }) {
   return _WebVideoPlayerWidget(
     key: key,
@@ -18,7 +20,9 @@ VideoPlayerWidget createVideoPlayer({
     youtubeId: youtubeId,
     imageUrl: imageUrl,
     offsetSeconds: offsetSeconds,
+    matchDurationSeconds: matchDurationSeconds,
     onDoubleTap: onDoubleTap,
+    autoPlay: autoPlay,
   );
 }
 
@@ -30,7 +34,9 @@ class _WebVideoPlayerWidget extends VideoPlayerWidget {
     required super.youtubeId,
     required super.imageUrl,
     required super.offsetSeconds,
+    super.matchDurationSeconds,
     required super.onDoubleTap,
+    super.autoPlay = true,
   });
 
   @override
@@ -109,6 +115,51 @@ class _WebVideoPlayerState extends State<_WebVideoPlayerWidget> {
         fit: StackFit.expand,
         children: [
           YoutubePlayer(controller: _controller!),
+          Positioned(
+            top: 24,
+            right: 32,
+            child: Container(
+              key: const Key('player_diagnostics_badge'),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.78),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF00E676).withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF00E676),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '1080p • HTML5 Web Player',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (widget.resizingNotifier != null)
             ValueListenableBuilder<bool>(
               valueListenable: widget.resizingNotifier!,

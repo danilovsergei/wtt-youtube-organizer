@@ -7,6 +7,7 @@ class TestYtDlpService implements YtDlpService {
   final String? mockAudioUrl;
   final Map<String, String> mockHttpHeaders;
   final Map<String, VideoStreamMetadata> _customResponses = {};
+  Duration? responseDelay;
 
   TestYtDlpService({
     this.localVideoPath,
@@ -49,6 +50,9 @@ class TestYtDlpService implements YtDlpService {
       return _customResponses[youtubeId]!;
     }
 
+    if (responseDelay != null) {
+      await Future.delayed(responseDelay!);
+    }
     final videoPath = resolveLocalVideoPath();
     final videoStreams = mockResolutions.map((res) {
       // In local testing, all quality streams can point to the local file,
@@ -56,9 +60,15 @@ class TestYtDlpService implements YtDlpService {
       return YtStreamInfo(res, videoPath);
     }).toList();
 
+    String? audioPath = mockAudioUrl;
+    if (audioPath != null && audioPath.contains("test_")) {
+      final audioFile = youtubeId == "test_yt_hero" ? "test_audio2.mp4" : "test_audio1.mp4";
+      audioPath = audioPath.replaceAll(RegExp(r"test_(video|audio[0-9]?)\.mp4"), audioFile);
+    }
+
     return VideoStreamMetadata(
       videoStreams: videoStreams,
-      audioUrl: mockAudioUrl,
+      audioUrl: audioPath,
       httpHeaders: mockHttpHeaders,
     );
   }

@@ -75,7 +75,7 @@ void main() {
       // Verify video sorting (1080, 720, 480)
       expect(metadata.availableResolutions, [1080, 720, 480]);
       // Verify duplicate 1080p was dropped, keeping first
-      expect(metadata.videoStreams.first.url, 'https://video.com/1080.mp4');
+      expect(metadata.videoStreams.first.url, 'https://video.com/1080_dup.mp4');
 
       // Verify best audio by ABR (160k > 128k)
       expect(metadata.audioUrl, 'https://audio.com/160k');

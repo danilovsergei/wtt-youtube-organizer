@@ -7,7 +7,9 @@ abstract class VideoPlayerWidget extends StatefulWidget {
   final String? youtubeId;
   final String imageUrl;
   final int offsetSeconds;
+  final int? matchDurationSeconds;
   final void Function() onDoubleTap;
+  final bool autoPlay;
 
   const VideoPlayerWidget({
     super.key,
@@ -16,7 +18,9 @@ abstract class VideoPlayerWidget extends StatefulWidget {
     required this.youtubeId,
     required this.imageUrl,
     required this.offsetSeconds,
+    this.matchDurationSeconds,
     required this.onDoubleTap,
+    this.autoPlay = true,
   });
 
   factory VideoPlayerWidget.create({
@@ -26,7 +30,9 @@ abstract class VideoPlayerWidget extends StatefulWidget {
     required String? youtubeId,
     required String imageUrl,
     required int offsetSeconds,
+    int? matchDurationSeconds,
     required void Function() onDoubleTap,
+    bool autoPlay = true,
   }) {
     return impl.createVideoPlayer(
       key: key,
@@ -35,7 +41,9 @@ abstract class VideoPlayerWidget extends StatefulWidget {
       youtubeId: youtubeId,
       imageUrl: imageUrl,
       offsetSeconds: offsetSeconds,
+      matchDurationSeconds: matchDurationSeconds,
       onDoubleTap: onDoubleTap,
+      autoPlay: autoPlay,
     );
   }
 }

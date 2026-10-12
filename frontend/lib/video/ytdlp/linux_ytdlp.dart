@@ -64,31 +64,80 @@ class LinuxYtDlpService implements YtDlpService {
   static VideoStreamMetadata parseManifest(Map<String, dynamic> manifest) {
     final formats = (manifest['formats'] as List<dynamic>?) ?? [];
 
-    // Extract adaptive video streams
-    final videoFormats = formats.where((f) =>
+    bool isHlsFormat(Map<String, dynamic> f) {
+      final p = (f['protocol'] ?? '').toString().toLowerCase();
+      final url = (f['url'] ?? '').toString().toLowerCase();
+      final fid = (f['format_id'] ?? '').toString();
+      return p.contains('m3u8') || url.contains('m3u8') || url.contains('hls') || fid == '312' || fid == '617';
+    }
+
+    // 1. Strictly prefer direct HTTPS DASH video streams (avc1/mp4)
+    final dashVideoFormats = formats.where((f) =>
       f is Map<String, dynamic> &&
       f['vcodec'] != 'none' &&
       f['acodec'] == 'none' &&
+      f['height'] != null &&
+      !isHlsFormat(f)
+    ).cast<Map<String, dynamic>>().toList();
+
+    // 2. Fall back to muxed or HLS streams only if no DASH formats are present
+    final otherVideoFormats = formats.where((f) =>
+      f is Map<String, dynamic> &&
+      f['vcodec'] != 'none' &&
       f['height'] != null
     ).cast<Map<String, dynamic>>().toList();
 
-    // Extract adaptive audio streams
-    final audioFormats = formats.where((f) =>
+    var videoFormats = dashVideoFormats.isNotEmpty ? dashVideoFormats : otherVideoFormats;
+
+    // Extract adaptive audio streams (matching direct HTTPS DASH streams, avoiding DRC variants)
+    var audioFormats = formats.where((f) =>
       f is Map<String, dynamic> &&
       f['acodec'] != 'none' &&
-      f['vcodec'] == 'none'
+      f['vcodec'] == 'none' &&
+      !isHlsFormat(f) &&
+      !f['format_id'].toString().contains('drc')
     ).cast<Map<String, dynamic>>().toList();
+
+    if (audioFormats.isEmpty) {
+      audioFormats = formats.where((f) =>
+        f is Map<String, dynamic> &&
+        f['acodec'] != 'none' &&
+        f['vcodec'] == 'none'
+      ).cast<Map<String, dynamic>>().toList();
+    }
 
     if (videoFormats.isEmpty) {
       return const VideoStreamMetadata(videoStreams: []);
     }
 
-    // Sort video by height descending (e.g. 1080p, 720p, 480p)
-    videoFormats.sort((a, b) => ((b['height'] ?? 0) as int).compareTo((a['height'] ?? 0) as int));
+    // Sort video by height descending, preferring avc1 (H.264) over av01 (AV1)
+    videoFormats.sort((a, b) {
+      final hA = (a['height'] ?? 0) as int;
+      final hB = (b['height'] ?? 0) as int;
+      if (hA != hB) return hB.compareTo(hA);
 
-    // Sort audio by ABR descending
+      final vA = (a['vcodec'] ?? '').toString();
+      final vB = (b['vcodec'] ?? '').toString();
+      final isAvcA = vA.startsWith('avc');
+      final isAvcB = vB.startsWith('avc');
+      if (isAvcA && !isAvcB) return -1;
+      if (!isAvcA && isAvcB) return 1;
+      return 0;
+    });
+
+    // Sort audio by ABR descending, preferring m4a/aac
     if (audioFormats.isNotEmpty) {
-      audioFormats.sort((a, b) => ((b['abr'] ?? 0) as num).compareTo((a['abr'] ?? 0) as num));
+      audioFormats.sort((a, b) {
+        final abrA = (a['abr'] ?? 0) as num;
+        final abrB = (b['abr'] ?? 0) as num;
+        if (abrA != abrB) return abrB.compareTo(abrA);
+
+        final extA = (a['ext'] ?? '').toString();
+        final extB = (b['ext'] ?? '').toString();
+        if (extA == 'm4a' && extB != 'm4a') return -1;
+        if (extA != 'm4a' && extB == 'm4a') return 1;
+        return 0;
+      });
     }
 
     final uniqueHeights = <int>{};
@@ -96,19 +145,30 @@ class LinuxYtDlpService implements YtDlpService {
 
     for (final f in videoFormats) {
       final height = f['height'] as int;
-      final url = f['url'] as String? ?? '';
-      if (url.isNotEmpty && !uniqueHeights.contains(height)) {
+      final rawUrl = f['url'] as String? ?? '';
+      if (rawUrl.isNotEmpty && !uniqueHeights.contains(height)) {
         uniqueHeights.add(height);
-        uniqueStreams.add(YtStreamInfo(height, url));
+        uniqueStreams.add(YtStreamInfo(height, rawUrl));
       }
     }
 
-    final bestAudio = audioFormats.isNotEmpty ? audioFormats.first['url'] as String? : null;
+    final bestAudioFormat = audioFormats.isNotEmpty ? audioFormats.first : null;
+    final bestAudio = (bestAudioFormat != null && (bestAudioFormat['url'] as String? ?? '').isNotEmpty)
+        ? bestAudioFormat['url'] as String
+        : null;
 
     final mediaHeaders = <String, String>{
       'Referer': 'https://www.youtube.com/',
     };
-    if (manifest['http_headers'] != null && manifest['http_headers']['User-Agent'] != null) {
+    if (bestAudioFormat != null && bestAudioFormat['http_headers'] != null) {
+      final h = bestAudioFormat['http_headers'] as Map<String, dynamic>;
+      if (h['User-Agent'] != null) {
+        mediaHeaders['User-Agent'] = h['User-Agent'].toString();
+      }
+    }
+    if (!mediaHeaders.containsKey('User-Agent') &&
+        manifest['http_headers'] != null &&
+        manifest['http_headers']['User-Agent'] != null) {
       mediaHeaders['User-Agent'] = manifest['http_headers']['User-Agent']!.toString();
     }
 
