@@ -233,5 +233,45 @@ void main() {
         findsOneWidget,
       );
     });
+    testWidgets('Mobile Android Viewport: verifies RefreshIndicator and MobileHeader refresh button', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(392, 850);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      int refreshCalls = 0;
+      filterController.customDataFetcher = () async {
+        refreshCalls++;
+        return [];
+      };
+
+      await tester.pumpWidget(const WttApp());
+      await tester.pump();
+
+      // 1. RefreshIndicator should wrap the scroll view
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+
+      // 2. Refresh IconButton should exist in MobileHeader
+      final refreshButtonFinder = find.descendant(
+        of: find.byType(MobileHeader),
+        matching: find.byIcon(Icons.refresh),
+      );
+      expect(refreshButtonFinder, findsOneWidget);
+
+      // 3. Tap refresh button -> triggers modal Refreshing... dialog
+      await tester.tap(refreshButtonFinder);
+      await tester.pump();
+
+      expect(find.text('Refreshing...'), findsOneWidget);
+
+      // Settle dialog with finite duration pumps
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+
+      expect(find.text('Refreshing...'), findsNothing);
+      expect(refreshCalls, 1);
+    });
   });
 }
