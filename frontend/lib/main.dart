@@ -1,3 +1,6 @@
+import 'services/settings_service.dart';
+import 'widgets/diagnostics_screen.dart';
+import 'widgets/tv_focusable.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +21,9 @@ import 'package:window_manager/window_manager.dart';
 
 Future<void> main([List<String>? args]) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Cap image cache to 15MB to prevent Android TV LowMemoryKiller (LMK) eviction
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 15 * 1024 * 1024;
+  PaintingBinding.instance.imageCache.maximumSize = 30;
   if (!kIsWeb) {
     MediaKit.ensureInitialized();
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -43,6 +49,7 @@ Future<void> main([List<String>? args]) async {
   }
 
   await DatabaseService.instance.initialize();
+  await filterController.loadSettings();
   if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
     (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {
       debugPrint('Chaquopy yt-dlp auto-update: $status');
@@ -106,8 +113,9 @@ class _WttAppState extends State<WttApp> {
 enum TournamentType {
   champions('Champions'),
   contender('Contender'),
+  feeder('Feeder'),
   smash('Smash'),
-  youthContender('Youth Contender');
+  youthContender('Youth');
 
   final String label;
   const TournamentType(this.label);
@@ -142,6 +150,7 @@ class Match {
   final DateTime? uploadDate;
   final String? youtubeId;
   final int? offsetSeconds;
+  final int? durationSeconds;
   final int? session;
   final DateTime? effectiveTimestamp;
 
@@ -158,9 +167,22 @@ class Match {
     this.uploadDate,
     this.youtubeId,
     this.offsetSeconds,
+    this.durationSeconds,
     this.session,
     this.effectiveTimestamp,
   });
+
+  String get durationFormatted {
+    if (durationSeconds == null || durationSeconds! <= 0) return '';
+    final totalMinutes = (durationSeconds! / 60).round();
+    if (totalMinutes < 60) {
+      return '${totalMinutes}m';
+    }
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (minutes == 0) return '${hours}h';
+    return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  }
 }
 
 class FilterController extends ChangeNotifier {
@@ -176,6 +198,12 @@ class FilterController extends ChangeNotifier {
   bool _showSingles = true;
   bool _showDoubles = false;
   Match? _selectedMatch;
+  bool _hasUserSelectedMatch = false;
+  bool get hasUserSelectedMatch => _hasUserSelectedMatch;
+  void markMatchSelected() {
+    _hasUserSelectedMatch = true;
+    notifyListeners();
+  }
 
   Set<String> get _safeExpandedDayKeys => _expandedDayKeys ??= {};
 
@@ -292,6 +320,7 @@ class FilterController extends ChangeNotifier {
             ? DateTime.tryParse(row['effective_timestamp'] as String)
             : uploadDate;
         final offsetSeconds = row['video_offset_seconds'] as int?;
+        final durationSeconds = row['duration_seconds'] as int?;
         final session = row['session'] as int?;
 
         matches.add(Match(
@@ -308,6 +337,7 @@ class FilterController extends ChangeNotifier {
           uploadDate: uploadDate,
           youtubeId: youtubeId,
           offsetSeconds: offsetSeconds,
+          durationSeconds: durationSeconds,
           session: session,
           effectiveTimestamp: effectiveTimestamp,
         ));
@@ -345,9 +375,11 @@ class FilterController extends ChangeNotifier {
   }
   
   TournamentType _inferType(String name) {
-    if (name.contains('Champions')) return TournamentType.champions;
+    final lower = name.toLowerCase();
+    if (lower.contains('youth')) return TournamentType.youthContender;
+    if (lower.contains('champion')) return TournamentType.champions;
+    if (lower.contains('feeder')) return TournamentType.feeder;
     if (name.contains('Smash')) return TournamentType.smash;
-    if (name.contains('Youth Contender')) return TournamentType.youthContender;
     if (name.contains('Contender')) return TournamentType.contender;
     return TournamentType.contender;
   }
@@ -361,17 +393,74 @@ class FilterController extends ChangeNotifier {
     return row['video_title'] as String? ?? 'Unknown Match';
   }
 
+  int _selectionNonce = 0;
+  int get selectionNonce => _selectionNonce;
+  final FocusNode currentMatchFocusNode = FocusNode();
+  final FocusNode playButtonFocusNode = FocusNode();
+  final FocusNode progressBarFocusNode = FocusNode();
+
+  final ValueNotifier<int> showControlsTrigger = ValueNotifier<int>(0);
+
+  void showControls({int seconds = 5}) {
+    showControlsTrigger.value++;
+    notifyListeners();
+  }
+
+  void focusCurrentMatch() {
+    currentMatchFocusNode.requestFocus();
+  }
+
+  void focusPlayButton() {
+    showControls(seconds: 5);
+    try {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        playButtonFocusNode.requestFocus();
+      });
+    } catch (_) {
+      playButtonFocusNode.requestFocus();
+    }
+  }
+
+  void focusProgressBar() {
+    showControls(seconds: 5);
+    try {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        progressBarFocusNode.requestFocus();
+      });
+    } catch (_) {
+      progressBarFocusNode.requestFocus();
+    }
+  }
+
   void selectMatch(Match match) {
+    _hasUserSelectedMatch = true;
     _selectedMatch = match;
+    _selectionNonce++;
+    if (_selectedTournamentId != match.tournamentId) {
+      selectTournament(match.tournamentId);
+    }
+    final groupKey = match.session != null ? '${match.day} - Round ${match.session}' : match.day;
+    _safeExpandedDayKeys.add('${match.tournamentId}_$groupKey');
+    _safeExpandedDayKeys.add('${match.tournamentId}_${match.day}');
+    isFullscreenNotifier.value = true;
     notifyListeners();
   }
 
   void selectTournament(String tournamentId) {
     if (_selectedTournamentId == tournamentId) {
       _selectedTournamentId = '';
+      _expandedDayKeys?.clear();
     } else {
       _selectedTournamentId = tournamentId;
       _expandedDayKeys?.clear();
+      if (tournamentId.isNotEmpty) {
+        final matches = _allMatches.where((m) => m.tournamentId == tournamentId);
+        for (final m in matches) {
+          final groupKey = m.session != null ? '${m.day} - Round ${m.session}' : m.day;
+          _safeExpandedDayKeys.add('${tournamentId}_$groupKey');
+          _safeExpandedDayKeys.add('${tournamentId}_${m.day}');
+        }
+      }
     }
     notifyListeners();
   }
@@ -385,12 +474,32 @@ class FilterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadSettings() async {
+    final names = await SettingsService.instance.loadSelectedTournamentTypeNames();
+    if (names.isNotEmpty) {
+      final types = <TournamentType>{};
+      for (final type in TournamentType.values) {
+        if (names.contains(type.name)) {
+          types.add(type);
+        }
+      }
+      _selectedTypes = types;
+      notifyListeners();
+    }
+  }
+
+  void _persistSelectedTypes() {
+    final names = _selectedTypes.map((t) => t.name).toSet();
+    SettingsService.instance.saveSelectedTournamentTypeNames(names);
+  }
+
   void toggleType(TournamentType type) {
     if (_selectedTypes.contains(type)) {
       _selectedTypes.remove(type);
     } else {
       _selectedTypes.add(type);
     }
+    _persistSelectedTypes();
     notifyListeners();
   }
 
@@ -408,6 +517,8 @@ class FilterController extends ChangeNotifier {
     _showDoubles = false;
     _searchQuery = '';
     _selectedMatch = null;
+    _hasUserSelectedMatch = false;
+    _persistSelectedTypes();
     notifyListeners();
   }
 
@@ -420,8 +531,13 @@ class FilterController extends ChangeNotifier {
 
       final yearMatch =
           _selectedYears.isEmpty || _selectedYears.contains(tournament.year);
-      final typeMatch =
-          _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
+      final bool typeMatch;
+      if (tournament.type == TournamentType.youthContender) {
+        typeMatch = _selectedTypes.contains(TournamentType.youthContender);
+      } else {
+        typeMatch =
+            _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
+      }
       final tournamentMatch =
           _selectedTournamentId.isEmpty ||
           _selectedTournamentId == match.tournamentId;
@@ -441,8 +557,13 @@ class FilterController extends ChangeNotifier {
     return _allTournaments.where((tournament) {
       final yearMatch =
           _selectedYears.isEmpty || _selectedYears.contains(tournament.year);
-      final typeMatch =
-          _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
+      final bool typeMatch;
+      if (tournament.type == TournamentType.youthContender) {
+        typeMatch = _selectedTypes.contains(TournamentType.youthContender);
+      } else {
+        typeMatch =
+            _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
+      }
       return yearMatch && typeMatch;
     }).toList();
   }
@@ -471,13 +592,24 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    isFullscreenNotifier.addListener(_onFullscreenChanged);
   }
 
   @override
   void dispose() {
+    isFullscreenNotifier.removeListener(_onFullscreenChanged);
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _resizingNotifier.dispose();
     super.dispose();
+  }
+
+  void _onFullscreenChanged() {
+    if (!isFullscreenNotifier.value) {
+      filterController.showControls(seconds: 5);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        filterController.focusCurrentMatch();
+      });
+    }
   }
 
   bool _handleKeyEvent(KeyEvent event) {
@@ -563,13 +695,40 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 768;
 
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.f5): _triggerRefresh,
-        const SingleActivator(LogicalKeyboardKey.keyR, control: true): _triggerRefresh,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (isFullscreenNotifier.value) {
+          isFullscreenNotifier.value = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            filterController.focusCurrentMatch();
+          });
+          return;
+        }
+        if (filterController.selectedTournamentId.isNotEmpty) {
+          filterController.selectTournament('');
+          return;
+        }
+        SystemNavigator.pop();
       },
-      child: Focus(
-        autofocus: true,
+      child: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.f5): _triggerRefresh,
+          const SingleActivator(LogicalKeyboardKey.keyR, control: true): _triggerRefresh,
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            if (isFullscreenNotifier.value) {
+              isFullscreenNotifier.value = false;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                filterController.focusCurrentMatch();
+              });
+              return;
+            }
+            if (filterController.selectedTournamentId.isNotEmpty) {
+              filterController.selectTournament('');
+            }
+          },
+        },
         child: ListenableBuilder(
       listenable: filterController,
       builder: (context, _) {
@@ -585,9 +744,14 @@ class _MainScreenState extends State<MainScreen> {
               drawer: !isDesktop && !isFullscreen
                   ? PointerInterceptor(child: const Drawer(backgroundColor: Colors.transparent, child: Sidebar()))
                   : null,
-              body: Stack(
-                children: [
-                  Row(
+              body: SafeArea(
+                top: !isFullscreen,
+                bottom: false,
+                left: !isFullscreen,
+                right: !isFullscreen,
+                child: Stack(
+                  children: [
+                    Row(
                     children: [
                       if (isDesktop && !isFullscreen) ...[
                         SizedBox(width: _sidebarWidth, child: const Sidebar()),
@@ -612,30 +776,40 @@ class _MainScreenState extends State<MainScreen> {
                       Expanded(
                         child: Column(
                           children: [
-                            if (!isDesktop && !isFullscreen) const MobileHeader(),
+                            if (!isDesktop && !isFullscreen)
+                              MobileHeader(onRefresh: _triggerRefresh),
                             Expanded(
-                              child: SingleChildScrollView(
-                                physics: isFullscreen ? const NeverScrollableScrollPhysics() : null,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (isFullscreen)
-                                      Container(
-                                        height: MediaQuery.of(context).size.height,
-                                        width: MediaQuery.of(context).size.width,
-                                        color: Colors.black,
-                                        child: Center(
-                                          child: AspectRatio(
-                                            aspectRatio: 16 / 9,
-                                            child: VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
+                              child: RefreshIndicator(
+                                color: const Color(0xFF0D7FF2),
+                                backgroundColor: const Color(0xFF182634),
+                                onRefresh: () async {
+                                  await filterController.fetchData();
+                                },
+                                notificationPredicate: (notification) => !isFullscreen,
+                                child: SingleChildScrollView(
+                                  physics: isFullscreen
+                                      ? const NeverScrollableScrollPhysics()
+                                      : const AlwaysScrollableScrollPhysics(),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (isFullscreen)
+                                        Container(
+                                          height: MediaQuery.of(context).size.height,
+                                          width: MediaQuery.of(context).size.width,
+                                          color: Colors.black,
+                                          child: Center(
+                                            child: AspectRatio(
+                                              aspectRatio: 16 / 9,
+                                              child: VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
+                                            ),
                                           ),
-                                        ),
-                                      )
-                                    else
-                                      VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
-                                    if (!isFullscreen) const MatchDetails(),
-                                    if (!isFullscreen) const UpNextSection(),
-                                  ],
+                                        )
+                                      else
+                                        VideoHero(key: _videoHeroKey, resizingNotifier: _resizingNotifier),
+                                      if (!isFullscreen) const MatchDetails(),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -656,20 +830,23 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                 ],
               ),
+            ),
             );
           },
         );
       },
     ),
   ),
-);
+    );
   }
 }
 
 // --- Components ---
 
 class MobileHeader extends StatelessWidget {
-  const MobileHeader({super.key});
+  final VoidCallback? onRefresh;
+
+  const MobileHeader({super.key, this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
@@ -685,23 +862,44 @@ class MobileHeader extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.sports_tennis, color: Color(0xFF0D7FF2)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'TT World',
-                    style: GoogleFonts.splineSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+              Expanded(
+                child: Row(
+                  children: [
+                    SvgPicture.asset(
+                      'assets/app_icon.svg',
+                      width: 24,
+                      height: 24,
                     ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'WTT Organizer',
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.splineSans(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Refresh',
+                    onPressed: onRefresh,
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    icon: const Icon(Icons.menu, color: Colors.white),
                   ),
                 ],
-              ),
-              IconButton(
-                onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(Icons.menu, color: Colors.white),
               ),
             ],
           ),
@@ -992,43 +1190,44 @@ class Sidebar extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              ...filterController.availableTournaments.map((
-                                tournament,
-                              ) {
-                                return InkWell(
+                              ...filterController.availableTournaments
+                                  .asMap()
+                                  .entries
+                                  .map((entry) {
+                                final index = entry.key;
+                                final tournament = entry.value;
+                                return TvFocusable(
+                                  autoFocus: index == 0,
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  normalBackgroundColor: const Color(0xFF182634),
+                                  normalBorderColor: const Color(0xFF223649),
                                   onTap:
                                       () => filterController.selectTournament(
                                         tournament.id,
                                       ),
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 4),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                      horizontal: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(6),
-                                      color: Colors.transparent,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            tournament.name,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.grey[400],
-                                              fontWeight: FontWeight.normal,
-                                            ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          tournament.name,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                        Icon(
-                                          Icons.chevron_right,
-                                          size: 16,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ],
-                                    ),
+                                      ),
+                                      const Icon(
+                                        Icons.chevron_right,
+                                        size: 16,
+                                        color: Color(0xFF0D7FF2),
+                                      ),
+                                    ],
                                   ),
                                 );
                               }),
@@ -1116,33 +1315,35 @@ class Sidebar extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  InkWell(
+                                  TvFocusable(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                      horizontal: 8,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
                                     onTap:
                                         () => filterController.selectTournament(
                                           '',
                                         ), // Go back
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.arrow_back,
-                                            size: 16,
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.arrow_back,
+                                          size: 16,
+                                          color: Color(0xFF0D7FF2),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Back to Tournaments',
+                                          style: TextStyle(
                                             color: Color(0xFF0D7FF2),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Back to Tournaments',
-                                            style: TextStyle(
-                                              color: Color(0xFF0D7FF2),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -1160,127 +1361,132 @@ class Sidebar extends StatelessWidget {
                                       'No matches found for current filters.',
                                       style: TextStyle(color: Colors.grey),
                                     ),
-                                  ...sortedDays.map((day) {
-                                    final dayMatches = matchesByDay[day]!;
-                                    final isDayExpanded =
-                                        filterController.isDayExpanded(
-                                          tournament.id,
-                                          day,
-                                        );
-
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                  FocusTraversalGroup(
+                                    policy: WidgetOrderTraversalPolicy(),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        InkWell(
-                                          onTap:
-                                              () => filterController.toggleDay(
+                                        ...sortedDays.asMap().entries.map((dayEntry) {
+                                          final dayIndex = dayEntry.key;
+                                          final day = dayEntry.value;
+                                          final dayMatches = matchesByDay[day]!;
+                                          final isDayExpanded =
+                                              filterController.isDayExpanded(
                                                 tournament.id,
                                                 day,
-                                              ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                              horizontal: 4,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  isDayExpanded
-                                                      ? Icons
-                                                          .keyboard_arrow_down
-                                                      : Icons
-                                                          .keyboard_arrow_right,
-                                                  size: 16,
-                                                  color: Colors.grey[500],
+                                              );
+
+                                          return Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              TvFocusable(
+                                                autoFocus: dayIndex == 0,
+                                                margin: const EdgeInsets.only(bottom: 4),
+                                                padding: const EdgeInsets.symmetric(
+                                                  vertical: 8,
+                                                  horizontal: 6,
                                                 ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    day,
-                                                    style: TextStyle(
-                                                      color: Colors.grey[400],
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.bold,
+                                                borderRadius: BorderRadius.circular(6),
+                                                onTap:
+                                                    () => filterController.toggleDay(
+                                                      tournament.id,
+                                                      day,
                                                     ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        if (isDayExpanded)
-                                          ...dayMatches.map((match) {
-                                            final isMatchSelected =
-                                                filterController
-                                                    .selectedMatch
-                                                    .id ==
-                                                match.id;
-                                            return InkWell(
-                                              onTap:
-                                                  () => filterController
-                                                      .selectMatch(match),
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 8,
-                                                      horizontal: 8,
-                                                    ),
-                                                margin: const EdgeInsets.only(
-                                                  left: 28,
-                                                  bottom: 4,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      isMatchSelected
-                                                          ? const Color(
-                                                            0xFF182634,
-                                                          )
-                                                          : Colors.transparent,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
                                                 child: Row(
                                                   children: [
                                                     Icon(
-                                                      Icons.play_circle_outline,
-                                                      size: 14,
-                                                      color:
-                                                          isMatchSelected
-                                                              ? const Color(
-                                                                0xFF0D7FF2,
-                                                              )
-                                                              : Colors.grey[
-                                                                600
-                                                              ],
+                                                      isDayExpanded
+                                                          ? Icons
+                                                              .keyboard_arrow_down
+                                                          : Icons
+                                                              .keyboard_arrow_right,
+                                                      size: 18,
+                                                      color: const Color(0xFF0D7FF2),
                                                     ),
                                                     const SizedBox(width: 8),
                                                     Expanded(
                                                       child: Text(
-                                                        match.title,
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color:
-                                                              isMatchSelected
-                                                                  ? Colors.white
-                                                                  : Colors.grey[
-                                                                    500
-                                                                  ],
+                                                        day,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                          fontWeight: FontWeight.bold,
                                                         ),
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
+                                                        overflow: TextOverflow.ellipsis,
                                                       ),
                                                     ),
                                                   ],
                                                 ),
                                               ),
-                                            );
-                                          }),
+                                              if (isDayExpanded)
+                                                ...dayMatches.asMap().entries.map((entry) {
+                                                  final index = entry.key;
+                                                  final match = entry.value;
+                                                  final isMatchSelected =
+                                                      filterController
+                                                          .selectedMatch
+                                                          .id ==
+                                                      match.id;
+                                                  return TvFocusable(
+                                                    focusNode: isMatchSelected ? filterController.currentMatchFocusNode : null,
+                                                    onRight: isMatchSelected ? () => filterController.focusPlayButton() : null,
+                                                    margin: const EdgeInsets.only(bottom: 4),
+                                                    padding: const EdgeInsets.symmetric(
+                                                      vertical: 8,
+                                                      horizontal: 8,
+                                                    ),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    autoFocus: index == 0,
+                                                    normalBackgroundColor: isMatchSelected
+                                                        ? const Color(0xFF182634)
+                                                        : Colors.transparent,
+                                                    normalBorderColor: isMatchSelected
+                                                        ? const Color(0xFF0D7FF2)
+                                                        : Colors.transparent,
+                                                    onTap:
+                                                        () => filterController
+                                                            .selectMatch(match),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.only(left: 14),
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(
+                                                            Icons.play_circle_outline,
+                                                            size: 16,
+                                                            color: isMatchSelected
+                                                                ? const Color(0xFF0D7FF2)
+                                                                : Colors.grey[400],
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              match.title,
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                color: isMatchSelected
+                                                                    ? Colors.white
+                                                                    : Colors.grey[300],
+                                                                fontWeight: isMatchSelected
+                                                                    ? FontWeight.bold
+                                                                    : FontWeight.normal,
+                                                              ),
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                }),
+                                            ],
+                                          );
+                                        }),
                                       ],
-                                    );
-                                  }),
+                                    ),
+                                  ),
                                   const SizedBox(height: 20),
                                 ],
                               ),
@@ -1292,56 +1498,61 @@ class Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
-              // User Profile
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0D1319),
-                  border: Border(top: BorderSide(color: Color(0xFF223649))),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [Color(0xFF0D7FF2), Colors.purple],
+              // Diagnostics & Logs
+              TvFocusable(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const DiagnosticsScreen()),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0D1319),
+                    border: Border(top: BorderSide(color: Color(0xFF223649))),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF0D7FF2),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.terminal, color: Colors.white, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Diagnostics',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'App Logs & Telemetry',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[400],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'JD',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'John Doe',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Premium Member',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    const Icon(Icons.settings, color: Colors.grey, size: 20),
-                  ],
+                      const SizedBox(width: 8),
+                      const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1382,12 +1593,15 @@ class _VideoHeroState extends State<VideoHero> {
       builder: (context, _) {
         final match = filterController.selectedMatch;
         return VideoPlayerWidget.create(
+          key: const Key('main_video_player'),
           resizingNotifier: widget.resizingNotifier,
           matchId: match.id,
           youtubeId: match.youtubeId,
           imageUrl: match.imageUrl,
           offsetSeconds: match.offsetSeconds ?? 0,
+          matchDurationSeconds: match.durationSeconds,
           onDoubleTap: _handleFullscreenToggle,
+          autoPlay: filterController.hasUserSelectedMatch,
         );
       },
     );
@@ -1413,391 +1627,177 @@ class MatchDetails extends StatelessWidget {
               location: ''),
         );
 
-        return Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0xFF223649))),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF0D7FF2,
-                                ).withValues(alpha: 0.2),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF0D7FF2,
-                                  ).withValues(alpha: 0.2),
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                match.tag,
-                                style: const TextStyle(
-                                  color: Color(0xFF0D7FF2),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                tournament.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.grey[400],
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          match.title,
-                          style: GoogleFonts.splineSans(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.visibility,
-                                  size: 16,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${match.views} views',
-                                  style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.schedule,
-                                  size: 16,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  match.date,
-                                  style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Witness the clash of titans in the grand final of ${tournament.name} at ${tournament.location}. ${match.title} in a match that promises spectacular rallies.',
-                          style: TextStyle(
-                            color: Colors.grey[400],
-                            height: 1.5,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (MediaQuery.of(context).size.width >= 1024) ...[
-                    const SizedBox(width: 24),
-                    Row(
-                      children: [
-                        _buildActionButton(Icons.favorite, 'Save'),
-                        const SizedBox(width: 12),
-                        _buildActionButton(Icons.share, 'Share'),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildActionButton(IconData icon, String label) {
-    return ElevatedButton.icon(
-      onPressed: () {},
-      icon: Icon(icon, size: 20),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF182634),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        side: const BorderSide(color: Color(0xFF223649)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-}
-
-class UpNextSection extends StatelessWidget {
-  const UpNextSection({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: filterController,
-      builder: (context, _) {
-        final filteredMatches = filterController.filteredMatches;
-
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 1. Tag & Tournament Header
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D7FF2).withValues(alpha: 0.2),
+                      border: Border.all(
+                        color: const Color(0xFF0D7FF2).withValues(alpha: 0.3),
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                     child: Text(
-                      filteredMatches.isEmpty
-                          ? 'No matches found'
-                          : 'Explore Matches (${filteredMatches.length})',
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.splineSans(
-                        fontSize: 20,
+                      match.tag,
+                      style: const TextStyle(
+                        color: Color(0xFF0D7FF2),
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildNavButton(Icons.chevron_left),
-                      const SizedBox(width: 8),
-                      _buildNavButton(Icons.chevron_right),
-                    ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      tournament.location.isNotEmpty
+                          ? '${tournament.name} • ${tournament.location}'
+                          : tournament.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              if (filteredMatches.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Column(
+              const SizedBox(height: 12),
+
+              // 2. Main Match Title
+              Text(
+                match.title,
+                style: GoogleFonts.splineSans(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  height: 1.15,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 3. YouTube-style Description Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF182634),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF223649)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Stats / Meta Chips
+                    Wrap(
+                      spacing: 20,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 48,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Try adjusting your filters',
-                          style: TextStyle(color: Colors.grey[400]),
-                        ),
+                        if (match.views.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.visibility, size: 16, color: Colors.grey[400]),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${match.views} views',
+                                style: TextStyle(
+                                  color: Colors.grey[300],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (match.date.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.calendar_today, size: 15, color: Colors.grey[400]),
+                              const SizedBox(width: 6),
+                              Text(
+                                match.date,
+                                style: TextStyle(
+                                  color: Colors.grey[300],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (match.durationFormatted.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.timer_outlined, size: 16, color: Color(0xFF0D7FF2)),
+                              const SizedBox(width: 6),
+                              Text(
+                                match.durationFormatted,
+                                style: const TextStyle(
+                                  color: Color(0xFF0D7FF2),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (match.day.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.sports_tennis, size: 16, color: Colors.grey[400]),
+                              const SizedBox(width: 6),
+                              Text(
+                                match.session != null
+                                    ? '${match.day} • Session ${match.session}'
+                                    : match.day,
+                                style: TextStyle(
+                                  color: Colors.grey[300],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
-                  ),
-                )
-              else
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    int crossAxisCount = 1;
-                    if (constraints.maxWidth > 900) {
-                      crossAxisCount = 3;
-                    } else if (constraints.maxWidth > 600) {
-                      crossAxisCount = 2;
-                    }
+                    const SizedBox(height: 14),
+                    const Divider(color: Color(0xFF223649), height: 1),
+                    const SizedBox(height: 14),
 
-                    return GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 20,
-                        mainAxisSpacing: 20,
-                        childAspectRatio: 16 / 12,
+                    // Detailed Match Breakdown
+                    Text(
+                      'Tournament: ${tournament.name} (${tournament.year})\n'
+                      'Location: ${tournament.location.isNotEmpty ? tournament.location : "International"}\n'
+                      'Round: ${match.day}${match.session != null ? " • Session " + match.session.toString() : ""}'
+                      '${match.time.isNotEmpty ? " • Scheduled Time: " + match.time : ""}\n'
+                      '${match.youtubeId != null ? "YouTube Video: https://youtu.be/" + match.youtubeId! : ""}',
+                      style: TextStyle(
+                        color: Colors.grey[300],
+                        height: 1.6,
+                        fontSize: 14,
                       ),
-                      itemCount: filteredMatches.length,
-                      itemBuilder: (context, index) {
-                        return _buildMatchCard(filteredMatches[index]);
-                      },
-                    );
-                  },
+                    ),
+                  ],
                 ),
+              ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildNavButton(IconData icon) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFF223649)),
-      ),
-      child: Icon(icon, color: Colors.grey[400], size: 20),
-    );
-  }
-
-  Widget _buildMatchCard(Match match) {
-    final tournament = filterController.allTournaments.firstWhere(
-      (t) => t.id == match.tournamentId,
-      orElse: () => const Tournament(
-          id: '',
-          name: 'Unknown',
-          year: 0,
-          type: TournamentType.contender,
-          location: ''),
-    );
-    final isSelected = filterController.selectedMatch.id == match.id;
-
-    return GestureDetector(
-      onTap: () => filterController.selectMatch(match),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF0D7FF2)
-                      : const Color(0xFF223649),
-                  width: isSelected ? 2 : 1,
-                ),
-                color: const Color(0xFF182634),
-                image: DecorationImage(
-                  image: NetworkImage(match.imageUrl),
-                  fit: BoxFit.cover,
-                  onError: (exception, stackTrace) {},
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        match.time,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (isSelected)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF0D7FF2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          size: 12,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            match.title,
-            style: TextStyle(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              fontSize: 14,
-              height: 1.2,
-              color: isSelected ? const Color(0xFF0D7FF2) : Colors.white,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF223649),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  match.tag,
-                  style: TextStyle(
-                    color: Colors.grey[300],
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  tournament.name,
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1821,7 +1821,15 @@ class MobileBottomNav extends StatelessWidget {
             children: [
               _buildNavItem(Icons.play_circle, 'Live', isActive: true),
               _buildNavItem(Icons.bookmarks, 'Saved'),
-              _buildNavItem(Icons.person, 'Profile'),
+              _buildNavItem(
+                Icons.terminal,
+                'Diagnostics',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const DiagnosticsScreen()),
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -1829,22 +1837,29 @@ class MobileBottomNav extends StatelessWidget {
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, {bool isActive = false}) {
+  Widget _buildNavItem(IconData icon, String label, {bool isActive = false, VoidCallback? onTap}) {
     final color = isActive ? const Color(0xFF0D7FF2) : const Color(0xFF90ADCB);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

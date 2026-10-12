@@ -12,6 +12,7 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 2,
     'video_offset_seconds': 0,
     'match_time': '19:00',
+    'duration_seconds': 2700,
   },
   {
     'tournament': 'WTT Champions Chongqing',
@@ -26,6 +27,7 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 2,
     'video_offset_seconds': 1800,
     'match_time': '17:30',
+    'duration_seconds': 3300,
   },
   {
     'tournament': 'WTT Champions Chongqing',
@@ -40,6 +42,7 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 1,
     'video_offset_seconds': 600,
     'match_time': '14:00',
+    'duration_seconds': 2400,
   },
   {
     'tournament': 'China Smash',
@@ -54,6 +57,7 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 2,
     'video_offset_seconds': 120,
     'match_time': '18:00',
+    'duration_seconds': 2100,
   },
   {
     'tournament': 'China Smash',
@@ -68,6 +72,7 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 1,
     'video_offset_seconds': 300,
     'match_time': '15:00',
+    'duration_seconds': 4200,
   },
   {
     'tournament': 'WTT Contender Zagreb',
@@ -82,5 +87,6 @@ const List<Map<String, dynamic>> kDefaultMockSchedule = [
     'session': 1,
     'video_offset_seconds': 450,
     'match_time': '16:00',
+    'duration_seconds': 1800,
   },
 ];

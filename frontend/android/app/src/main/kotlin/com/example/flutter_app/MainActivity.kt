@@ -1,5 +1,7 @@
 package com.example.flutter_app
 
+import io.flutter.embedding.android.FlutterActivityLaunchConfigs
+
 import android.os.Bundle
 import android.util.Log
 import com.chaquo.python.Python
@@ -13,6 +15,33 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        init {
+            val libs = listOf(
+                "c++_shared",
+                "avutil",
+                "swscale",
+                "swresample",
+                "avcodec",
+                "avformat",
+                "avfilter",
+                "avdevice",
+                "mpv",
+                "mediakitandroidhelper"
+            )
+            for (lib in libs) {
+                try {
+                    System.loadLibrary(lib)
+                    Log.i("MainActivity", "Pre-loaded native library: lib$lib.so")
+                } catch (e: Throwable) {
+                    Log.w("MainActivity", "Pre-load lib$lib.so: ${e.message}")
+                }
+            }
+        }
+    }
+    override fun getBackgroundMode(): FlutterActivityLaunchConfigs.BackgroundMode {
+        return FlutterActivityLaunchConfigs.BackgroundMode.transparent
+    }
     private val TAG = "MainActivity"
     private val CHANNEL = "wtt/ytdlp"
 
@@ -27,6 +56,15 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "wtt/settings").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getFilesDir" -> result.success(applicationContext.filesDir.absolutePath)
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

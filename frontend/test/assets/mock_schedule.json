@@ -11,7 +11,8 @@
     "day": "Day 4 Finals",
     "session": 2,
     "video_offset_seconds": 0,
-    "match_time": "19:00"
+    "match_time": "19:00",
+    "duration_seconds": 2700
   },
   {
     "tournament": "WTT Champions Chongqing",
@@ -25,7 +26,8 @@
     "day": "Day 4 Finals",
     "session": 2,
     "video_offset_seconds": 15,
-    "match_time": "17:30"
+    "match_time": "17:30",
+    "duration_seconds": 3300
   },
   {
     "tournament": "China Smash",
@@ -39,6 +41,7 @@
     "day": "Day 7 Finals",
     "session": 2,
     "video_offset_seconds": 120,
-    "match_time": "18:00"
+    "match_time": "18:00",
+    "duration_seconds": 2100
   }
 ]

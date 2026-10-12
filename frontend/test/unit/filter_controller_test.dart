@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter_app/services/settings_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/main.dart';
 
@@ -87,6 +89,106 @@ void main() {
 
       controller.toggleType(TournamentType.champions);
       expect(controller.selectedTypes, {TournamentType.smash});
+    });
+
+    test('Feeder tournaments are correctly filtered with TournamentType.feeder', () async {
+      final tContender = const Tournament(id: 't1', name: 'WTT Contender Lagos', year: 2026, type: TournamentType.contender, location: '');
+      final tFeeder = const Tournament(id: 't2', name: 'WTT Feeder Berlin', year: 2026, type: TournamentType.feeder, location: '');
+
+      final m1 = const Match(id: 'm1', title: 'M1', tournamentId: 't1', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+      final m2 = const Match(id: 'm2', title: 'M2', tournamentId: 't2', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+
+      controller.setDebugData([tContender, tFeeder], [m1, m2]);
+
+      // Both visible by default (no filters)
+      expect(controller.availableTournaments.map((t) => t.id), ['t1', 't2']);
+
+      // Select Feeder: ONLY Feeder visible
+      controller.toggleType(TournamentType.feeder);
+      expect(controller.availableTournaments.map((t) => t.id), ['t2']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m2']);
+
+      // Select Contender (both Feeder and Contender active)
+      controller.toggleType(TournamentType.contender);
+      expect(controller.availableTournaments.map((t) => t.id), ['t1', 't2']);
+
+      // Deselect Feeder: ONLY Contender visible
+      controller.toggleType(TournamentType.feeder);
+      expect(controller.availableTournaments.map((t) => t.id), ['t1']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m1']);
+    });
+
+    test('Youth tournaments are filtered out of regular Smash and Contender filters', () async {
+      final tSmash = const Tournament(id: 't1', name: 'China Smash', year: 2026, type: TournamentType.smash, location: '');
+      final tYouthSmash = const Tournament(id: 't2', name: 'China Youth Smash', year: 2026, type: TournamentType.youthContender, location: '');
+      final tContender = const Tournament(id: 't3', name: 'WTT Contender Lagos', year: 2026, type: TournamentType.contender, location: '');
+      final tYouthContender = const Tournament(id: 't4', name: 'WTT Youth Star Contender', year: 2026, type: TournamentType.youthContender, location: '');
+
+      final m1 = const Match(id: 'm1', title: 'M1', tournamentId: 't1', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+      final m2 = const Match(id: 'm2', title: 'M2', tournamentId: 't2', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+      final m3 = const Match(id: 'm3', title: 'M3', tournamentId: 't3', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+      final m4 = const Match(id: 'm4', title: 'M4', tournamentId: 't4', date: '', time: '', imageUrl: '', tag: 'Singles', day: 'Day 1');
+
+      controller.setDebugData(
+        [tSmash, tYouthSmash, tContender, tYouthContender],
+        [m1, m2, m3, m4],
+      );
+
+      // Default (no filter): regular tournaments visible, youth hidden
+      expect(controller.availableTournaments.map((t) => t.id), ['t1', 't3']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m1', 'm3']);
+
+      // Select Smash: ONLY regular Smash visible
+      controller.toggleType(TournamentType.smash);
+      expect(controller.availableTournaments.map((t) => t.id), ['t1']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m1']);
+
+      // Select Contender (now Smash & Contender): ONLY regular Smash and regular Contender visible
+      controller.toggleType(TournamentType.contender);
+      expect(controller.availableTournaments.map((t) => t.id), ['t1', 't3']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m1', 'm3']);
+
+      // Deselect Smash: ONLY regular Contender visible
+      controller.toggleType(TournamentType.smash);
+      expect(controller.availableTournaments.map((t) => t.id), ['t3']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m3']);
+
+      // Select Youth: ONLY youth tournaments visible
+      controller.toggleType(TournamentType.contender); // Deselect contender
+      controller.toggleType(TournamentType.youthContender);
+      expect(controller.availableTournaments.map((t) => t.id), ['t2', 't4']);
+      expect(controller.filteredMatches.map((m) => m.id), ['m2', 'm4']);
+    });
+
+    test('Tournament type filtering persists to SettingsService and reloads in new controller', () async {
+      final tempDir = Directory.systemTemp.createTempSync('filter_test_');
+      final tempFile = File('${tempDir.path}/test_settings.json');
+      SettingsService.instance.customSettingsPath = tempFile.path;
+
+      try {
+        controller.toggleType(TournamentType.smash);
+        controller.toggleType(TournamentType.champions);
+
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        final newController = FilterController();
+        expect(newController.selectedTypes, isEmpty);
+
+        await newController.loadSettings();
+        expect(newController.selectedTypes, {TournamentType.smash, TournamentType.champions});
+
+        newController.reset();
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        final thirdController = FilterController();
+        await thirdController.loadSettings();
+        expect(thirdController.selectedTypes, isEmpty);
+      } finally {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+        SettingsService.instance.customSettingsPath = null;
+      }
     });
 
     test('Singles and Doubles toggles update filtered matches', () {
@@ -217,6 +319,59 @@ void main() {
       expect(controller.showSingles, isTrue);
       expect(controller.showDoubles, isFalse);
       expect(controller.searchQuery, isEmpty);
+    });
+    test('Match duration formatting and parsing', () {
+      const matchWithMinutes = Match(
+        id: 'm1',
+        title: 'Player A vs Player B',
+        tournamentId: 't1',
+        date: '2026-04-01',
+        time: '19:00',
+        imageUrl: 'https://example.com/1.jpg',
+        tag: 'Singles',
+        day: 'Day 1',
+        durationSeconds: 2700,
+      );
+      expect(matchWithMinutes.durationFormatted, '45m');
+
+      const matchWithHours = Match(
+        id: 'm2',
+        title: 'Player C vs Player D',
+        tournamentId: 't1',
+        date: '2026-04-01',
+        time: '20:00',
+        imageUrl: 'https://example.com/2.jpg',
+        tag: 'Singles',
+        day: 'Day 1',
+        durationSeconds: 4500,
+      );
+      expect(matchWithHours.durationFormatted, '1h 15m');
+
+      const matchExactHours = Match(
+        id: 'm3',
+        title: 'Player E vs Player F',
+        tournamentId: 't1',
+        date: '2026-04-01',
+        time: '21:00',
+        imageUrl: 'https://example.com/3.jpg',
+        tag: 'Singles',
+        day: 'Day 1',
+        durationSeconds: 3600,
+      );
+      expect(matchExactHours.durationFormatted, '1h');
+
+      const matchZero = Match(
+        id: 'm4',
+        title: 'Player G vs Player H',
+        tournamentId: 't1',
+        date: '2026-04-01',
+        time: '22:00',
+        imageUrl: 'https://example.com/4.jpg',
+        tag: 'Singles',
+        day: 'Day 1',
+        durationSeconds: 0,
+      );
+      expect(matchZero.durationFormatted, '');
     });
   });
 }
