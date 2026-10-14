@@ -33,6 +33,21 @@
     "tournament": "China Smash",
     "year": 2025,
     "location": "Beijing, China",
+    "team_a": "Wang Chuqin",
+    "team_b": "Liang Jingkun",
+    "upload_date": "2025-10-06T14:00:00Z",
+    "youtube_id": "test_yt_top",
+    "is_doubles": false,
+    "day": "Day 7 Finals",
+    "session": 2,
+    "video_offset_seconds": 60,
+    "match_time": "16:00",
+    "duration_seconds": 1800
+  },
+  {
+    "tournament": "China Smash",
+    "year": 2025,
+    "location": "Beijing, China",
     "team_a": "Lin Shidong",
     "team_b": "Ma Long",
     "upload_date": "2025-10-06T12:00:00Z",
@@ -43,5 +58,20 @@
     "video_offset_seconds": 120,
     "match_time": "18:00",
     "duration_seconds": 2100
+  },
+  {
+    "tournament": "China Smash",
+    "year": 2025,
+    "location": "Beijing, China",
+    "team_a": "Fan Zhendong",
+    "team_b": "Xiang Peng",
+    "upload_date": "2025-10-06T10:00:00Z",
+    "youtube_id": "test_yt_bottom",
+    "is_doubles": false,
+    "day": "Day 7 Finals",
+    "session": 2,
+    "video_offset_seconds": 180,
+    "match_time": "20:00",
+    "duration_seconds": 1500
   }
 ]

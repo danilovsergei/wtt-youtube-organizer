@@ -453,14 +453,6 @@ class FilterController extends ChangeNotifier {
     } else {
       _selectedTournamentId = tournamentId;
       _expandedDayKeys?.clear();
-      if (tournamentId.isNotEmpty) {
-        final matches = _allMatches.where((m) => m.tournamentId == tournamentId);
-        for (final m in matches) {
-          final groupKey = m.session != null ? '${m.day} - Round ${m.session}' : m.day;
-          _safeExpandedDayKeys.add('${tournamentId}_$groupKey');
-          _safeExpandedDayKeys.add('${tournamentId}_${m.day}');
-        }
-      }
     }
     notifyListeners();
   }

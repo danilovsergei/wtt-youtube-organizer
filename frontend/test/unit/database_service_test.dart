@@ -35,7 +35,7 @@ void main() {
       await localDb.initialize();
 
       final schedule = await localDb.fetchTournamentSchedule();
-      expect(schedule.length, 3);
+      expect(schedule.length, 5);
       expect(schedule[0]['tournament'], 'WTT Champions Chongqing');
       expect(schedule[2]['tournament'], 'China Smash');
     });
@@ -84,7 +84,7 @@ void main() {
 
       expect(controller.isLoading, isFalse);
       expect(controller.allTournaments.length, 2); // WTT Champions Chongqing 2026 & China Smash 2025
-      expect(controller.allMatches.length, 3);
+      expect(controller.allMatches.length, 5);
 
       final chongqing = controller.allTournaments.firstWhere((t) => t.name == 'WTT Champions Chongqing');
       expect(chongqing.year, 2026);

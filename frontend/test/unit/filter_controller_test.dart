@@ -169,7 +169,7 @@ void main() {
         controller.toggleType(TournamentType.smash);
         controller.toggleType(TournamentType.champions);
 
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 200));
 
         final newController = FilterController();
         expect(newController.selectedTypes, isEmpty);
@@ -178,7 +178,7 @@ void main() {
         expect(newController.selectedTypes, {TournamentType.smash, TournamentType.champions});
 
         newController.reset();
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 200));
 
         final thirdController = FilterController();
         await thirdController.loadSettings();

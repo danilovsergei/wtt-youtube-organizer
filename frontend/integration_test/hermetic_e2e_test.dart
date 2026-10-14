@@ -161,12 +161,41 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // 6. Verify tournament opened and its match ("Lin Shidong vs Ma Long") appears in sidebar
-    final matchCardFinder = find.descendant(of: find.byType(Sidebar), matching: find.text('Lin Shidong vs Ma Long')).first;
-    expect(matchCardFinder, findsWidgets, reason: 'Match from selected tournament should be displayed in sidebar');
+    // 6. Anti-spoiler invariant: All tournament days must be COLLAPSED by default
+    expect(
+      find.text('Lin Shidong vs Ma Long'),
+      findsNothing,
+      reason: 'Matches must be collapsed by default to prevent spoilers',
+    );
+    final dayHeaderFinder = find.descendant(
+      of: find.byType(Sidebar),
+      matching: find.widgetWithText(TvFocusable, 'Day 7 Finals - Round 2'),
+    );
+    expect(dayHeaderFinder, findsOneWidget, reason: 'Day 7 Finals header should be visible in collapsed state');
 
-    // 7. Select the match: Tap on "Lin Shidong vs Ma Long" (configured with offsetSeconds = 120)
-    await tester.tap(matchCardFinder);
+    // 7. Expand Day 7 Finals using TV remote (Select / Enter):
+    // Focus Day 7 Finals if not already focused, then trigger expand
+    await tester.ensureVisible(dayHeaderFinder);
+    await tester.tap(dayHeaderFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify Day 7 Finals expanded and all matches appear (with Lin Shidong vs Ma Long in the middle):
+    expect(find.text('Wang Chuqin vs Liang Jingkun'), findsOneWidget);
+    expect(find.text('Lin Shidong vs Ma Long'), findsOneWidget);
+    expect(find.text('Fan Zhendong vs Xiang Peng'), findsOneWidget);
+
+    // 8. Navigate with remote (D-pad Down) to the match in the middle and select it:
+    // Arrow Down 1: Move to first match ("Wang Chuqin vs Liang Jingkun")
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    // Arrow Down 2: Move to match in the middle ("Lin Shidong vs Ma Long")
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    // Press Select on remote to play the match in the middle
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
