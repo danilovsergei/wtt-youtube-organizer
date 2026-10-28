@@ -36,7 +36,9 @@ class LinuxYtDlpService implements YtDlpService {
       debugPrint('Warning: Failed to query yt-dlp version: $e');
     }
 
-    final result = await Process.run(ytdlpPath, [
+    // Run with --force-ipv4 (-4) to prevent IPv6 client binding that triggers HTTP 403 on dual-stack networks
+    var result = await Process.run(ytdlpPath, [
+      '-4',
       '-j',
       'https://www.youtube.com/watch?v=$youtubeId',
     ]);

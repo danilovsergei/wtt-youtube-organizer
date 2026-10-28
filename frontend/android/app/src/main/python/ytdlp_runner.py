@@ -16,7 +16,7 @@ def extract_stream_metadata(youtube_id):
         "extract_flat": False,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "default"],
+                "player_client": ["tv_embedded", "web", "default"],
             }
         },
     }

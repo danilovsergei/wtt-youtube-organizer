@@ -8,6 +8,7 @@ class TestYtDlpService implements YtDlpService {
   final Map<String, String> mockHttpHeaders;
   final Map<String, VideoStreamMetadata> _customResponses = {};
   Duration? responseDelay;
+  Object? mockError;
 
   TestYtDlpService({
     this.localVideoPath,
@@ -46,6 +47,9 @@ class TestYtDlpService implements YtDlpService {
 
   @override
   Future<VideoStreamMetadata> getVideoStreamMetadata(String youtubeId) async {
+    if (mockError != null) {
+      throw mockError!;
+    }
     if (_customResponses.containsKey(youtubeId)) {
       return _customResponses[youtubeId]!;
     }

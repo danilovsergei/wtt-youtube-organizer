@@ -154,6 +154,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   YtStreamInfo? _selectedStream;
   String? _audioUrl;
   bool _isLoadingVideo = false;
+  String? _errorMessage;
   bool _hasStarted = false;
   bool _showTvControls = false;
   Timer? _tvControlsTimer;
@@ -364,7 +365,15 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
       _logPlayer('[AUDIO_PARAMS] format=${ap.format}, rate=${ap.sampleRate}, channels=${ap.channels}');
     });
     _player.stream.buffering.listen((b) => _logPlayer('[BUFFER_EVENT] isBuffering=$b'));
-    _player.stream.error.listen((e) => _logPlayer('[ERROR_EVENT] error=$e'));
+    _player.stream.error.listen((e) {
+      _logPlayer('[ERROR_EVENT] error=$e');
+      if (mounted) {
+        setState(() {
+          _isLoadingVideo = false;
+          _errorMessage = e.toString();
+        });
+      }
+    });
     _syncDebugTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _logPlayer('[PLAY_CLOCK] pos=${_player.state.position.inSeconds}s / ${_player.state.duration.inSeconds}s, play=${_player.state.playing}, buf=${_player.state.buffering}');
     });
@@ -420,6 +429,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
       if (widget.youtubeId != null) {
         _hasStarted = true;
         setState(() {
+          _errorMessage = null;
           _isLoadingVideo = true;
         });
         _loadVideo(widget.youtubeId!, widget.offsetSeconds);
@@ -448,6 +458,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   }
 
   void _loadVideo(String youtubeId, int startSeconds, [YtStreamInfo? specificStream]) async {
+    _errorMessage = null;
     _logPlayer('_loadVideo START: yt=$youtubeId, offset=${startSeconds}s, specific=${specificStream?.height}p');
     
     final isHeadless = WidgetsBinding.instance.runtimeType.toString().contains('Automated');
@@ -541,7 +552,10 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         await _applyNativeSurfaceWid(_nativeSurfaceWid!);
       }
       await _player.open(
-        Media(_selectedStream!.url),
+        Media(
+          _selectedStream!.url,
+          httpHeaders: metadata.httpHeaders,
+        ),
         play: false,
       );
       _logPlayer('_player.open completed!');
@@ -641,7 +655,16 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
       } catch (_) {}
     } catch (e, stack) {
       _logPlayer('EXCEPTION in _loadVideo: $e\n$stack');
-      if (mounted) setState(() => _isLoadingVideo = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingVideo = false;
+          if (e is ProcessException) {
+            _errorMessage = e.message.isNotEmpty ? e.message : e.toString();
+          } else {
+            _errorMessage = e.toString();
+          }
+        });
+      }
     }
   }
 
@@ -913,8 +936,97 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
               ),
             ),
 
+          if (_errorMessage != null)
+            Positioned.fill(
+              child: Container(
+                key: const Key('video_error_overlay'),
+                padding: const EdgeInsets.all(24),
+                color: Colors.black.withValues(alpha: 0.92),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E2E),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFE53935),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE53935).withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: Color(0xFFEF5350),
+                                size: 28,
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Playback / Extraction Error',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SelectableText(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              color: Color(0xFFFFCDD2),
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _errorMessage = null;
+                                    _isLoadingVideo = true;
+                                  });
+                                  _loadVideo(widget.youtubeId!, widget.offsetSeconds);
+                                },
+                                icon: const Icon(Icons.refresh, size: 16, color: Colors.white),
+                                label: const Text('Retry', style: TextStyle(color: Colors.white)),
+                                style: TextButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE53935),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             // TV Controls & Progress Bar Overlay
-            if (!_isLoadingVideo && (_showTvControls || !_player.state.playing)) ...[
+            if (!_isLoadingVideo && _errorMessage == null && (_showTvControls || !_player.state.playing)) ...[
               Builder(
                 builder: (context) {
                   final h = _player.state.height ?? _selectedStream?.height ?? 1080;
