@@ -1,4 +1,5 @@
 import 'services/settings_service.dart';
+import 'services/playback_progress_service.dart';
 import 'widgets/diagnostics_screen.dart';
 import 'widgets/tv_focusable.dart';
 import 'dart:io';
@@ -50,6 +51,7 @@ Future<void> main([List<String>? args]) async {
 
   await DatabaseService.instance.initialize();
   await filterController.loadSettings();
+  await PlaybackProgressService.instance.loadProgress();
   if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
     (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {
       debugPrint('Chaquopy yt-dlp auto-update: $status');
@@ -326,7 +328,8 @@ class FilterController extends ChangeNotifier {
       final offsetSeconds = row['video_offset_seconds'] as int?;
       final durationSeconds = row['duration_seconds'] as int?;
       final session = row['session'] as int?;
-      final id = (row['match_id'] ?? row['id'])?.toString() ?? 'm_${_allMatches.length}';
+      final id = (row['match_id'] ?? row['id'])?.toString() ??
+          (youtubeId != null ? '${youtubeId}_${offsetSeconds ?? 0}' : 'm_${_allMatches.length}');
 
       if (!_allMatches.any((m) => m.id == id && m.tournamentId == tKey)) {
         _allMatches.add(Match(
@@ -400,8 +403,11 @@ class FilterController extends ChangeNotifier {
       final durationSeconds = row['duration_seconds'] as int?;
       final session = row['session'] as int?;
 
+      final matchId = (row['match_id'] ?? row['id'])?.toString() ??
+          (youtubeId != null ? '${youtubeId}_${offsetSeconds ?? 0}' : 'm_${matchCounter++}');
+
       matches.add(Match(
-        id: 'm_${matchCounter++}',
+        id: matchId,
         title: _formatMatchTitle(row),
         tournamentId: tKey,
         date:
@@ -1607,57 +1613,109 @@ class _SidebarState extends State<Sidebar> {
                                                           .selectedMatch
                                                           .id ==
                                                       match.id;
-                                                  return TvFocusable(
-                                                    focusNode: isMatchSelected ? filterController.currentMatchFocusNode : null,
-                                                    onRight: isMatchSelected ? () => filterController.focusPlayButton() : null,
-                                                    margin: const EdgeInsets.only(bottom: 4),
-                                                    padding: const EdgeInsets.symmetric(
-                                                      vertical: 8,
-                                                      horizontal: 8,
-                                                    ),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    autoFocus: index == 0,
-                                                    normalBackgroundColor: isMatchSelected
-                                                        ? const Color(0xFF182634)
-                                                        : Colors.transparent,
-                                                    normalBorderColor: isMatchSelected
-                                                        ? const Color(0xFF0D7FF2)
-                                                        : Colors.transparent,
-                                                    onTap:
-                                                        () => filterController
-                                                            .selectMatch(match),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets.only(left: 14),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            Icons.play_circle_outline,
-                                                            size: 16,
-                                                            color: isMatchSelected
-                                                                ? const Color(0xFF0D7FF2)
-                                                                : Colors.grey[400],
-                                                          ),
-                                                          const SizedBox(width: 8),
-                                                          Expanded(
-                                                            child: Text(
-                                                              match.title,
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                color: isMatchSelected
-                                                                    ? Colors.white
-                                                                    : Colors.grey[300],
-                                                                fontWeight: isMatchSelected
-                                                                    ? FontWeight.bold
-                                                                    : FontWeight.normal,
+                                                  return ListenableBuilder(
+                                                    listenable: PlaybackProgressService.instance,
+                                                    builder: (context, _) {
+                                                      final progressRatio = PlaybackProgressService.instance.getProgressRatio(
+                                                        matchId: match.id,
+                                                        defaultOffsetSeconds: match.offsetSeconds ?? 0,
+                                                        matchDurationSeconds: match.durationSeconds,
+                                                        youtubeId: match.youtubeId,
+                                                      );
+                                                      return TvFocusable(
+                                                        focusNode: isMatchSelected ? filterController.currentMatchFocusNode : null,
+                                                        onRight: isMatchSelected ? () => filterController.focusPlayButton() : null,
+                                                        margin: const EdgeInsets.only(bottom: 4),
+                                                        padding: const EdgeInsets.symmetric(
+                                                          vertical: 8,
+                                                          horizontal: 8,
+                                                        ),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                        autoFocus: index == 0,
+                                                        normalBackgroundColor: isMatchSelected
+                                                            ? const Color(0xFF182634)
+                                                            : Colors.transparent,
+                                                        normalBorderColor: isMatchSelected
+                                                            ? const Color(0xFF0D7FF2)
+                                                            : Colors.transparent,
+                                                        onTap:
+                                                            () => filterController
+                                                                .selectMatch(match),
+                                                        child: Padding(
+                                                          padding: const EdgeInsets.only(left: 14),
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons.play_circle_outline,
+                                                                    size: 16,
+                                                                    color: isMatchSelected
+                                                                        ? const Color(0xFF0D7FF2)
+                                                                        : Colors.grey[400],
+                                                                  ),
+                                                                  const SizedBox(width: 8),
+                                                                  Expanded(
+                                                                    child: Text(
+                                                                      match.title,
+                                                                      style: TextStyle(
+                                                                        fontSize: 12,
+                                                                        color: isMatchSelected
+                                                                            ? Colors.white
+                                                                            : Colors.grey[300],
+                                                                        fontWeight: isMatchSelected
+                                                                            ? FontWeight.bold
+                                                                            : FontWeight.normal,
+                                                                      ),
+                                                                      overflow:
+                                                                          TextOverflow
+                                                                              .ellipsis,
+                                                                    ),
+                                                                  ),
+                                                                  if (progressRatio != null) ...[
+                                                                    const SizedBox(width: 6),
+                                                                    Container(
+                                                                      key: Key('match_progress_badge_${match.id}'),
+                                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                                      decoration: BoxDecoration(
+                                                                        color: const Color(0xFF0D7FF2).withValues(alpha: 0.18),
+                                                                        borderRadius: BorderRadius.circular(4),
+                                                                        border: Border.all(
+                                                                          color: const Color(0xFF0D7FF2).withValues(alpha: 0.5),
+                                                                          width: 0.8,
+                                                                        ),
+                                                                      ),
+                                                                      child: Text(
+                                                                        '${(progressRatio * 100).round()}%',
+                                                                        style: const TextStyle(
+                                                                          fontSize: 10,
+                                                                          fontWeight: FontWeight.w600,
+                                                                          color: Color(0xFF64B5F6),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ],
                                                               ),
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
+                                                              if (progressRatio != null) ...[
+                                                                const SizedBox(height: 5),
+                                                                ClipRRect(
+                                                                  borderRadius: BorderRadius.circular(2),
+                                                                  child: LinearProgressIndicator(
+                                                                    key: Key('match_progress_bar_${match.id}'),
+                                                                    value: progressRatio,
+                                                                    minHeight: 2.5,
+                                                                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                                                                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0D7FF2)),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ],
                                                           ),
-                                                        ],
-                                                      ),
-                                                    ),
+                                                        ),
+                                                      );
+                                                    },
                                                   );
                                                 }),
                                             ],

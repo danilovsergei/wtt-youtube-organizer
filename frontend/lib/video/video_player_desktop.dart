@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'screen_inhibitor.dart';
 import 'video_player_service.dart';
 import 'ytdlp/ytdlp_service.dart';
+import '../services/playback_progress_service.dart';
 
 class InstantPlayOrPauseButton extends StatefulWidget {
   final Player player;
@@ -131,8 +132,9 @@ class _DesktopVideoPlayerWidget extends VideoPlayerWidget {
   State<_DesktopVideoPlayerWidget> createState() => _DesktopVideoPlayerState();
 }
 
-class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
+class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with WidgetsBindingObserver {
   late final Player _player;
+  Timer? _progressSaveTimer;
 
   Duration get _effectiveDuration {
     if (widget.matchDurationSeconds != null && widget.matchDurationSeconds! > 0) {
@@ -348,6 +350,11 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final isHeadlessTest = WidgetsBinding.instance.runtimeType.toString().contains('Automated');
+    if (!isHeadlessTest) {
+      _progressSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveCurrentProgress());
+    }
     _player = Player(
       configuration: const PlayerConfiguration(
         logLevel: MPVLogLevel.v,
@@ -395,6 +402,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
         if (isPlaying) {
           _resetControlsTimer(seconds: 3);
         } else {
+          _saveCurrentProgress();
           _tvControlsTimer?.cancel();
           filterController.focusPlayButton();
         }
@@ -423,6 +431,13 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   void didUpdateWidget(_DesktopVideoPlayerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final matchChanged = widget.matchId != oldWidget.matchId;
+    if (matchChanged) {
+      _saveCurrentProgress(
+        oldMatchId: oldWidget.matchId,
+        oldOffsetSeconds: oldWidget.offsetSeconds,
+        oldDurationSeconds: oldWidget.matchDurationSeconds,
+      );
+    }
     final autoPlayTriggered = !oldWidget.autoPlay && widget.autoPlay;
 
     if (matchChanged || (autoPlayTriggered && !_hasStarted)) {
@@ -438,7 +453,36 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _saveCurrentProgress();
+    }
+  }
+
+  void _saveCurrentProgress({String? oldMatchId, int? oldOffsetSeconds, int? oldDurationSeconds}) {
+    final mId = oldMatchId ?? widget.matchId;
+    final defOffset = oldOffsetSeconds ?? widget.offsetSeconds;
+    final dur = oldDurationSeconds ?? widget.matchDurationSeconds;
+    if (mId == null || mId.isEmpty) return;
+    final currentPos = _player.state.position.inSeconds;
+    if (currentPos >= defOffset) {
+      PlaybackProgressService.instance.saveProgress(
+        matchId: mId,
+        positionSeconds: currentPos,
+        defaultOffsetSeconds: defOffset,
+        matchDurationSeconds: dur,
+        youtubeId: widget.youtubeId,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    _saveCurrentProgress();
+    _progressSaveTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     filterController.showControlsTrigger.removeListener(_handleShowControlsTrigger);
     filterController.playButtonFocusNode.removeListener(_handlePlayButtonFocusChange);
     filterController.progressBarFocusNode.removeListener(_handleProgressBarFocusChange);
@@ -605,11 +649,19 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         } catch (_) {}
       }
 
-      // 5. Seek unified timeline (aligns BOTH video and audio clocks to start offset!)
-      if (startSeconds > 0) {
-        _logPlayer('Seeking unified timeline to ${startSeconds}s...');
+      // 5. Check if user previously watched this match and resume!
+      final resumeOffset = await PlaybackProgressService.instance.getResumePosition(
+        matchId: widget.matchId,
+        defaultOffsetSeconds: startSeconds,
+        matchDurationSeconds: widget.matchDurationSeconds,
+        youtubeId: widget.youtubeId,
+      );
+
+      // Seek unified timeline (aligns BOTH video and audio clocks to target offset!)
+      if (resumeOffset > 0) {
+        _logPlayer('Seeking unified timeline to ${resumeOffset}s (initial=${startSeconds}s)...');
         try {
-          await _player.seek(Duration(seconds: startSeconds));
+          await _player.seek(Duration(seconds: resumeOffset));
         } catch (e) {
           _logPlayer('Initial seek error: $e');
         }
@@ -618,12 +670,12 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
       // 6. Resume synchronized playback
       try {
         await _player.play();
-        _logPlayer('Resumed synchronized playback from ${startSeconds}s');
+        _logPlayer('Resumed synchronized playback from ${resumeOffset}s');
       } catch (_) {}
 
       // 6. Wait until playback has settled at target match offset before revealing screen
-      if (startSeconds > 0) {
-        final minTargetMs = (startSeconds > 2 ? startSeconds - 2 : 0) * 1000;
+      if (resumeOffset > 0) {
+        final minTargetMs = (resumeOffset > 2 ? resumeOffset - 2 : 0) * 1000;
         try {
           await _player.stream.position
               .firstWhere((p) => p.inMilliseconds >= minTargetMs)

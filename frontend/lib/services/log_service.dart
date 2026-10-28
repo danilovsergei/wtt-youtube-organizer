@@ -43,6 +43,8 @@ class LogService extends ChangeNotifier {
     while (_logs.length > maxEntries) {
       _logs.removeFirst();
     }
+    // Print directly to console for visibility in flatpak run and CLI sessions
+    print(entry.toString());
     notifyListeners();
   }
 
