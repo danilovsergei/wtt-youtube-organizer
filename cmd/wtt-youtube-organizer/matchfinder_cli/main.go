@@ -105,6 +105,7 @@ var (
 	excludeProcessed bool
 	cudaDeviceID     int
 	getCookies       bool
+	modelName        string
 )
 
 func getCudaDevices() []string {
@@ -234,7 +235,18 @@ func initDockerVars(extraArgs []string) {
 			}
 		}
 
-		imageName = "geonix/wtt-stream-match-finder-cuda:latest"
+		switch strings.ToLower(modelName) {
+		case "qwen":
+			imageName = "geonix/wtt-stream-match-finder-cuda:qwen"
+		case "mineru":
+			imageName = "geonix/wtt-stream-match-finder-cuda:mineru"
+		default:
+			if strings.TrimSpace(modelName) != "" {
+				imageName = fmt.Sprintf("geonix/wtt-stream-match-finder-cuda:%s", modelName)
+			} else {
+				imageName = "geonix/wtt-stream-match-finder-cuda:mineru"
+			}
+		}
 		dockerDir = "docker/cuda"
 	}
 }
@@ -276,6 +288,7 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.BoolVar(&excludeProcessed, "exclude_processed", false, "When used with --show_new_streams, only show videos not yet processed")
 	flags.IntVar(&cudaDeviceID, "cuda_device_id", -1, "The ID of the CUDA device to use for PyTorch (if multiple are available)")
 	flags.BoolVar(&getCookies, "get_cookies", false, "Run ytdlp-rookie to extract browser cookies and pass them to yt-dlp")
+	flags.StringVar(&modelName, "model", "mineru", "The model to use for extraction (e.g. mineru, qwen)")
 }
 
 // buildContainerArgs constructs the additional arguments to be passed to the Docker container

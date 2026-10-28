@@ -175,56 +175,63 @@ def process_images(image_dir, csv_path, extractor, verify_mode=True):
                 exp_p1 = expected.get('row 1 expected player', '')
                 exp_s1 = str(expected.get('row 1 set score', ''))
                 exp_g1 = str(expected.get('row 1 game score', ''))
-
-                act_p1 = score_result.player1 if score_result.success else ""
-                act_s1 = str(score_result.set1) if score_result.success else ""
-                act_g1 = str(score_result.game1) if score_result.success else ""
-
-                # Handle defaulting -1 (which means could not parse game) as empty string
-                if act_g1 == "-1":
-                    act_g1 = ""
-
-                # Print warning if it matches fuzzily but NOT strictly
-                if normalize_text(exp_p1) != normalize_text(act_p1) and is_similar(exp_p1, act_p1):
-                    print(f"  [HARD-MINING] Row 1 Player strictly mismatched (but fuzzy passed): Exp '{exp_p1}' != Act '{act_p1}'")
-
-                if not is_similar(exp_p1, act_p1):
-                    mismatch_details.append(
-                        f"Row 1 Player: Exp '{exp_p1}' != Act '{act_p1}'")
-                if exp_s1 != act_s1:
-                    mismatch_details.append(
-                        f"Row 1 Set: Exp '{exp_s1}' != Act '{act_s1}'")
-                if exp_g1 != act_g1:
-                    mismatch_details.append(
-                        f"Row 1 Game: Exp '{exp_g1}' != Act '{act_g1}'")
-
                 exp_p2 = expected.get('row 2 expected player 2', '')
                 exp_s2 = str(expected.get('row 2 set score', ''))
                 exp_g2 = str(expected.get('row 2 game score', ''))
 
-                act_p2 = score_result.player2 if score_result.success else ""
-                act_s2 = str(score_result.set2) if score_result.success else ""
-                act_g2 = str(score_result.game2) if score_result.success else ""
+                # If the ground truth expects an EMPTY frame (no scoreboard)
+                if exp_p1.upper() == "EMPTY":
+                    if not score_result.success or (not score_result.player1 and not score_result.player2):
+                        passed = True
+                    else:
+                        mismatch_details.append(
+                            f"Expected EMPTY frame, but model extracted: {score_result.player1} vs {score_result.player2}")
+                else:
+                    act_p1 = score_result.player1 if score_result.success else ""
+                    act_s1 = str(score_result.set1) if score_result.success else ""
+                    act_g1 = str(score_result.game1) if score_result.success else ""
 
-                if act_g2 == "-1":
-                    act_g2 = ""
+                    # Handle defaulting -1 (which means could not parse game) as empty string
+                    if act_g1 == "-1":
+                        act_g1 = ""
 
-                # Print warning if it matches fuzzily but NOT strictly
-                if normalize_text(exp_p2) != normalize_text(act_p2) and is_similar(exp_p2, act_p2):
-                    print(f"  [HARD-MINING] Row 2 Player strictly mismatched (but fuzzy passed): Exp '{exp_p2}' != Act '{act_p2}'")
+                    # Print warning if it matches fuzzily but NOT strictly
+                    if normalize_text(exp_p1) != normalize_text(act_p1) and is_similar(exp_p1, act_p1):
+                        print(f"  [HARD-MINING] Row 1 Player strictly mismatched (but fuzzy passed): Exp '{exp_p1}' != Act '{act_p1}'")
 
-                if not is_similar(exp_p2, act_p2):
-                    mismatch_details.append(
-                        f"Row 2 Player: Exp '{exp_p2}' != Act '{act_p2}'")
-                if exp_s2 != act_s2:
-                    mismatch_details.append(
-                        f"Row 2 Set: Exp '{exp_s2}' != Act '{act_s2}'")
-                if exp_g2 != act_g2:
-                    mismatch_details.append(
-                        f"Row 2 Game: Exp '{exp_g2}' != Act '{act_g2}'")
+                    if not is_similar(exp_p1, act_p1):
+                        mismatch_details.append(
+                            f"Row 1 Player: Exp '{exp_p1}' != Act '{act_p1}'")
+                    if exp_s1 != act_s1:
+                        mismatch_details.append(
+                            f"Row 1 Set: Exp '{exp_s1}' != Act '{act_s1}'")
+                    if exp_g1 != act_g1:
+                        mismatch_details.append(
+                            f"Row 1 Game: Exp '{exp_g1}' != Act '{act_g1}'")
 
-                if not mismatch_details:
-                    passed = True
+                    act_p2 = score_result.player2 if score_result.success else ""
+                    act_s2 = str(score_result.set2) if score_result.success else ""
+                    act_g2 = str(score_result.game2) if score_result.success else ""
+
+                    if act_g2 == "-1":
+                        act_g2 = ""
+
+                    # Print warning if it matches fuzzily but NOT strictly
+                    if normalize_text(exp_p2) != normalize_text(act_p2) and is_similar(exp_p2, act_p2):
+                        print(f"  [HARD-MINING] Row 2 Player strictly mismatched (but fuzzy passed): Exp '{exp_p2}' != Act '{act_p2}'")
+
+                    if not is_similar(exp_p2, act_p2):
+                        mismatch_details.append(
+                            f"Row 2 Player: Exp '{exp_p2}' != Act '{act_p2}'")
+                    if exp_s2 != act_s2:
+                        mismatch_details.append(
+                            f"Row 2 Set: Exp '{exp_s2}' != Act '{act_s2}'")
+                    if exp_g2 != act_g2:
+                        mismatch_details.append(
+                            f"Row 2 Game: Exp '{exp_g2}' != Act '{act_g2}'")
+
+                    if not mismatch_details:
+                        passed = True
             else:
                 mismatch_details.append("No expected data found in CSV")
 
@@ -263,6 +270,9 @@ def main():
                         choices=['true', 'false'],
                         help='Crop images before processing '
                              '(default: false for testdata, true otherwise)')
+    parser.add_argument('--model', type=str, default=os.environ.get("WTT_MODEL", "qwen"),
+                        choices=['qwen', 'mineru'],
+                        help='Model to evaluate: qwen or mineru (default: qwen)')
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -306,7 +316,7 @@ def main():
         except Exception:
             pass
     print(f"Resolved execution device: {device}{dev_name_print}")
-    extractor = ScoreExtractor(backend=backend, device=device)
+    extractor = ScoreExtractor(backend=backend, device=device, model_name=args.model)
 
     if not extractor.initialize():
         print("Failed to initialize model")

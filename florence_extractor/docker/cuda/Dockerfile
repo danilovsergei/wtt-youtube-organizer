@@ -67,6 +67,9 @@ RUN echo "📦 Installing dependencies..." && \
 ENV HF_HOME="/root/.cache/huggingface"
 ENV HF_HUB_OFFLINE=1
 
+ARG MODEL=mineru
+ENV WTT_MODEL=$MODEL
+
 # Clean up wheels to keep image size down
 RUN rm -rf /tmp/wheels
 

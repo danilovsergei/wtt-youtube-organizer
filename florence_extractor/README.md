@@ -1,16 +1,17 @@
-# Qwen Scoreboard Extractor
+# MinerU Scoreboard Extractor
 
-Score extraction and match start finder for table tennis broadcast streams using fine-tuned **Qwen2.5-VL-3B** Vision-Language Model with LoRA adapters.
+Score extraction and match start finder for table tennis broadcast streams using fine-tuned **MinerU 2.5-Pro (1.2B)** Vision-Language Model with LoRA adapters (with backwards-compatible support for Qwen2.5-VL-3B).
 
 ## Architecture & Overview
 
-The extractor leverages **Qwen2.5-VL-3B-Instruct** fine-tuned on curated WTT broadcast frames:
-* **Token-1 Early Escape Hatch:** On empty tables, crowd shots, or player celebrations, the model immediately outputs an empty JSON object `{}` within 2 tokens (~15 ms), preventing hallucinations.
-* **Character-Pipe Transcriptions:** Player names are transcribed with character pipe delimiters (e.g. `K|U|A|I | M|A|N`) to eliminate language-model spelling hallucinations on foreign names.
+The production extractor leverages **opendatalab/MinerU2.5-Pro-2605-1.2B** fine-tuned on curated WTT broadcast frames:
+* **Lightweight & High Efficiency:** 1.2B parameters requiring only **~2.6 GB VRAM** during inference (allowing 3–4 parallel stream workers on an RTX 5070 Ti).
+* **Early Null-Branch Escape Hatch:** On empty tables, crowd shots, or player celebrations, the model immediately outputs an empty JSON object `{}` within 2 tokens (~15 ms), preventing hallucinations.
+* **Character-Pipe Transcriptions:** Player names are transcribed with character pipe delimiters (e.g. `W|E|N| |R|U|I|B|O`) to eliminate language-model spelling autocorrect on foreign names.
 * **Optical Conditioning Pipeline:** 
   1. Luminance CLAHE dynamically expands contrast on washed-out graphics.
   2. 2.0x horizontal anamorphic stretch expands compressed character glyphs across visual patches.
-  3. 28px patch-grid alignment (height 112, width multiple of 28) matches Qwen's Vision Transformer (ViT) patch structure.
+  3. 28px patch-grid alignment (height 112, width multiple of 28) matches Vision Transformer (ViT) patch structure.
 
 ## Usage
 
@@ -20,7 +21,7 @@ Pre-built Docker image with NVIDIA GPU acceleration via CUDA:
 
 ```bash
 cd florence_extractor/docker/cuda
-python3 build.py
+python3 build.py --model mineru
 ```
 
 The Go CLI (`wtt-youtube-organizer matchfinder`) automatically runs this container with:
@@ -37,14 +38,17 @@ source qwen_venv/bin/activate
 pip install torch torchvision transformers peft qwen-vl-utils opencv-python-headless yt-dlp
 ```
 
-#### 2. Train / Fine-Tune Qwen LoRA
+#### 2. Train / Fine-Tune MinerU LoRA
 ```bash
-./train_qwen.sh
+./train_mineru.sh
+# or: python3 train_mineru.py
 ```
 This automatically:
-1. Prepares `qwen_train.json` and `qwen_val.json` from `test_data_sample.csv` (using grouped 85/15 train/val split).
-2. Runs LoRA SFT training using Swift/Transformers in `bfloat16`.
-3. Outputs checkpoints to `output/qwen2.5-vl-3b-wtt-lora/`.
+1. Prepares JSON datasets from `test_data_sample.csv` (using grouped 85/15 train/val split).
+2. Runs LoRA SFT training using ms-swift in `bfloat16`.
+3. Outputs checkpoints to `output/mineru2.5-pro-1.2b-wtt-lora/`.
+
+*(To train legacy Qwen2.5-VL instead, run `./train_qwen.sh`).*
 
 #### 3. Parse YouTube Video
 ```bash
@@ -60,7 +64,7 @@ python3 match_start_finder.py --local_video "/path/to/video.mp4" \
 
 ## Hermetic Testing (No ML / No Video Downloads)
 
-To instantly test changes to the match-finding logic (binary search, gap ignoring, phase transitions) without the heavy overhead of downloading videos or running Qwen / PyTorch, use the hermetic testing mode with a pre-extracted "golden dataset":
+To instantly test changes to the match-finding logic (binary search, gap ignoring, phase transitions) without downloading videos or running PyTorch, use the hermetic testing mode with a pre-extracted "golden dataset":
 
 ```bash
 python match_start_finder.py \
@@ -106,13 +110,15 @@ python florence_extractor/testing/generate_golden_testdata.py \
 ```
 florence_extractor/
 ├── match_start_finder.py       # Main video parser and match finder
-├── prod_video_processor.py     # Production Qwen2.5-VL scoreboard processor
+├── prod_video_processor.py     # Production MinerU / Qwen scoreboard processor
 ├── prepare_qwen_dataset.py     # Dataset formatting & prompt builder
-├── train_qwen.sh               # LoRA fine-tuning training script
+├── train_mineru.sh             # MinerU LoRA fine-tuning training script
+├── train_mineru.py             # MinerU Python training launcher
+├── train_qwen.sh               # Legacy Qwen LoRA fine-tuning script
 ├── add_empty_frames.py         # Negative sample ingestion & enhancement
 ├── test_data_sample.csv        # Golden dataset catalog
 ├── testdata/                   # Golden crop images (positives & negatives)
-├── output/                     # Saved Qwen LoRA checkpoints
+├── output/                     # Saved LoRA checkpoints (mineru & qwen)
 └── docker/
     └── cuda/                   # Production CUDA Docker image & build script
 ```

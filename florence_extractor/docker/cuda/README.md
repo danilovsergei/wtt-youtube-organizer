@@ -1,6 +1,6 @@
-# Qwen Extractor - CUDA Docker Environment
+# MinerU Extractor - CUDA Docker Environment
 
-This directory contains the Docker configuration for running the Qwen2.5-VL Table Tennis score extractor using **NVIDIA GPUs** via CUDA acceleration.
+This directory contains the Docker configuration for running the MinerU 2.5-Pro (1.2B) Table Tennis score extractor using **NVIDIA GPUs** via CUDA acceleration (with backward-compatible support for Qwen2.5-VL).
 
 ## System Prerequisites
 
@@ -20,7 +20,7 @@ sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 ```
 
-3. ** Optional Configure Docker and Systemd Cgroups:**
+3. **Optional Configure Docker and Systemd Cgroups:**
 By default, some modern Linux kernels enforce strict `systemd` cgroups isolation which blocks GPU driver passthrough. You must tell the runtime to bypass legacy cgroups.
 ```bash
 sudo sed -i 's/^#no-cgroups = false/no-cgroups = true/;' /etc/nvidia-container-runtime/config.toml
@@ -44,9 +44,16 @@ docker run --rm --gpus all ubuntu nvidia-smi
 
 You can build the image locally using the provided build script:
 ```bash
+# Default: builds MinerU 2.5-Pro image
 python3 build.py
+
+# Or explicitly specify model:
+python3 build.py --model mineru
+
+# To build legacy Qwen image:
+python3 build.py --model qwen
 ```
-This builds an image tagged as `geonix/wtt-stream-match-finder-cuda:latest`.
+This builds and tags the image as `geonix/wtt-stream-match-finder-cuda:mineru` (and `:latest`).
 
 ---
 
@@ -58,11 +65,12 @@ The Go CLI automatically wraps and executes this container when it detects an NV
 ```bash
 docker run --rm --privileged --gpus all \
   -v /tmp:/output \
-  geonix/wtt-stream-match-finder-cuda:latest \
+  -v ~/.config/wtt-youtube-organizer/cache:/root/.cache/huggingface \
+  geonix/wtt-stream-match-finder-cuda:mineru \
   --youtube_video "https://www.youtube.com/watch?v=PRYIR0Ays1w" \
   --output_json_file /output/results.json \
   --cuda_device_id 0
 ```
 
 ### Multi-GPU Systems
-If your host machine has multiple GPUs (e.g., a display Quadro and a compute 1080 Ti), you **must** specify the `--cuda_device_id` flag
+If your host machine has multiple GPUs (e.g., a display Quadro and a compute 5070 Ti), you **must** specify the `--cuda_device_id` flag.

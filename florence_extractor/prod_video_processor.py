@@ -100,47 +100,89 @@ def get_device(args):
 
 
 
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2VLForConditionalGeneration, AutoProcessor
 from peft import PeftModel
 from qwen_vl_utils import process_vision_info
 
 class ScoreExtractor:
-    """Handles score extraction using Qwen2.5-VL-3B conversational VLM."""
+    """Handles score extraction using conversational VLMs (Qwen2.5-VL or MinerU)."""
 
-    def __init__(self, backend: str = None, device: str = 'cpu'):
+    def __init__(self, backend: str = None, device: str = 'cpu', model_name: str = None):
+        import os
         self.model = None
         self.processor = None
         self.device = device
+        self.model_name = (model_name or os.environ.get("WTT_MODEL", "qwen")).lower()
         self._initialized = False
 
     def initialize(self) -> bool:
-        """Load the fine-tuned Qwen2.5-VL model with LoRA adapters."""
+        """Load the fine-tuned VLM model (Qwen or MinerU) with LoRA adapters."""
         if self._initialized:
             return True
             
-        print(f'Loading Fine-Tuned Qwen2.5-VL-3B-Instruct LoRA model (PyTorch on {self.device})...')
-        try:
-            model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-            import os
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            lora_dir = os.path.join(base_dir, "output", "qwen2.5-vl-3b-wtt-lora", "v16-20261005-112411", "checkpoint-1287")
-            
-            # We strictly load in bfloat16 to optimize for RTX 5070 Ti (Blackwell) VRAM
-            base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                model_id,
-                torch_dtype=torch.bfloat16,
-                device_map=self.device
-            )
-            self.model = PeftModel.from_pretrained(base_model, lora_dir)
-            self.model.eval()
-            
-            self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=112 * 28 * 28, max_pixels=768 * 28 * 28)
-            self._initialized = True
-            print('Qwen LoRA model loaded successfully.')
-            return True
-        except Exception as e:
-            print(f'Error loading Qwen LoRA model: {e}')
-            return False
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        if self.model_name == "mineru":
+            print(f'Loading MinerU 2.5-Pro (1.2B) model (PyTorch on {self.device})...')
+            try:
+                model_id = "opendatalab/MinerU2.5-Pro-2605-1.2B"
+                local_cache = os.path.expanduser("~/.cache/modelscope/models/opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots/master")
+                if os.path.exists(local_cache):
+                    model_id = local_cache
+                    
+                lora_root = os.path.join(base_dir, "output", "mineru2.5-pro-1.2b-wtt-lora")
+                lora_dir = None
+                if os.path.exists(lora_root):
+                    checkpoints = []
+                    for root, dirs, files in os.walk(lora_root):
+                        if "adapter_config.json" in files:
+                            checkpoints.append(root)
+                    if checkpoints:
+                        checkpoints.sort(key=lambda x: os.path.getmtime(x))
+                        lora_dir = checkpoints[-1]
+
+                base_model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model_id,
+                    torch_dtype=torch.bfloat16,
+                    device_map=self.device
+                )
+                if lora_dir:
+                    print(f"Loading MinerU LoRA adapter from {lora_dir}...")
+                    self.model = PeftModel.from_pretrained(base_model, lora_dir)
+                else:
+                    print("Using base MinerU model (no LoRA adapter found yet)...")
+                    self.model = base_model
+
+                self.model.eval()
+                self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=112 * 28 * 28, max_pixels=768 * 28 * 28)
+                self._initialized = True
+                print('MinerU model loaded successfully.')
+                return True
+            except Exception as e:
+                print(f'Error loading MinerU model: {e}')
+                return False
+        else:
+            print(f'Loading Fine-Tuned Qwen2.5-VL-3B-Instruct LoRA model (PyTorch on {self.device})...')
+            try:
+                model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+                lora_dir = os.path.join(base_dir, "output", "qwen2.5-vl-3b-wtt-lora", "v16-20261005-112411", "checkpoint-1287")
+                
+                base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                    model_id,
+                    torch_dtype=torch.bfloat16,
+                    device_map=self.device
+                )
+                self.model = PeftModel.from_pretrained(base_model, lora_dir)
+                self.model.eval()
+                
+                self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=112 * 28 * 28, max_pixels=768 * 28 * 28)
+                self._initialized = True
+                print('Qwen LoRA model loaded successfully.')
+                return True
+            except Exception as e:
+                print(f'Error loading Qwen LoRA model: {e}')
+                return False
 
     def extract_score(self, pil_image: Image.Image) -> ScoreResult:
         """Extracts the scoreboard data using the fine-tuned JSON format."""
@@ -193,7 +235,7 @@ class ScoreExtractor:
         edge_density = np.sum(edges > 0) / edges.size
         
         # Real scoreboards have variance > 1900 and edge > 0.05. Empty crowds are < 800 and < 0.02.
-        if variance < 1500 or edge_density < 0.035:
+        if variance < 800 and edge_density < 0.02:
             return ScoreResult(success=False, error=f"No scoreboard detected. Variance: {variance:.1f}, Edges: {edge_density:.4f}")
             
         INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image.
@@ -249,13 +291,19 @@ If NO scoreboard is visible in the image, output an empty JSON object: {}"""
         else:
             cleaned_json_str = "{}"
 
+        def clean_player_name(raw_name: str) -> str:
+            # Remove pipe characters and normalize any multiple spaces into a single space
+            name = str(raw_name).replace("|", "")
+            return re.sub(r'\s+', ' ', name).strip()
+
         def is_valid_player_name(name: str) -> bool:
-            name = name.strip().upper()
+            name = clean_player_name(name).upper()
             if not name:
                 return False
-            if len(name) > 30:
+            if len(name) > 35:
                 return False
-            if len(name.split()) > 4:
+            max_words = 8 if "/" in name else 4
+            if len(name.split()) > max_words:
                 return False
             banned = ["THE", "BEAUTIFUL", "PERFORMANCE", "LIVE", "SESSION", "TABLE", "TENNIS", "WTT", "FEEDER", "CONTENDER", "SMASH", "STAR", "CHAMPION", "MEN", "WOMEN", "SINGLES", "DOUBLES", "QUALIFYING", "VS", "SUBSCRIBE"]
             for word in name.split():
@@ -265,8 +313,8 @@ If NO scoreboard is visible in the image, output an empty JSON object: {}"""
 
         try:
             data = json.loads(cleaned_json_str)
-            p1 = str(data.get("row_1_name", "")).replace("|", "")
-            p2 = str(data.get("row_2_name", "")).replace("|", "")
+            p1 = clean_player_name(data.get("row_1_name", ""))
+            p2 = clean_player_name(data.get("row_2_name", ""))
             
             if not p1 and not p2:
                 return ScoreResult(
@@ -297,8 +345,8 @@ If NO scoreboard is visible in the image, output an empty JSON object: {}"""
             if match:
                 try:
                     data = json.loads(match.group(0))
-                    p1 = str(data.get("row_1_name", "")).replace("|", "")
-                    p2 = str(data.get("row_2_name", "")).replace("|", "")
+                    p1 = clean_player_name(data.get("row_1_name", ""))
+                    p2 = clean_player_name(data.get("row_2_name", ""))
                     
                     is_valid = is_valid_player_name(p1) and is_valid_player_name(p2)
                     
@@ -316,8 +364,10 @@ If NO scoreboard is visible in the image, output an empty JSON object: {}"""
                     pass
             return ScoreResult(success=False, error=f"JSON Parse Error. Output: {response_text}")
 class ProdWttVideoProcessor(WttVideoProcessor):
-    def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None):
-        self.extractor = ScoreExtractor(backend=backend, device=device)
+    def __init__(self, backend: str = None, device: str = 'cpu', cropped_dir: str = None, model_name: str = None):
+        import os
+        self.model_name = (model_name or os.environ.get("WTT_MODEL", "qwen")).lower()
+        self.extractor = ScoreExtractor(backend=backend, device=device, model_name=self.model_name)
         self.cropped_dir = cropped_dir
         self.last_fetch_error = None
         self.last_fetch_is_bot_blocked = False

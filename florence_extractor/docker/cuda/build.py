@@ -62,10 +62,14 @@ def main():
                         help="Force compilation if wheel is missing")
     parser.add_argument("--no-cache", action="store_true",
                         help="Force Docker to rebuild all layers")
+    parser.add_argument("--model", type=str, default="mineru", choices=["mineru", "qwen"],
+                        help="Model variant to build image for (default: mineru)")
+    parser.add_argument("--tag", type=str, default="",
+                        help="Override image tag (default: geonix/wtt-stream-match-finder-cuda:<model>)")
     args = parser.parse_args()
 
     # --- Path Setup ---
-    root_dir = os.path.abspath(os.getcwd())
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     local_wheels_dir = os.path.join(root_dir, "local_wheels")
     build_context_dir = os.path.join(root_dir, "docker_temp_context")
 
@@ -94,11 +98,18 @@ def main():
 
     app_src = os.path.join(root_dir, "florence_extractor")
     # Only copy the required checkpoint to save massive amounts of Docker build time and image size
-    ignore_patterns = shutil.ignore_patterns(
-        "v0-*", "v1-*", "v2-*", "v3-*", "v4-*", "v5-*", "v6-*", "v7-*", "v8-*", "v9-*", "v10-*", "v11-*", "v12-*", "v13-*", "v14-*", "v15-*",
-        "checkpoint-500", "checkpoint-1000", "optimizer.pt",
-        "testdata", "testdata_hard*", "testdata_enhanced"
-    )
+    if args.model == "mineru":
+        ignore_patterns = shutil.ignore_patterns(
+            "qwen2.5-vl-3b-wtt-lora", "optimizer.pt",
+            "testdata", "testdata_hard*", "testdata_enhanced"
+        )
+    else:
+        ignore_patterns = shutil.ignore_patterns(
+            "mineru2.5-pro-1.2b-wtt-lora",
+            "v0-*", "v1-*", "v2-*", "v3-*", "v4-*", "v5-*", "v6-*", "v7-*", "v8-*", "v9-*", "v10-*", "v11-*", "v12-*", "v13-*", "v14-*", "v15-*",
+            "checkpoint-500", "checkpoint-1000", "optimizer.pt",
+            "testdata", "testdata_hard*", "testdata_enhanced"
+        )
     shutil.copytree(app_src, os.path.join(build_context_dir, "florence_extractor"), ignore=ignore_patterns, dirs_exist_ok=True)
 
 
@@ -121,17 +132,21 @@ def main():
     print(
         f"🐳 [DOCKER] Building image (SM={sm}) with {cache_flag if cache_flag else 'cache enabled'}...")
 
+    target_tag = args.tag if args.tag else f"geonix/wtt-stream-match-finder-cuda:{args.model}"
     build_cmd = (
         f"docker build {cache_flag} --progress=plain "
-        f"-t geonix/wtt-stream-match-finder-cuda:latest "
+        f"-t {target_tag} "
         f"--build-arg FLASH_REQUIRED={str(flash_required).lower()} "
         f"--build-arg GPU_SM={sm} "
+        f"--build-arg MODEL={args.model} "
         f"{build_context_dir}"
     )
 
     try:
         # Use subprocess.run to allow the user to see the "plain" progress in real-time
         subprocess.run(build_cmd, shell=True, check=True)
+        if args.model == "qwen" and not args.tag:
+            subprocess.run(f"docker tag {target_tag} geonix/wtt-stream-match-finder-cuda:latest", shell=True)
         print("🎉 [DONE] Image build complete!")
     except subprocess.CalledProcessError:
         print("❌ [ERROR] Docker image build failed.")

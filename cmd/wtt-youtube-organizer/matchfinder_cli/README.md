@@ -56,7 +56,13 @@ The CLI automatically detects Intel GPU groups (`video`, `render`) and configure
 - `/dev/dri` device access
 - Appropriate group permissions
 
-This enables GPU acceleration (CUDA or OpenVINO) for the Qwen2.5-VL scoreboard model.
+This enables GPU acceleration (CUDA or OpenVINO) for the MinerU 2.5-Pro scoreboard model (default) or legacy Qwen2.5-VL via `--model qwen`.
+
+## Model Selection
+
+You can select the vision model using the `--model` flag:
+- `--model mineru` (default): Runs `geonix/wtt-stream-match-finder-cuda:mineru` (1.2B parameters, ~2.6 GB VRAM).
+- `--model qwen`: Runs `geonix/wtt-stream-match-finder-cuda:qwen` (3.1B parameters, ~7.2 GB VRAM).
 
 ## Filtering & Settings
 
