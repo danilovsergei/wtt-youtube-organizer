@@ -84,13 +84,17 @@ void main() {
 
       expect(controller.isLoading, isFalse);
       expect(controller.allTournaments.length, 2); // WTT Champions Chongqing 2026 & China Smash 2025
-      expect(controller.allMatches.length, 5);
+      // On-demand: matches are not loaded until tournament is selected
+      expect(controller.allMatches.length, 0);
 
       final chongqing = controller.allTournaments.firstWhere((t) => t.name == 'WTT Champions Chongqing');
       expect(chongqing.year, 2026);
       expect(chongqing.type, TournamentType.champions);
 
-      expect(controller.selectedMatch.title, 'Wang Chuqin vs Fan Zhendong');
+      // Select China Smash: loads matches on-demand
+      await controller.selectTournament('China Smash_2025');
+      expect(controller.allMatches.length, 3);
+      expect(controller.selectedMatch.title, 'Wang Chuqin vs Liang Jingkun');
     });
   });
 }

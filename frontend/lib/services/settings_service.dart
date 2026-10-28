@@ -78,7 +78,14 @@ class SettingsService {
     }
   }
 
-  Future<void> saveSelectedTournamentTypeNames(Set<String> typeNames) async {
+  Future<void>? _pendingSave;
+
+  Future<void> saveSelectedTournamentTypeNames(Set<String> typeNames) {
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSave(typeNames));
+    return _pendingSave!;
+  }
+
+  Future<void> _doSave(Set<String> typeNames) async {
     if (kIsWeb) return;
     try {
       final file = await _getSettingsFile();

@@ -45,7 +45,8 @@ if [ "$1" != "--no-e2e" ]; then
     export DISPLAY="${DISPLAY:-:0}"
     export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
-    run_with_watchdog "🚀 4/4: Running Hermetic E2E Desktop Test (App Boot, Match Click, Seeking, Video Playback)..." $FLUTTER_BIN test integration_test/hermetic_e2e_test.dart -d linux
+    run_with_watchdog "🚀 4/5: Running Hermetic E2E Desktop Test (App Boot, Match Click, Seeking, Video Playback)..." $FLUTTER_BIN test integration_test/hermetic_e2e_test.dart -d linux
+    run_with_watchdog "⚡ 5/5: Running Paginated Loading E2E Desktop Test (Infinite Scroll, On-Demand Matches)..." $FLUTTER_BIN test integration_test/paginated_loading_e2e_test.dart -d linux
 fi
 
 echo "=================================================="

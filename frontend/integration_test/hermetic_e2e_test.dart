@@ -148,9 +148,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    // 4. Verify initial default tournament & match loaded
+    // 4. Verify initial default tournament loaded and cold start banner shown (zero yt-dlp on boot!)
     expect(find.text('Tournaments'), findsOneWidget);
     expect(find.text('WTT Champions Chongqing'), findsWidgets);
+    expect(find.text('Select match to start playing'), findsOneWidget, reason: 'Cold start banner should be displayed instead of running yt-dlp on boot');
 
     // 5. Open Tournaments: Click on "China Smash" in the sidebar
     final chinaSmashFinder = find.descendant(of: find.byType(Sidebar), matching: find.widgetWithText(TvFocusable, 'China Smash'));

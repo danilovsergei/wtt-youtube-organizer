@@ -1,14 +1,18 @@
 import 'prod_database.dart';
 
 abstract class DatabaseService {
-  /// Connects to the database / loads cache.
+  /// Connects to the database / initializes client.
   Future<void> initialize();
 
-  /// Fetches the raw schedule records matching view `v_tournament_schedule`.
+  /// Fetches tournament titles with pagination.
+  Future<List<Map<String, dynamic>>> fetchTournaments({int limit = 20, int offset = 0});
+
+  /// Fetches matches for a specific tournament.
+  Future<List<Map<String, dynamic>>> fetchTournamentMatches(String tournamentName, int year);
+
+  /// Bulk fetch (for backwards compatibility and legacy test runners).
   Future<List<Map<String, dynamic>>> fetchTournamentSchedule();
 
   /// Active singleton/service instance.
-  /// Defaults to [ProdDatabaseService], but can be swapped with [LocalDatabaseService]
-  /// for offline / hermetic execution and tests.
   static DatabaseService instance = ProdDatabaseService();
 }

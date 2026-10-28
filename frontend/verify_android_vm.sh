@@ -40,6 +40,9 @@ echo "=================================================="
 
 $FLUTTER_BIN test integration_test/hermetic_e2e_test.dart -d "$DEVICE" --timeout=120s
 
+echo "⚡ [ANDROID VM] Running Paginated Loading E2E Test on $DEVICE"
+$FLUTTER_BIN test integration_test/paginated_loading_e2e_test.dart -d "$DEVICE" --timeout=120s
+
 echo "=================================================="
 echo "✅ [ANDROID VM] Hermetic verification passed on Android VM!"
 echo "=================================================="

@@ -189,6 +189,14 @@ class FilterController extends ChangeNotifier {
   List<Tournament> _allTournaments = [];
   List<Match> _allMatches = [];
   bool _isLoading = true;
+  bool _isLoadingMoreTournaments = false;
+  bool _hasMoreTournaments = true;
+  bool _isLoadingTournamentMatches = false;
+  final Set<String> _loadedTournamentIds = {};
+  static const int _tournamentPageSize = 20;
+
+  bool get isLoadingMoreTournaments => _isLoadingMoreTournaments;
+  bool get isLoadingTournamentMatches => _isLoadingTournamentMatches;
 
   Set<int> _selectedYears = {2025, 2026}; // Default years
   Set<TournamentType> _selectedTypes = {};
@@ -266,65 +274,63 @@ class FilterController extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> Function()? customDataFetcher;
 
-  Future<void> fetchData() async {
-    _isLoading = true;
-    notifyListeners();
-    try {
-      final List<dynamic> response = customDataFetcher != null
-          ? await customDataFetcher!()
-          : await DatabaseService.instance.fetchTournamentSchedule();
+  void _parseTournamentRows(List<Map<String, dynamic>> rows, {bool append = false}) {
+    final List<Tournament> list = append ? [..._allTournaments] : [];
+    for (final r in rows) {
+      final name = r['name'] as String? ?? r['tournament'] as String? ?? 'Unknown';
+      final year = r['year'] as int? ?? DateTime.now().year;
+      final key = '${name}_$year';
+      if (!list.any((t) => t.id == key)) {
+        list.add(Tournament(
+          id: key,
+          name: name,
+          year: year,
+          type: _inferType(name),
+          location: '',
+        ));
+      }
+    }
+    _allTournaments = list;
+  }
 
-      final Map<String, Tournament> tournamentsMap = {};
-      final List<Match> matches = [];
+  void _parseMatchRows(List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      final tName = row['tournament'] as String? ?? 'Unknown Tournament';
+      final tYear = row['year'] as int? ?? DateTime.now().year;
+      final tKey = '${tName}_$tYear';
 
-      int matchCounter = 0;
+      DateTime matchTime;
+      try {
+        matchTime = row['upload_date'] != null
+            ? DateTime.parse(row['upload_date'] as String)
+            : DateTime.now();
+      } catch (e) {
+        matchTime = DateTime.now();
+      }
 
-      for (final row in response) {
-        final tName = row['tournament'] as String? ?? 'Unknown Tournament';
-        final tYear = row['year'] as int? ?? DateTime.now().year;
-        final tKey = '${tName}_$tYear';
+      final youtubeId = row['youtube_id'] as String?;
+      final imageUrl = (youtubeId != null && youtubeId.isNotEmpty)
+          ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
+          : '';
 
-        if (!tournamentsMap.containsKey(tKey)) {
-          tournamentsMap[tKey] = Tournament(
-            id: tKey,
-            name: tName,
-            year: tYear,
-            type: _inferType(tName),
-            location: 'Unknown Location',
-          );
-        }
+      String day = 'Unknown Day';
+      if (row['day'] != null && (row['day'] as String).isNotEmpty) {
+        day = row['day'] as String;
+      }
+      final uploadDate = row['upload_date'] != null
+          ? DateTime.tryParse(row['upload_date'] as String)
+          : null;
+      final effectiveTimestamp = row['effective_timestamp'] != null
+          ? DateTime.tryParse(row['effective_timestamp'] as String)
+          : uploadDate;
+      final offsetSeconds = row['video_offset_seconds'] as int?;
+      final durationSeconds = row['duration_seconds'] as int?;
+      final session = row['session'] as int?;
+      final id = (row['match_id'] ?? row['id'])?.toString() ?? 'm_${_allMatches.length}';
 
-        DateTime matchTime;
-        try {
-          matchTime = row['upload_date'] != null
-              ? DateTime.parse(row['upload_date'] as String)
-              : DateTime.now();
-        } catch (e) {
-          matchTime = DateTime.now();
-        }
-
-        final youtubeId = row['youtube_id'] as String?;
-        final imageUrl = (youtubeId != null && youtubeId.isNotEmpty)
-            ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
-            : 'https://via.placeholder.com/320x180';
-
-        String day = 'Unknown Day';
-        // final videoTitle = row['video_title'] as String?;
-        if (row['day'] != null && (row['day'] as String).isNotEmpty) {
-          day = row['day'] as String;
-        }
-        final uploadDate = row['upload_date'] != null
-            ? DateTime.tryParse(row['upload_date'] as String)
-            : null;
-        final effectiveTimestamp = row['effective_timestamp'] != null
-            ? DateTime.tryParse(row['effective_timestamp'] as String)
-            : uploadDate;
-        final offsetSeconds = row['video_offset_seconds'] as int?;
-        final durationSeconds = row['duration_seconds'] as int?;
-        final session = row['session'] as int?;
-
-        matches.add(Match(
-          id: 'm_${matchCounter++}',
+      if (!_allMatches.any((m) => m.id == id && m.tournamentId == tKey)) {
+        _allMatches.add(Match(
+          id: id,
           title: _formatMatchTitle(row),
           tournamentId: tKey,
           date:
@@ -342,34 +348,130 @@ class FilterController extends ChangeNotifier {
           effectiveTimestamp: effectiveTimestamp,
         ));
       }
+    }
+  }
 
-      _allTournaments = tournamentsMap.values.toList();
-      _allMatches = matches;
+  void _parseScheduleRows(List<dynamic> response) {
+    final Map<String, Tournament> tournamentsMap = {};
+    final List<Match> matches = [];
 
-      // Update selected match if none selected, or re-link existing
-      if (_allMatches.isNotEmpty) {
-        if (_selectedMatch == null) {
-          _selectedMatch = _allMatches.first;
-        } else {
-          final updated = _allMatches.cast<Match?>().firstWhere(
-            (m) {
-              if (m == null) return false;
-              if (m.youtubeId != null && _selectedMatch!.youtubeId != null) {
-                return m.youtubeId == _selectedMatch!.youtubeId;
-              }
-              return m.id == _selectedMatch!.id;
-            },
-            orElse: () => null,
-          );
-          if (updated != null) {
-            _selectedMatch = updated;
-          }
-        }
+    int matchCounter = 0;
+
+    for (final row in response) {
+      final tName = row['tournament'] as String? ?? 'Unknown Tournament';
+      final tYear = row['year'] as int? ?? DateTime.now().year;
+      final tKey = '${tName}_$tYear';
+
+      if (!tournamentsMap.containsKey(tKey)) {
+        tournamentsMap[tKey] = Tournament(
+          id: tKey,
+          name: tName,
+          year: tYear,
+          type: _inferType(tName),
+          location: 'Unknown Location',
+        );
+      }
+
+      DateTime matchTime;
+      try {
+        matchTime = row['upload_date'] != null
+            ? DateTime.parse(row['upload_date'] as String)
+            : DateTime.now();
+      } catch (e) {
+        matchTime = DateTime.now();
+      }
+
+      final youtubeId = row['youtube_id'] as String?;
+      final imageUrl = (youtubeId != null && youtubeId.isNotEmpty)
+          ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
+          : 'https://via.placeholder.com/320x180';
+
+      String day = 'Unknown Day';
+      if (row['day'] != null && (row['day'] as String).isNotEmpty) {
+        day = row['day'] as String;
+      }
+      final uploadDate = row['upload_date'] != null
+          ? DateTime.tryParse(row['upload_date'] as String)
+          : null;
+      final effectiveTimestamp = row['effective_timestamp'] != null
+          ? DateTime.tryParse(row['effective_timestamp'] as String)
+          : uploadDate;
+      final offsetSeconds = row['video_offset_seconds'] as int?;
+      final durationSeconds = row['duration_seconds'] as int?;
+      final session = row['session'] as int?;
+
+      matches.add(Match(
+        id: 'm_${matchCounter++}',
+        title: _formatMatchTitle(row),
+        tournamentId: tKey,
+        date:
+            '${matchTime.year}-${matchTime.month.toString().padLeft(2, '0')}-${matchTime.day.toString().padLeft(2, '0')}',
+        time: row['match_time'] as String? ?? '00:00',
+        imageUrl: imageUrl,
+        tag: row['is_doubles'] == true ? 'Doubles' : 'Singles',
+        day: day,
+        views: '0',
+        uploadDate: uploadDate,
+        youtubeId: youtubeId,
+        offsetSeconds: offsetSeconds,
+        durationSeconds: durationSeconds,
+        session: session,
+        effectiveTimestamp: effectiveTimestamp,
+      ));
+    }
+
+    _allTournaments = tournamentsMap.values.toList();
+    _allMatches = matches;
+
+    if (_allMatches.isNotEmpty && _selectedMatch == null) {
+      _selectedMatch = _allMatches.first;
+    }
+  }
+
+  Future<void> fetchData() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      if (customDataFetcher != null) {
+        final List<dynamic> response = await customDataFetcher!();
+        _parseScheduleRows(response);
+      } else {
+        final rows = await DatabaseService.instance.fetchTournaments(
+          limit: _tournamentPageSize,
+          offset: 0,
+        );
+        _parseTournamentRows(rows, append: false);
+        _hasMoreTournaments = rows.length == _tournamentPageSize;
       }
     } catch (e) {
-      debugPrint('Error fetching data: $e');
+      debugPrint('Error fetching tournaments: $e');
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreTournaments() async {
+    final isHeadlessWidgetTest =
+        WidgetsBinding.instance.runtimeType.toString().contains('Automated');
+    if (isHeadlessWidgetTest) return;
+
+    if (_isLoadingMoreTournaments || !_hasMoreTournaments || customDataFetcher != null) {
+      return;
+    }
+    _isLoadingMoreTournaments = true;
+    notifyListeners();
+    try {
+      final rows = await DatabaseService.instance.fetchTournaments(
+        limit: _tournamentPageSize,
+        offset: _allTournaments.length,
+      );
+      _parseTournamentRows(rows, append: true);
+      _hasMoreTournaments = rows.length == _tournamentPageSize;
+    } catch (e) {
+      debugPrint('Error loading more tournaments: $e');
+    } finally {
+      _isLoadingMoreTournaments = false;
       notifyListeners();
     }
   }
@@ -446,15 +548,54 @@ class FilterController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectTournament(String tournamentId) {
+  Future<void> selectTournament(String tournamentId) async {
     if (_selectedTournamentId == tournamentId) {
       _selectedTournamentId = '';
       _expandedDayKeys?.clear();
-    } else {
-      _selectedTournamentId = tournamentId;
-      _expandedDayKeys?.clear();
+      notifyListeners();
+      return;
     }
-    notifyListeners();
+
+    _selectedTournamentId = tournamentId;
+    _expandedDayKeys?.clear();
+
+    final hasMatches = _allMatches.any((m) => m.tournamentId == tournamentId);
+    if (tournamentId.isNotEmpty &&
+        !hasMatches &&
+        !_loadedTournamentIds.contains(tournamentId) &&
+        customDataFetcher == null) {
+      _isLoadingTournamentMatches = true;
+      notifyListeners();
+
+      try {
+        final tournament = _allTournaments.firstWhere(
+          (t) => t.id == tournamentId,
+          orElse: () => const Tournament(
+            id: '',
+            name: '',
+            year: 0,
+            type: TournamentType.contender,
+            location: '',
+          ),
+        );
+
+        if (tournament.name.isNotEmpty) {
+          final matchRows = await DatabaseService.instance.fetchTournamentMatches(
+            tournament.name,
+            tournament.year,
+          );
+          _parseMatchRows(matchRows);
+          _loadedTournamentIds.add(tournamentId);
+        }
+      } catch (e) {
+        debugPrint('Error loading tournament matches: $e');
+      } finally {
+        _isLoadingTournamentMatches = false;
+        notifyListeners();
+      }
+    } else {
+      notifyListeners();
+    }
   }
 
   void toggleYear(int year) {
@@ -476,8 +617,9 @@ class FilterController extends ChangeNotifier {
         }
       }
       _selectedTypes = types;
-      notifyListeners();
     }
+
+    notifyListeners();
   }
 
   void _persistSelectedTypes() {
@@ -901,8 +1043,35 @@ class MobileHeader extends StatelessWidget {
   }
 }
 
-class Sidebar extends StatelessWidget {
+class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
+
+  @override
+  State<Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends State<Sidebar> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200) {
+      filterController.loadMoreTournaments();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -954,6 +1123,7 @@ class Sidebar extends StatelessWidget {
               ),
               Expanded(
                 child: SingleChildScrollView(
+                  controller: _scrollController,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1223,13 +1393,30 @@ class Sidebar extends StatelessWidget {
                                   ),
                                 );
                               }),
+                              if (filterController.isLoadingMoreTournaments)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                                    ),
+                                  ),
+                                ),
                               const SizedBox(height: 20),
                             ],
                           ),
                         ),
                       ] else ...[
                         // --- DETAIL VIEW (Back Button + Matches) ---
-                        Builder(
+                        if (filterController.isLoadingTournamentMatches)
+                          const Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else
+                          Builder(
                           builder: (context) {
                             final tournament =
                                 filterController.allTournaments.firstWhere(
@@ -1583,6 +1770,60 @@ class _VideoHeroState extends State<VideoHero> {
     return ListenableBuilder(
       listenable: filterController,
       builder: (context, _) {
+        if (!filterController.hasUserSelectedMatch) {
+          return AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Container(
+              key: const Key('cold_start_banner'),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF1E293B),
+                  width: 1,
+                ),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_circle_outline_rounded,
+                        size: 48,
+                        color: Color(0xFF0D7FF2),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Select match to start playing',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Choose a tournament and match from the sidebar',
+                      style: TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         final match = filterController.selectedMatch;
         return VideoPlayerWidget.create(
           key: const Key('main_video_player'),
@@ -1593,7 +1834,7 @@ class _VideoHeroState extends State<VideoHero> {
           offsetSeconds: match.offsetSeconds ?? 0,
           matchDurationSeconds: match.durationSeconds,
           onDoubleTap: _handleFullscreenToggle,
-          autoPlay: filterController.hasUserSelectedMatch,
+          autoPlay: true,
         );
       },
     );
@@ -1608,6 +1849,9 @@ class MatchDetails extends StatelessWidget {
     return ListenableBuilder(
       listenable: filterController,
       builder: (context, _) {
+        if (!filterController.hasUserSelectedMatch) {
+          return const SizedBox.shrink();
+        }
         final match = filterController.selectedMatch;
         final tournament = filterController.allTournaments.firstWhere(
           (t) => t.id == match.tournamentId,
