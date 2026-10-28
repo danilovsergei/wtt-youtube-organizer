@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'log_service.dart';
+import 'user_database_sync_service.dart';
 
 class PlaybackProgressEntry {
   final int positionSeconds;
@@ -241,6 +242,28 @@ class PlaybackProgressService extends ChangeNotifier {
     return null;
   }
 
+  Map<String, PlaybackProgressEntry> getAllMetadataEntries() {
+    return Map.unmodifiable(_metadataCache);
+  }
+
+  PlaybackProgressEntry? getMetadata(String matchId) {
+    return _metadataCache[matchId];
+  }
+
+  Future<void> adoptRemoteProgress(String matchId, PlaybackProgressEntry entry) {
+    _isLoaded = true;
+    _progressCache[matchId] = entry.positionSeconds;
+    _metadataCache[matchId] = entry;
+    if (entry.youtubeId != null && entry.youtubeId!.isNotEmpty) {
+      final compositeKey = '${entry.youtubeId}_${entry.defaultOffsetSeconds}';
+      _progressCache[compositeKey] = entry.positionSeconds;
+      _metadataCache[compositeKey] = entry;
+    }
+    notifyListeners();
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSave());
+    return _pendingSave!;
+  }
+
   Future<void>? _pendingSave;
 
   Future<void> saveProgress({
@@ -271,6 +294,10 @@ class PlaybackProgressService extends ChangeNotifier {
     LogService.instance.log('[PROGRESS] saveProgress: matchId=$matchId, yt=$youtubeId, defOffset=$defaultOffsetSeconds, pos=$positionSeconds');
     notifyListeners();
     _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSave());
+
+    // Non-blocking cloud sync if user configured personal Supabase database
+    UserDatabaseSyncService.instance.pushSingleMatchProgress(entry, matchId);
+
     return _pendingSave!;
   }
 

@@ -48,7 +48,8 @@ if [ "$1" != "--no-e2e" ]; then
     run_with_watchdog "🚀 4/5: Running Hermetic E2E Desktop Test (App Boot, Match Click, Seeking, Video Playback)..." $FLUTTER_BIN test integration_test/hermetic_e2e_test.dart -d linux
     run_with_watchdog "⚡ 5/6: Running Paginated Loading E2E Desktop Test (Infinite Scroll, On-Demand Matches)..." $FLUTTER_BIN test integration_test/paginated_loading_e2e_test.dart -d linux
     run_with_watchdog "🛑 6/7: Running Extraction Error Overlay E2E Desktop Test..." $FLUTTER_BIN test integration_test/extraction_error_e2e_test.dart -d linux
-    run_with_watchdog "⏯️  7/7: Running Playback Progress Save/Resume E2E Desktop Test..." $FLUTTER_BIN test integration_test/playback_progress_e2e_test.dart -d linux
+    run_with_watchdog "⏯️  7/8: Running Playback Progress Save/Resume E2E Desktop Test..." $FLUTTER_BIN test integration_test/playback_progress_e2e_test.dart -d linux
+    run_with_watchdog "☁️  8/8: Running Cloud Sync Two-Way Reconciliation E2E Desktop Test..." $FLUTTER_BIN test integration_test/cloud_sync_e2e_test.dart -d linux
 fi
 
 echo "=================================================="

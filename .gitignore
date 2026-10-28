@@ -27,3 +27,7 @@ florence_extractor/__pycache__/
 florence_extractor/testdata_*
 florence_extractor/testing/*.backup*
 frontend/android/app/src/main/jniLibs/
+
+.env
+*.env
+

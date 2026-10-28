@@ -61,31 +61,51 @@ class SettingsService {
     return null;
   }
 
-  Future<Set<String>> loadSelectedTournamentTypeNames() async {
+  Future<Map<String, dynamic>> _readSettingsJson() async {
     if (kIsWeb) return {};
     try {
       final file = await _getSettingsFile();
-      if (file == null || !await file.exists()) {
-        return {};
-      }
+      if (file == null || !await file.exists()) return {};
       final content = await file.readAsString();
       if (content.trim().isEmpty) return {};
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      final list = (data['selected_tournament_types'] as List<dynamic>?) ?? [];
-      return list.map((e) => e.toString()).toSet();
+      return jsonDecode(content) as Map<String, dynamic>;
     } catch (_) {
       return {};
     }
   }
 
+  Future<Set<String>> loadSelectedTournamentTypeNames() async {
+    final data = await _readSettingsJson();
+    final list = (data['selected_tournament_types'] as List<dynamic>?) ?? [];
+    return list.map((e) => e.toString()).toSet();
+  }
+
+  Future<Map<String, String?>> loadUserSupabaseConfig() async {
+    final data = await _readSettingsJson();
+    return {
+      'url': data['user_supabase_url'] as String?,
+      'anon_key': data['user_supabase_anon_key'] as String?,
+      'project_ref': data['user_supabase_project_ref'] as String?,
+    };
+  }
+
   Future<void>? _pendingSave;
 
   Future<void> saveSelectedTournamentTypeNames(Set<String> typeNames) {
-    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSave(typeNames));
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSaveTypes(typeNames));
     return _pendingSave!;
   }
 
-  Future<void> _doSave(Set<String> typeNames) async {
+  Future<void> saveUserSupabaseConfig({
+    required String? url,
+    required String? anonKey,
+    String? projectRef,
+  }) {
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSaveConfig(url, anonKey, projectRef));
+    return _pendingSave!;
+  }
+
+  Future<void> _doSaveTypes(Set<String> typeNames) async {
     if (kIsWeb) return;
     try {
       final file = await _getSettingsFile();
@@ -93,17 +113,40 @@ class SettingsService {
       if (!await file.parent.exists()) {
         await file.parent.create(recursive: true);
       }
-      Map<String, dynamic> data = {};
-      if (await file.exists()) {
-        try {
-          final content = await file.readAsString();
-          if (content.trim().isNotEmpty) {
-            data = jsonDecode(content) as Map<String, dynamic>;
-          }
-        } catch (_) {}
-      }
+      final data = await _readSettingsJson();
       data['selected_tournament_types'] = typeNames.toList();
-      
+
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
+
+  Future<void> _doSaveConfig(String? url, String? anonKey, String? projectRef) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      if (!await file.parent.exists()) {
+        await file.parent.create(recursive: true);
+      }
+      final data = await _readSettingsJson();
+      if (url != null) {
+        data['user_supabase_url'] = url;
+      } else {
+        data.remove('user_supabase_url');
+      }
+      if (anonKey != null) {
+        data['user_supabase_anon_key'] = anonKey;
+      } else {
+        data.remove('user_supabase_anon_key');
+      }
+      if (projectRef != null) {
+        data['user_supabase_project_ref'] = projectRef;
+      } else {
+        data.remove('user_supabase_project_ref');
+      }
+
       final tmpFile = File('${file.path}.tmp');
       await tmpFile.writeAsString(jsonEncode(data), flush: true);
       await tmpFile.rename(file.path);

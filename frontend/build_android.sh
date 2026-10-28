@@ -77,6 +77,18 @@ if [ -n "$TARGET_ABI" ]; then
     BUILD_ARGS+=("--target-platform" "$TARGET_ABI")
 fi
 
+if [ -f "$DIR/.env" ]; then
+    set -a
+    source "$DIR/.env"
+    set +a
+    if [ -n "$SUPABASE_OAUTH_CLIENT_ID" ]; then
+        BUILD_ARGS+=("--dart-define=SUPABASE_OAUTH_CLIENT_ID=$SUPABASE_OAUTH_CLIENT_ID")
+    fi
+    if [ -n "$SUPABASE_OAUTH_CLIENT_SECRET" ]; then
+        BUILD_ARGS+=("--dart-define=SUPABASE_OAUTH_CLIENT_SECRET=$SUPABASE_OAUTH_CLIENT_SECRET")
+    fi
+fi
+
 "$FLUTTER_BIN" build "${BUILD_ARGS[@]}"
 
 # Copy output artifact to bin/

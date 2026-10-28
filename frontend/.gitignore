@@ -57,3 +57,7 @@ app.*.map.json
 /recordings/
 
 /android/build/
+
+.env
+*.env
+

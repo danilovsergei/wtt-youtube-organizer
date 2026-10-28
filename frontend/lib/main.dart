@@ -1,6 +1,8 @@
 import 'services/settings_service.dart';
 import 'services/playback_progress_service.dart';
+import 'services/user_database_sync_service.dart';
 import 'widgets/diagnostics_screen.dart';
+import 'widgets/cloud_sync_screen.dart';
 import 'widgets/tv_focusable.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -52,6 +54,7 @@ Future<void> main([List<String>? args]) async {
   await DatabaseService.instance.initialize();
   await filterController.loadSettings();
   await PlaybackProgressService.instance.loadProgress();
+  await UserDatabaseSyncService.instance.initialize();
   if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
     (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {
       debugPrint('Chaquopy yt-dlp auto-update: $status');
@@ -1735,6 +1738,73 @@ class _SidebarState extends State<Sidebar> {
                   ),
                 ),
               ),
+              // Cloud Sync (Supabase)
+              ListenableBuilder(
+                listenable: UserDatabaseSyncService.instance,
+                builder: (context, _) {
+                  final isConnected = UserDatabaseSyncService.instance.isConnected;
+                  return TvFocusable(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const CloudSyncScreen()),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF0D1319),
+                        border: Border(top: BorderSide(color: Color(0xFF223649))),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isConnected ? const Color(0xFF10B981).withValues(alpha: 0.2) : const Color(0xFF223649),
+                              border: Border.all(
+                                color: isConnected ? const Color(0xFF10B981) : Colors.transparent,
+                                width: 1,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              isConnected ? Icons.cloud_done : Icons.cloud_queue,
+                              color: isConnected ? const Color(0xFF10B981) : Colors.grey[400],
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Cloud Sync',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  isConnected ? 'Connected to Supabase' : 'Offline / Local only',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isConnected ? const Color(0xFF10B981) : Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+
               // Diagnostics & Logs
               TvFocusable(
                 onTap: () {
