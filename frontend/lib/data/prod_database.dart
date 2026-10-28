@@ -82,6 +82,36 @@ class ProdDatabaseService implements DatabaseService {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> searchMatches(String query, {int limit = 50}) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    final tokens = query
+        .toLowerCase()
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) return [];
+
+    var queryBuilder = client.from('v_tournament_schedule').select();
+
+    for (final token in tokens) {
+      final clean = token.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+      if (clean.isEmpty) continue;
+      queryBuilder = queryBuilder.or(
+        'team_a.ilike.*$clean*,team_b.ilike.*$clean*,tournament.ilike.*$clean*,video_title.ilike.*$clean*',
+      );
+    }
+
+    final List<dynamic> response = await queryBuilder
+        .order('upload_date', ascending: false)
+        .limit(limit);
+
+    return response.cast<Map<String, dynamic>>();
+  }
+
+  @override
   Future<List<Map<String, dynamic>>> fetchTournamentSchedule() async {
     if (!_isInitialized) {
       await initialize();

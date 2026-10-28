@@ -62,6 +62,19 @@ class LocalDatabaseService implements DatabaseService {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> searchMatches(String query, {int limit = 50}) async {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return [];
+    return _scheduleData.where((row) {
+      final teamA = (row['team_a'] ?? '').toString().toLowerCase();
+      final teamB = (row['team_b'] ?? '').toString().toLowerCase();
+      final tourn = (row['tournament'] ?? '').toString().toLowerCase();
+      final title = (row['video_title'] ?? '').toString().toLowerCase();
+      return teamA.contains(q) || teamB.contains(q) || tourn.contains(q) || title.contains(q);
+    }).take(limit).toList();
+  }
+
+  @override
   Future<List<Map<String, dynamic>>> fetchTournamentSchedule() async {
     return List<Map<String, dynamic>>.from(_scheduleData);
   }

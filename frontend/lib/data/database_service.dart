@@ -10,6 +10,9 @@ abstract class DatabaseService {
   /// Fetches matches for a specific tournament.
   Future<List<Map<String, dynamic>>> fetchTournamentMatches(String tournamentName, int year);
 
+  /// Searches matches across all tournaments by player or tournament query.
+  Future<List<Map<String, dynamic>>> searchMatches(String query, {int limit = 50});
+
   /// Bulk fetch (for backwards compatibility and legacy test runners).
   Future<List<Map<String, dynamic>>> fetchTournamentSchedule();
 

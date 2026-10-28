@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'services/settings_service.dart';
 import 'services/playback_progress_service.dart';
 import 'services/user_database_sync_service.dart';
@@ -254,6 +255,14 @@ class FilterController extends ChangeNotifier {
   }
 
   bool isDayExpanded(String tournamentId, String day) {
+    if (_searchQuery.trim().isNotEmpty) {
+      final matches = filteredMatches;
+      if (matches.length == 1 &&
+          matches.first.tournamentId == tournamentId &&
+          matches.first.day == day) {
+        return true;
+      }
+    }
     return _safeExpandedDayKeys.contains('${tournamentId}_$day');
   }
 
@@ -558,6 +567,7 @@ class FilterController extends ChangeNotifier {
   }
 
   Future<void> selectTournament(String tournamentId) async {
+    _autoNavigatedBySearch = false;
     if (_selectedTournamentId == tournamentId) {
       _selectedTournamentId = '';
       _expandedDayKeys?.clear();
@@ -646,9 +656,148 @@ class FilterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  static List<String> _tokenizeQuery(String query) {
+    return query
+        .toLowerCase()
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+  }
+
+  static bool _tokenMatchesText(String token, String text) {
+    if (token.isEmpty) return true;
+    final t = token.toLowerCase();
+    final words = text.toLowerCase().split(RegExp(r'[^a-z0-9]+'));
+    return words.any((w) => w.contains(t));
+  }
+
+  bool _tournamentMatchesSearch(Tournament tournament, String query) {
+    final tokens = _tokenizeQuery(query);
+    if (tokens.isEmpty) return true;
+
+    final tournText = '${tournament.name} ${tournament.location}'.toLowerCase();
+    final tournMatchesAll = tokens.every((t) => _tokenMatchesText(t, tournText));
+    if (tournMatchesAll) return true;
+
+    return _allMatches.any((m) {
+      if (m.tournamentId != tournament.id) return false;
+      final matchTypeFilter = (m.tag == 'Singles' && _showSingles) ||
+                              (m.tag == 'Doubles' && _showDoubles);
+      if (!matchTypeFilter) return false;
+
+      final matchText = '${m.title} $tournText'.toLowerCase();
+      return tokens.every((t) => _tokenMatchesText(t, matchText));
+    });
+  }
+
+  Timer? _searchDebounce;
+  bool _autoNavigatedBySearch = false;
+
   void setSearchQuery(String query) {
     _searchQuery = query;
+    _searchDebounce?.cancel();
+
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      _updateSelectionForSearch();
+
+      if (customDataFetcher == null) {
+        _searchDebounce = Timer(const Duration(milliseconds: 250), () async {
+          try {
+            final rows = await DatabaseService.instance.searchMatches(q);
+            if (rows.isNotEmpty) {
+              _mergeSearchResults(rows);
+            }
+          } catch (e) {
+            debugPrint('Error searching matches: $e');
+          }
+        });
+      }
+    } else {
+      if (_autoNavigatedBySearch) {
+        _selectedTournamentId = '';
+        _autoNavigatedBySearch = false;
+      }
+    }
     notifyListeners();
+  }
+
+  void _updateSelectionForSearch() {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return;
+
+    final matching = filteredMatches;
+    if (matching.length == 1) {
+      final single = matching.first;
+      _selectedTournamentId = single.tournamentId;
+      _selectedMatch = single;
+      _autoNavigatedBySearch = true;
+    } else {
+      _selectedTournamentId = '';
+      _autoNavigatedBySearch = false;
+    }
+  }
+
+  void _mergeSearchResults(List<Map<String, dynamic>> rows) {
+    bool hasNewData = false;
+    for (final row in rows) {
+      final tName = row['tournament'] as String? ?? 'Unknown Tournament';
+      final year = row['year'] as int? ?? 2026;
+      final tKey = '${tName}_$year';
+
+      if (!_allTournaments.any((t) => t.id == tKey)) {
+        final tType = _inferType(tName);
+        _allTournaments.add(Tournament(
+          id: tKey,
+          name: tName,
+          year: year,
+          type: tType,
+          location: row['location'] as String? ?? '',
+        ));
+        hasNewData = true;
+      }
+
+      final youtubeId = row['youtube_id'] as String?;
+      final offsetSeconds = row['video_offset_seconds'] as int?;
+      final matchId = (row['match_id'] ?? row['id'])?.toString() ??
+          (youtubeId != null ? '${youtubeId}_${offsetSeconds ?? 0}' : 'm_${row.hashCode}');
+
+      if (!_allMatches.any((m) => m.id == matchId)) {
+        final uploadDate = row['upload_date'] != null
+            ? DateTime.tryParse(row['upload_date'] as String)
+            : null;
+        final effectiveTimestamp = row['effective_timestamp'] != null
+            ? DateTime.tryParse(row['effective_timestamp'] as String)
+            : uploadDate;
+
+        _allMatches.add(Match(
+          id: matchId,
+          title: _formatMatchTitle(row),
+          tournamentId: tKey,
+          date: uploadDate?.toIso8601String().split('T').first ?? '',
+          time: row['match_time'] as String? ?? '00:00',
+          imageUrl: (youtubeId != null && youtubeId.isNotEmpty)
+              ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
+              : 'https://via.placeholder.com/320x180',
+          tag: row['is_doubles'] == true ? 'Doubles' : 'Singles',
+          day: (row['day'] as String?)?.isNotEmpty == true ? row['day'] as String : 'Unknown Day',
+          views: '0',
+          uploadDate: uploadDate,
+          youtubeId: youtubeId,
+          offsetSeconds: offsetSeconds,
+          durationSeconds: row['duration_seconds'] as int?,
+          session: row['session'] as int?,
+          effectiveTimestamp: effectiveTimestamp,
+        ));
+        hasNewData = true;
+      }
+    }
+
+    if (hasNewData) {
+      _updateSelectionForSearch();
+      notifyListeners();
+    }
   }
 
   void reset() {
@@ -665,11 +814,50 @@ class FilterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<Match> getMatchesForTournament(String tournamentId) {
+    final tokens = _tokenizeQuery(_searchQuery);
+    final tournament = _allTournaments.firstWhere(
+      (t) => t.id == tournamentId,
+      orElse: () => const Tournament(
+        id: '',
+        name: '',
+        year: 0,
+        type: TournamentType.contender,
+        location: '',
+      ),
+    );
+    final tournText = '${tournament.name} ${tournament.location}'.toLowerCase();
+    final tournMatchesAllTokens =
+        tokens.isNotEmpty && tokens.every((t) => _tokenMatchesText(t, tournText));
+
+    return _allMatches
+        .where((m) => m.tournamentId == tournamentId)
+        .where(
+          (m) =>
+              (m.tag == 'Singles' && _showSingles) ||
+              (m.tag == 'Doubles' && _showDoubles),
+        )
+        .where((m) {
+          if (tokens.isEmpty) return true;
+          if (tournMatchesAllTokens) return true;
+          final matchText = '${m.title} $tournText'.toLowerCase();
+          return tokens.every((t) => _tokenMatchesText(t, matchText));
+        })
+        .toList();
+  }
+
   List<Match> get filteredMatches {
+    final tokens = _tokenizeQuery(_searchQuery);
     return _allMatches.where((match) {
       final tournament = _allTournaments.firstWhere(
         (t) => t.id == match.tournamentId,
-        orElse: () => const Tournament(id: '', name: '', year: 0, type: TournamentType.contender, location: ''),
+        orElse: () => const Tournament(
+          id: '',
+          name: '',
+          year: 0,
+          type: TournamentType.contender,
+          location: '',
+        ),
       );
 
       final yearMatch =
@@ -682,12 +870,16 @@ class FilterController extends ChangeNotifier {
             _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
       }
       final tournamentMatch =
+          tokens.isNotEmpty ||
           _selectedTournamentId.isEmpty ||
           _selectedTournamentId == match.tournamentId;
-      final searchMatch =
-          _searchQuery.isEmpty ||
-          match.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          tournament.name.toLowerCase().contains(_searchQuery.toLowerCase());
+      final bool searchMatch;
+      if (tokens.isEmpty) {
+        searchMatch = true;
+      } else {
+        final combined = '${match.title} ${tournament.name} ${tournament.location}'.toLowerCase();
+        searchMatch = tokens.every((t) => _tokenMatchesText(t, combined));
+      }
       
       final matchTypeFilter = (match.tag == 'Singles' && _showSingles) ||
                               (match.tag == 'Doubles' && _showDoubles);
@@ -697,6 +889,7 @@ class FilterController extends ChangeNotifier {
   }
 
   List<Tournament> get availableTournaments {
+    final query = _searchQuery.trim().toLowerCase();
     return _allTournaments.where((tournament) {
       final yearMatch =
           _selectedYears.isEmpty || _selectedYears.contains(tournament.year);
@@ -707,7 +900,8 @@ class FilterController extends ChangeNotifier {
         typeMatch =
             _selectedTypes.isEmpty || _selectedTypes.contains(tournament.type);
       }
-      return yearMatch && typeMatch;
+      final searchMatch = _tournamentMatchesSearch(tournament, query);
+      return yearMatch && typeMatch && searchMatch;
     }).toList();
   }
 }
@@ -1061,10 +1255,12 @@ class Sidebar extends StatefulWidget {
 
 class _SidebarState extends State<Sidebar> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _searchController.text = filterController.searchQuery;
     _scrollController.addListener(_onScroll);
   }
 
@@ -1078,6 +1274,7 @@ class _SidebarState extends State<Sidebar> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -1140,10 +1337,11 @@ class _SidebarState extends State<Sidebar> {
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: TextField(
+                          controller: _searchController,
                           onChanged:
                               (value) => filterController.setSearchQuery(value),
                           decoration: InputDecoration(
-                            hintText: 'Search matches, players...',
+                            hintText: 'Search tournaments, players...',
                             hintStyle: TextStyle(
                               color: Colors.grey[400],
                               fontSize: 14,
@@ -1153,6 +1351,15 @@ class _SidebarState extends State<Sidebar> {
                               color: Colors.grey[400],
                               size: 20,
                             ),
+                            suffixIcon: filterController.searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      filterController.setSearchQuery('');
+                                    },
+                                  )
+                                : null,
                             filled: true,
                             fillColor: const Color(0xFF182634),
                             border: OutlineInputBorder(
@@ -1361,6 +1568,17 @@ class _SidebarState extends State<Sidebar> {
                                 ),
                               ),
                               const SizedBox(height: 8),
+                              if (filterController.availableTournaments.isEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                                  child: Text(
+                                    filterController.searchQuery.isNotEmpty
+                                        ? 'No tournaments found matching "${filterController.searchQuery}"'
+                                        : 'No tournaments available',
+                                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                                  ),
+                                ),
+                              ],
                               ...filterController.availableTournaments
                                   .asMap()
                                   .entries
@@ -1441,18 +1659,22 @@ class _SidebarState extends State<Sidebar> {
                                 );
 
                             final matches =
-                                filterController.allMatches
-                                    .where(
-                                      (m) => m.tournamentId == tournament.id,
-                                    )
-                                    .where(
-                                      (m) =>
-                                          (m.tag == 'Singles' &&
-                                              filterController.showSingles) ||
-                                          (m.tag == 'Doubles' &&
-                                              filterController.showDoubles),
-                                    )
-                                    .toList();
+                                filterController.getMatchesForTournament(
+                                  tournament.id,
+                                );
+
+                            if (matches.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                                child: Center(
+                                  child: Text(
+                                    filterController.searchQuery.isNotEmpty
+                                        ? 'No matches found matching "${filterController.searchQuery}"'
+                                        : 'No matches available for this tournament',
+                                    style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                  ),
+                                ),
+                              );
 
                             // Group matches by day and session
                             final Map<String, List<Match>> matchesByDay = {};

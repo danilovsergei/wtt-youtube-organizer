@@ -373,5 +373,359 @@ void main() {
       );
       expect(matchZero.durationFormatted, '');
     });
+
+    test('Search by tournament name filters availableTournaments and matches', () async {
+      controller.customDataFetcher = () async => [
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Anders Lind',
+          'upload_date': '2026-10-28T10:00:00Z',
+          'youtube_id': 'yt_mont',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Ma Long',
+          'team_b': 'Lin Shidong',
+          'upload_date': '2026-10-01T10:00:00Z',
+          'youtube_id': 'yt_china',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+      ];
+
+      await controller.fetchData();
+      expect(controller.availableTournaments.length, 2);
+
+      // Search tournament by name
+      controller.setSearchQuery('montpellier');
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.name, 'WTT Champions Montpellier');
+
+      // Matches for Montpellier include its match
+      final montMatches = controller.getMatchesForTournament(controller.availableTournaments.first.id);
+      expect(montMatches.length, 1);
+      expect(montMatches.first.title, contains('Felix Lebrun'));
+
+      // Clearing search restores both tournaments
+      controller.setSearchQuery('');
+      expect(controller.availableTournaments.length, 2);
+    });
+
+    test('Search by player name filters tournaments and matches', () async {
+      controller.customDataFetcher = () async => [
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Anders Lind',
+          'upload_date': '2026-10-28T10:00:00Z',
+          'youtube_id': 'yt_mont',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Ma Long',
+          'team_b': 'Lin Shidong',
+          'upload_date': '2026-10-01T10:00:00Z',
+          'youtube_id': 'yt_china',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+      ];
+
+      await controller.fetchData();
+
+      // Search by player name (case-insensitive)
+      controller.setSearchQuery('shidong');
+
+      // Only China Smash had Lin Shidong
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.name, 'China Smash');
+
+      // China Smash matches show Lin Shidong
+      final chinaMatches = controller.getMatchesForTournament(controller.availableTournaments.first.id);
+      expect(chinaMatches.length, 1);
+      expect(chinaMatches.first.title, contains('Lin Shidong'));
+
+      // Active search auto-expands days
+      expect(controller.isDayExpanded(controller.availableTournaments.first.id, 'Day 1'), isTrue);
+
+      // Search for player with no matches returns 0
+      controller.setSearchQuery('nonexistent player');
+      expect(controller.availableTournaments.length, 0);
+    });
+
+    test('Multi-player head-to-head word search (e.g. Lebrun Lind)', () async {
+      controller.customDataFetcher = () async => [
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Anders Lind',
+          'upload_date': '2026-10-28T10:00:00Z',
+          'youtube_id': 'yt_mont',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Truls Moregard',
+          'upload_date': '2026-10-28T11:00:00Z',
+          'youtube_id': 'yt_mont_2',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Ma Long',
+          'team_b': 'Lin Shidong',
+          'upload_date': '2026-10-01T10:00:00Z',
+          'youtube_id': 'yt_china',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+      ];
+
+      await controller.fetchData();
+      final montId = controller.allTournaments.firstWhere((t) => t.name == 'WTT Champions Montpellier').id;
+
+      // 1. Searching "Lebrun Lind" finds specifically Felix Lebrun vs Anders Lind
+      controller.setSearchQuery('Lebrun Lind');
+      final headToHeadMatches = controller.getMatchesForTournament(montId);
+      expect(headToHeadMatches.length, 1);
+      expect(headToHeadMatches.first.title, contains('Anders Lind'));
+
+      // 2. Searching "Felix Montpellier" matches via player + tournament name
+      controller.setSearchQuery('Felix Montpellier');
+      expect(controller.getMatchesForTournament(montId).length, 2);
+
+      // 3. Searching substring "lin" matches "Anders Lind" and "Lin Shidong"
+      controller.setSearchQuery('Lebrun Lin');
+      expect(controller.getMatchesForTournament(montId).length, 1);
+      expect(controller.getMatchesForTournament(montId).first.title, contains('Anders Lind'));
+
+      // 4. Searching players who never played each other returns 0
+      controller.setSearchQuery('Lind Shidong');
+      expect(controller.getMatchesForTournament(montId).length, 0);
+    });
+
+    test('Searching player with multiple matches shows tournaments unexpanded, and keeps days collapsed', () async {
+      controller.customDataFetcher = () async => [
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Anders Lind',
+          'upload_date': '2026-10-28T10:00:00Z',
+          'youtube_id': 'yt_mont',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Truls Moregard',
+          'upload_date': '2026-10-28T11:00:00Z',
+          'youtube_id': 'yt_mont_2',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+        {
+          'tournament': 'Singapore Smash',
+          'year': 2026,
+          'location': 'Singapore',
+          'team_a': 'Alexis Lebrun',
+          'team_b': 'Feng Yi-Hsin',
+          'upload_date': '2026-03-01T10:00:00Z',
+          'youtube_id': 'yt_sing',
+          'is_doubles': false,
+          'day': 'Day 3',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Ma Long',
+          'team_b': 'Lin Shidong',
+          'upload_date': '2026-10-01T10:00:00Z',
+          'youtube_id': 'yt_china',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+      ];
+
+      await controller.fetchData();
+
+      // 1. Searching "Lebrun" matches multiple tournaments and matches
+      controller.setSearchQuery('Lebrun');
+
+      // Tournaments list shows all tournaments where Lebrun played
+      expect(controller.availableTournaments.length, 2);
+      expect(controller.availableTournaments.map((t) => t.name), containsAll(['WTT Champions Montpellier', 'Singapore Smash']));
+
+      // Does NOT auto-navigate to a specific tournament because multiple matches match!
+      expect(controller.selectedTournamentId, isEmpty);
+
+      // Days are NOT auto-expanded (keeps them collapsed to avoid spoilers)
+      final montId = controller.allTournaments.firstWhere((t) => t.name == 'WTT Champions Montpellier').id;
+      expect(controller.isDayExpanded(montId, 'Day 1'), isFalse);
+      expect(controller.isDayExpanded(montId, 'Day 2'), isFalse);
+
+      // 2. Searching specific matchup "Lebrun Lindt" yields exactly 1 match
+      controller.setSearchQuery('Lebrun Lind');
+
+      // Exactly 1 match found: auto-selects tournament and auto-expands that day!
+      expect(controller.selectedTournamentId, montId);
+      expect(controller.isDayExpanded(montId, 'Day 2'), isTrue);
+      expect(controller.selectedMatch?.title, contains('Anders Lind'));
+    });
+
+    test('Comprehensive search coverage: 1-word, 2-words, substring inside words, whitespace, doubles isolation, and negative cases', () async {
+      controller.customDataFetcher = () async => [
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Anders Lind',
+          'upload_date': '2026-10-28T10:00:00Z',
+          'youtube_id': 'yt_mont_1',
+          'is_doubles': false,
+          'day': 'Day 2',
+        },
+        {
+          'tournament': 'WTT Champions Montpellier',
+          'year': 2026,
+          'location': 'Montpellier, France',
+          'team_a': 'Felix Lebrun',
+          'team_b': 'Truls Moregard',
+          'upload_date': '2026-10-28T11:00:00Z',
+          'youtube_id': 'yt_mont_2',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Ma Long',
+          'team_b': 'Lin Shidong',
+          'upload_date': '2026-10-01T10:00:00Z',
+          'youtube_id': 'yt_china_1',
+          'is_doubles': false,
+          'day': 'Day 1',
+        },
+        {
+          'tournament': 'China Smash',
+          'year': 2026,
+          'location': 'Beijing, China',
+          'team_a': 'Alexis Lebrun & Camille Lutz',
+          'team_b': 'Cheng I-Ching & Lin Yun-Ju',
+          'upload_date': '2026-10-02T10:00:00Z',
+          'youtube_id': 'yt_china_2',
+          'is_doubles': true,
+          'day': 'Day 2',
+        },
+      ];
+
+      await controller.fetchData();
+      final montId = controller.allTournaments.firstWhere((t) => t.name == 'WTT Champions Montpellier').id;
+      final chinaId = controller.allTournaments.firstWhere((t) => t.name == 'China Smash').id;
+
+      // --- 1. One-Word Tournament Search ---
+      controller.setSearchQuery('montpellier');
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, montId);
+
+      // --- 2. One-Word Player Search ---
+      controller.setSearchQuery('Moregard');
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, montId);
+      final moregardMatches = controller.getMatchesForTournament(montId);
+      expect(moregardMatches.length, 1);
+      expect(moregardMatches.first.title, contains('Truls Moregard'));
+
+      // --- 3. Two-Words Head-to-Head Search (Any Player Order) ---
+      controller.setSearchQuery('Felix Lind');
+      expect(controller.filteredMatches.length, 1);
+      expect(controller.filteredMatches.first.title, contains('Anders Lind'));
+
+      controller.setSearchQuery('Lind Felix'); // Reversed player order
+      expect(controller.filteredMatches.length, 1);
+      expect(controller.filteredMatches.first.title, contains('Felix Lebrun'));
+
+      // --- 4. Two-Words Player + Tournament Search ---
+      controller.setSearchQuery('Shidong China');
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, chinaId);
+      expect(controller.filteredMatches.length, 1);
+
+      // --- 5. Middle Substring Matching Inside Player Names and Tournament Names ---
+      controller.setSearchQuery('dong'); // Substring inside "Lin Shidong"
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, chinaId);
+      expect(controller.getMatchesForTournament(chinaId).first.title, contains('Shidong'));
+
+      controller.setSearchQuery('pellier'); // Substring inside "Montpellier"
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, montId);
+
+      // --- 6. Whitespace and Case Resilience ---
+      controller.setSearchQuery('   fElIx    lInD   ');
+      expect(controller.filteredMatches.length, 1);
+      expect(controller.filteredMatches.first.title, contains('Anders Lind'));
+
+      // --- 7. Singles vs Doubles Isolation During Search ---
+      // When showDoubles is false (default), searching for a player who only played in doubles returns 0 matches
+      controller.setSearchQuery('Lutz');
+      expect(controller.availableTournaments.length, 0); // China Smash hidden because Lutz only played doubles!
+      expect(controller.filteredMatches.length, 0);
+
+      // When showDoubles is enabled, China Smash and the Lutz doubles match appear!
+      controller.toggleShowDoubles();
+      expect(controller.availableTournaments.length, 1);
+      expect(controller.availableTournaments.first.id, chinaId);
+      expect(controller.getMatchesForTournament(chinaId).length, 1);
+      expect(controller.getMatchesForTournament(chinaId).first.title, contains('Camille Lutz'));
+
+      // Reset doubles back to false for further checks
+      controller.toggleShowDoubles();
+
+      // --- 8. Negative Search Cases ---
+      // Two players who never played against each other
+      controller.setSearchQuery('Lind Shidong');
+      expect(controller.availableTournaments.length, 0);
+      expect(controller.filteredMatches.length, 0);
+
+      // Completely nonexistent name
+      controller.setSearchQuery('NonExistentPlayer 999');
+      expect(controller.availableTournaments.length, 0);
+      expect(controller.filteredMatches.length, 0);
+
+      // --- 9. Clearing Search Query ---
+      controller.setSearchQuery('');
+      expect(controller.availableTournaments.length, 2); // Both Montpellier and China Smash are visible
+      expect(controller.selectedTournamentId, isEmpty);  // Returns to unexpanded tournament list
+    });
   });
 }
