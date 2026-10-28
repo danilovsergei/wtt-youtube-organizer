@@ -112,7 +112,16 @@ class LinuxYtDlpService implements YtDlpService {
       return const VideoStreamMetadata(videoStreams: []);
     }
 
-    // Sort video by height descending, preferring avc1 (H.264) over av01 (AV1)
+    int codecPriority(String vcodec) {
+      final v = vcodec.toLowerCase();
+      if (v.startsWith('avc') || v.startsWith('h264')) return 1; // H.264: 100% universal hardware acceleration
+      if (v.startsWith('vp9') || v.startsWith('vp09')) return 2; // VP9: Hardware accelerated on Android TV
+      if (v.startsWith('hev') || v.startsWith('h265')) return 3; // HEVC: Hardware accelerated
+      if (v.startsWith('av01') || v.startsWith('av1')) return 4; // AV1: Software-only on almost all projectors -> severe glitching
+      return 5;
+    }
+
+    // Sort video by height descending, then by hardware codec capability (AVC > VP9 > HEVC > AV1)
     videoFormats.sort((a, b) {
       final hA = (a['height'] ?? 0) as int;
       final hB = (b['height'] ?? 0) as int;
@@ -120,11 +129,13 @@ class LinuxYtDlpService implements YtDlpService {
 
       final vA = (a['vcodec'] ?? '').toString();
       final vB = (b['vcodec'] ?? '').toString();
-      final isAvcA = vA.startsWith('avc');
-      final isAvcB = vB.startsWith('avc');
-      if (isAvcA && !isAvcB) return -1;
-      if (!isAvcA && isAvcB) return 1;
-      return 0;
+      final pA = codecPriority(vA);
+      final pB = codecPriority(vB);
+      if (pA != pB) return pA.compareTo(pB);
+
+      final tbrA = (a['tbr'] ?? a['vbr'] ?? 0) as num;
+      final tbrB = (b['tbr'] ?? b['vbr'] ?? 0) as num;
+      return tbrB.compareTo(tbrA);
     });
 
     // Sort audio by ABR descending, preferring m4a/aac

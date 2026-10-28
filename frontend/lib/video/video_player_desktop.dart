@@ -184,7 +184,8 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
       await nativePlayer.setProperty('android-surface-size', '${_surfaceWidth}x${_surfaceHeight}');
       await nativePlayer.setProperty('wid', wid.toString());
       await nativePlayer.setProperty('vo', 'gpu');
-      await nativePlayer.setProperty('hwdec', 'mediacodec');
+      await nativePlayer.setProperty('hwdec', 'auto');
+      await nativePlayer.setProperty('hwdec-codecs', 'all');
       await nativePlayer.setProperty('vid', 'auto');
       _logPlayer('[NATIVE_SURFACE] Applied wid=$wid with size=${_surfaceWidth}x${_surfaceHeight}');
     } catch (e) {
@@ -563,12 +564,13 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
 
         if (Platform.isAndroid) {
           await nativePlayer.setProperty('ao', 'aaudio,audiotrack,opensles');
-          await nativePlayer.setProperty('hwdec', 'mediacodec');
+          await nativePlayer.setProperty('hwdec', 'auto');
+          await nativePlayer.setProperty('hwdec-codecs', 'all');
           await nativePlayer.setProperty('cache-on-disk', 'no');
           await nativePlayer.setProperty('cache', 'yes');
           await nativePlayer.setProperty('force-seekable', 'yes');
-          await nativePlayer.setProperty('demuxer-max-bytes', '16777216');
-          await nativePlayer.setProperty('demuxer-max-back-bytes', '4194304');
+          await nativePlayer.setProperty('demuxer-max-bytes', '33554432');
+          await nativePlayer.setProperty('demuxer-max-back-bytes', '8388608');
           await nativePlayer.setProperty('demuxer-readahead-secs', '20');
           await nativePlayer.setProperty('stream-lavf-o', 'reconnect=1,reconnect_delay_max=5');
         }
@@ -603,6 +605,10 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         play: false,
       );
       _logPlayer('_player.open completed!');
+      try {
+        final activeHwdec = await nativePlayer.getProperty('hwdec-current');
+        _logPlayer('[HARDWARE_ACCELERATION] Current active hwdec: $activeHwdec');
+      } catch (_) {}
 
       // Failsafe timer: Ensure loading overlay NEVER gets permanently stuck on screen
       Timer(const Duration(seconds: 8), () {
