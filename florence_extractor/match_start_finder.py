@@ -966,38 +966,40 @@ def main():
             video_title, upload_date = processor.fetch_video_info(args.youtube_video, args.cookies_file)
             
             if not video_title or not upload_date:
-                if getattr(processor, 'last_fetch_is_bot_blocked', False):
-                    error_msg = f"Sign in to confirm you are not a bot (YouTube bot challenge: {getattr(processor, 'last_fetch_error', '')})"
+                raw_err = getattr(processor, 'last_fetch_error', '') or ''
+                err_code, err_cat = processor.classify_youtube_error(raw_err)
+
+                if err_cat == 'bot_blocked':
+                    error_msg = f"Sign in to confirm you are not a bot (YouTube bot challenge: {raw_err})"
                     print(f"Warning: {error_msg}")
                     print("Video is NOT deleted. Keeping video in queue to retry.")
-                    if args.output_json_file:
-                        json_data = {
-                            "video_id": video_id,
-                            "video_title": None,
-                            "upload_date": None,
-                            "matches": [],
-                            "error": error_msg,
-                            "is_bot_blocked": True,
-                        }
-                        with open(args.output_json_file, 'w') as f:
-                            json.dump(json_data, f, indent=2)
-                        print(f"Bot challenge JSON written to: {args.output_json_file}")
-                    sys.exit(1)
+                    exit_code = 3
+                elif err_cat == 'permanent':
+                    error_msg = f"Video '{video_id}' is permanently unavailable ({err_code}): {raw_err}"
+                    print(f"Error: {error_msg}")
+                    exit_code = 2
+                else: # retryable
+                    error_msg = f"Video '{video_id}' is temporarily unavailable ({err_code}): {raw_err}"
+                    print(f"Warning: {error_msg}")
+                    print("Video is in temporary processing state. Keeping video in queue to retry.")
+                    exit_code = 1
 
-                error_msg = f"Video '{video_id}' does not exist or is unavailable: {getattr(processor, 'last_fetch_error', '')}"
-                print(f"Error: {error_msg}")
                 if args.output_json_file:
                     json_data = {
                         "video_id": video_id,
-                        "video_title": video_title,
-                        "upload_date": upload_date,
+                        "video_title": None,
+                        "upload_date": None,
                         "matches": [],
+                        "status": "error",
                         "error": error_msg,
+                        "error_code": err_code,
+                        "error_category": err_cat,
+                        "is_bot_blocked": (err_cat == 'bot_blocked'),
                     }
                     with open(args.output_json_file, 'w') as f:
                         json.dump(json_data, f, indent=2)
                     print(f"Error JSON written to: {args.output_json_file}")
-                sys.exit(2)
+                sys.exit(exit_code)
                 
             print(f"Video Title: {video_title}")
             print(f"Upload Date: {upload_date}")

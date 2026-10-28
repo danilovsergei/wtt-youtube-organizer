@@ -373,20 +373,8 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         self.last_fetch_is_bot_blocked = False
 
     def is_bot_or_sign_in_error(self, err_msg: str) -> bool:
-        if not err_msg:
-            return False
-        err_lower = str(err_msg).lower()
-        bot_keywords = [
-            'sign in to confirm',
-            'not a bot',
-            "confirm you're not a bot",
-            'confirm you’re not a bot',
-            'bot',
-            'captcha',
-            'too many requests',
-            'http error 429',
-        ]
-        return any(k in err_lower for k in bot_keywords)
+        _, cat = self.classify_youtube_error(err_msg)
+        return cat == 'bot_blocked'
 
     def fetch_video_info(self, youtube_url: str, cookies_file: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
         """

@@ -689,44 +689,63 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		containerArgs = append(containerArgs, extraArgs...)
 		dockerErr := deps.runDocker(outputFile, containerArgs)
 		if dockerErr != nil {
-			var exitErr *exec.ExitError
-			isUnavailable := false
-			isBotBlocked := false
+			var errRes struct {
+				Status        string `json:"status"`
+				ErrorCode     string `json:"error_code"`
+				ErrorCategory string `json:"error_category"`
+				Error         string `json:"error"`
+				IsBotBlocked  bool   `json:"is_bot_blocked"`
+			}
+			hasJSON := false
 			if data, readErr := os.ReadFile(outputFile); readErr == nil {
-				var res struct {
-					Error        string 
-					IsBotBlocked bool   
+				if json.Unmarshal(data, &errRes) == nil {
+					hasJSON = true
 				}
-				if json.Unmarshal(data, &res) == nil {
-					errLower := strings.ToLower(res.Error)
-					if res.IsBotBlocked ||
-						strings.Contains(errLower, "sign in to confirm") ||
-						strings.Contains(errLower, "not a bot") ||
-						strings.Contains(errLower, "bot challenge") ||
-						strings.Contains(errLower, "captcha") {
-						isBotBlocked = true
+			}
+
+			isPermanent := false
+			isBotBlocked := false
+			errorCode := errRes.ErrorCode
+			if errorCode == "" {
+				errorCode = "UNKNOWN"
+			}
+
+			if hasJSON && errRes.ErrorCategory != "" {
+				switch errRes.ErrorCategory {
+				case "permanent":
+					isPermanent = true
+				case "bot_blocked":
+					isBotBlocked = true
+				case "retryable":
+					// explicitly retryable
+				}
+			} else {
+				// Fallback to exit codes & legacy string matching if JSON wasn't written
+				errLower := strings.ToLower(errRes.Error + " " + dockerErr.Error())
+				if errRes.IsBotBlocked ||
+					strings.Contains(errLower, "sign in to confirm") ||
+					strings.Contains(errLower, "not a bot") ||
+					strings.Contains(errLower, "bot challenge") ||
+					strings.Contains(errLower, "captcha") {
+					isBotBlocked = true
+				} else {
+					var exitErr *exec.ExitError
+					if errors.As(dockerErr, &exitErr) {
+						if exitErr.ExitCode() == 3 {
+							isBotBlocked = true
+						} else if exitErr.ExitCode() == 2 {
+							isPermanent = true
+						}
 					} else if strings.Contains(errLower, "unavailable") ||
 						strings.Contains(errLower, "deleted") ||
 						strings.Contains(errLower, "private") {
-						isUnavailable = true
+						isPermanent = true
 					}
 				}
 			}
 
-			dockerErrLower := strings.ToLower(dockerErr.Error())
-			if strings.Contains(dockerErrLower, "sign in to confirm") ||
-				strings.Contains(dockerErrLower, "not a bot") ||
-				strings.Contains(dockerErrLower, "bot") ||
-				strings.Contains(dockerErrLower, "captcha") {
-				isBotBlocked = true
-			}
-
-			if errors.As(dockerErr, &exitErr) && exitErr.ExitCode() == 2 && !isBotBlocked {
-				isUnavailable = true
-			}
-
-			if isUnavailable && !isBotBlocked {
-				logPrintf("Video %s is unavailable (deleted/private). Removing from queue...\n", entry.VideoID)
+			if isPermanent && !isBotBlocked {
+				logPrintf("Video %s is permanently unavailable (%s). Removing from queue...\n", entry.VideoID, errorCode)
 				queue = append(queue[:i], queue[i+1:]...)
 				if err := SaveQueue(queuePath, queue); err != nil {
 					return fmt.Errorf("failed to update queue: %w", err)
@@ -738,8 +757,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 				logPrintf("WARNING: yt-dlp requested sign-in / bot confirmation for video %s.\n", entry.VideoID)
 				logPrintf("Video %s is NOT deleted. Retaining in queue for retry.\n", entry.VideoID)
 			} else {
-				logPrintf("ERROR processing video %s: %v\n", entry.VideoID, dockerErr)
-				logPrintf("Video %s kept in queue for retry. Continuing to next video...\n", entry.VideoID)
+				logPrintf("INFO: Video %s encountered temporary error (%s). Retaining in queue for retry: %v\n", entry.VideoID, errorCode, dockerErr)
 			}
 			failedCount++
 			continue

@@ -950,3 +950,113 @@ func TestProcessQueue_RemovesUnavailableVideo(t *testing.T) {
 		t.Fatalf("expected 0 entries (DEAD removed as unavailable, ALIVE processed), got %d", len(remaining))
 	}
 }
+
+// --- Tests for Structured Error Contract ---
+
+func TestProcessQueue_RetainsRetryableLiveEndedVideo(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	queue := []QueueEntry{
+		entry("LIVE1", "Live Montpellier Day 2", "1771200000"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			// Simulate Python outputting structured retryable error
+			errJSON := `{"video_id":"LIVE1","status":"error","error_code":"LIVE_EVENT_PROCESSING","error_category":"retryable","error":"ERROR: [youtube] LIVE1: This live event has ended."}`
+			_ = os.WriteFile(outputFile, []byte(errJSON), 0644)
+			return fmt.Errorf("docker run failed: exit status 1")
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
+	if err != nil {
+		t.Fatalf("expected nil error (retryable error should continue), got: %v", err)
+	}
+
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 1 {
+		t.Fatalf("expected LIVE1 to be RETAINED in queue for retry, got %d entries", len(remaining))
+	}
+	if remaining[0].VideoID != "LIVE1" {
+		t.Errorf("expected video ID LIVE1, got %s", remaining[0].VideoID)
+	}
+}
+
+func TestProcessQueue_RemovesPermanentDeletedVideo_Structured(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	queue := []QueueEntry{
+		entry("DEAD1", "Deleted Video", "1771200000"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			// Simulate Python outputting structured permanent error
+			errJSON := `{"video_id":"DEAD1","status":"error","error_code":"VIDEO_DELETED","error_category":"permanent","error":"This video has been removed by the uploader"}`
+			_ = os.WriteFile(outputFile, []byte(errJSON), 0644)
+			return fmt.Errorf("docker run failed: exit status 2")
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("expected DEAD1 to be REMOVED from queue, got %d entries", len(remaining))
+	}
+}
+
+func TestProcessQueue_RetainsBotBlockedVideo_Structured(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	queue := []QueueEntry{
+		entry("BOT1", "Bot Video", "1771200000"),
+	}
+	if err := SaveQueue(queuePath, queue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			// Simulate Python outputting structured bot error
+			errJSON := `{"video_id":"BOT1","status":"error","error_code":"BOT_CONFIRMATION","error_category":"bot_blocked","error":"Sign in to confirm you are not a bot","is_bot_blocked":true}`
+			_ = os.WriteFile(outputFile, []byte(errJSON), 0644)
+			return fmt.Errorf("docker run failed: exit status 3")
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, nil, "")
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 1 {
+		t.Fatalf("expected BOT1 to be RETAINED in queue, got %d entries", len(remaining))
+	}
+	if remaining[0].VideoID != "BOT1" {
+		t.Errorf("expected video ID BOT1, got %s", remaining[0].VideoID)
+	}
+}

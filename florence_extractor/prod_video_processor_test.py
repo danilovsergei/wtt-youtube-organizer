@@ -162,3 +162,46 @@ class TestProdVideoProcessor(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TestErrorClassification(unittest.TestCase):
+    def test_classify_live_ended(self):
+        err = "ERROR: [youtube] tWvoMmXIV9s: This live event has ended."
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "LIVE_EVENT_PROCESSING")
+        self.assertEqual(cat, "retryable")
+
+    def test_classify_bot_challenge(self):
+        err = "ERROR: [youtube] 123: Sign in to confirm you’re not a bot."
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "BOT_CONFIRMATION")
+        self.assertEqual(cat, "bot_blocked")
+
+    def test_classify_video_deleted(self):
+        err = "ERROR: [youtube] 123: This video has been removed by the uploader"
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "VIDEO_DELETED")
+        self.assertEqual(cat, "permanent")
+
+    def test_classify_video_private(self):
+        err = "ERROR: [youtube] 123: Private video. Sign in if you've been granted access"
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "VIDEO_PRIVATE")
+        self.assertEqual(cat, "permanent")
+
+    def test_classify_copyright(self):
+        err = "ERROR: [youtube] 123: Video unavailable. This video is no longer available due to a copyright claim"
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "COPYRIGHT_TAKEDOWN")
+        self.assertEqual(cat, "permanent")
+
+    def test_classify_network_timeout(self):
+        err = "ERROR: [youtube] 123: Connection timed out"
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "NETWORK_TIMEOUT")
+        self.assertEqual(cat, "retryable")
+
+    def test_classify_unknown_defaults_to_retryable(self):
+        err = "Some strange unpredictable YouTube error message"
+        code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
+        self.assertEqual(code, "UNKNOWN_ERROR")
+        self.assertEqual(cat, "retryable")
