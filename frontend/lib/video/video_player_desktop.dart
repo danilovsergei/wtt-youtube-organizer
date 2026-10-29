@@ -597,6 +597,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
 if (Platform.isAndroid && _nativeSurfaceWid != null) {
         await _applyNativeSurfaceWid(_nativeSurfaceWid!);
       }
+
       await _player.open(
         Media(
           _selectedStream!.url,

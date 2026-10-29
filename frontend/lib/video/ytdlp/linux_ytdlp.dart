@@ -36,12 +36,18 @@ class LinuxYtDlpService implements YtDlpService {
       debugPrint('Warning: Failed to query yt-dlp version: $e');
     }
 
-    // Run with --force-ipv4 (-4) to prevent IPv6 client binding that triggers HTTP 403 on dual-stack networks
-    var result = await Process.run(ytdlpPath, [
-      '-4',
-      '-j',
-      'https://www.youtube.com/watch?v=$youtubeId',
-    ]);
+    String? denoPath;
+    if (File('/app/bin/deno').existsSync()) {
+      denoPath = '/app/bin/deno';
+    } else {
+      final dataHome = Platform.environment['XDG_DATA_HOME'];
+      if (dataHome != null && File('$dataHome/yt-dlp/deno').existsSync()) {
+        denoPath = '$dataHome/yt-dlp/deno';
+      }
+    }
+
+    final ytdlpArgs = buildArgs(youtubeId, denoPath: denoPath);
+    var result = await Process.run(ytdlpPath, ytdlpArgs);
 
     if (result.exitCode != 0) {
       throw ProcessException(
@@ -62,6 +68,19 @@ class LinuxYtDlpService implements YtDlpService {
     return metadata.availableResolutions;
   }
 
+  /// Pure argument builder: separated for unit testing and regression prevention
+  static List<String> buildArgs(String youtubeId, {String? denoPath}) {
+    final args = <String>[];
+    if (denoPath != null && denoPath.isNotEmpty) {
+      args.addAll(['--js-runtimes', 'deno:$denoPath']);
+    }
+    args.addAll([
+      '-j',
+      'https://www.youtube.com/watch?v=$youtubeId',
+    ]);
+    return args;
+  }
+
   /// Pure parsing logic: separated from Process.run for unit testability!
   static VideoStreamMetadata parseManifest(Map<String, dynamic> manifest) {
     final formats = (manifest['formats'] as List<dynamic>?) ?? [];
@@ -73,23 +92,12 @@ class LinuxYtDlpService implements YtDlpService {
       return p.contains('m3u8') || url.contains('m3u8') || url.contains('hls') || fid == '312' || fid == '617';
     }
 
-    // 1. Strictly prefer direct HTTPS DASH video streams (avc1/mp4)
-    final dashVideoFormats = formats.where((f) =>
-      f is Map<String, dynamic> &&
-      f['vcodec'] != 'none' &&
-      f['acodec'] == 'none' &&
-      f['height'] != null &&
-      !isHlsFormat(f)
-    ).cast<Map<String, dynamic>>().toList();
-
-    // 2. Fall back to muxed or HLS streams only if no DASH formats are present
-    final otherVideoFormats = formats.where((f) =>
+    // Include all playable formats (HLS manifests and DASH streams)
+    final videoFormats = formats.where((f) =>
       f is Map<String, dynamic> &&
       f['vcodec'] != 'none' &&
       f['height'] != null
     ).cast<Map<String, dynamic>>().toList();
-
-    var videoFormats = dashVideoFormats.isNotEmpty ? dashVideoFormats : otherVideoFormats;
 
     // Extract adaptive audio streams (matching direct HTTPS DASH streams, avoiding DRC variants)
     var audioFormats = formats.where((f) =>
@@ -122,10 +130,19 @@ class LinuxYtDlpService implements YtDlpService {
     }
 
     // Sort video by height descending, then by hardware codec capability (AVC > VP9 > HEVC > AV1)
+    // Sort video by:
+    // 1. Height descending (1080p, 720p, etc.)
+    // 2. Prefer HLS (e.g. format 312) to bypass IP-pinning and 403 Forbidden errors
+    // 3. Prefer AVC (H.264) over VP9/HEVC/AV1 for universal HW decoding
     videoFormats.sort((a, b) {
       final hA = (a['height'] ?? 0) as int;
       final hB = (b['height'] ?? 0) as int;
       if (hA != hB) return hB.compareTo(hA);
+
+      final isHlsA = isHlsFormat(a);
+      final isHlsB = isHlsFormat(b);
+      if (isHlsA && !isHlsB) return -1;
+      if (!isHlsA && isHlsB) return 1;
 
       final vA = (a['vcodec'] ?? '').toString();
       final vB = (b['vcodec'] ?? '').toString();

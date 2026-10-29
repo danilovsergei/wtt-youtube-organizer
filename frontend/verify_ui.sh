@@ -34,6 +34,12 @@ echo "🎨 [UI SUITE] Running Flutter Verification"
 echo "   (Independent Watchdog Timeout: $WATCHDOG_TIMEOUT)"
 echo "=================================================="
 
+echo "🛡️ Verifying stream playback architectural constraints..."
+if grep -rn -E -- "('-4'|'--force-ipv4')" lib/video/; then
+    echo "❌ REGRESSION: Found prohibited forced IPv4 flag in lib/video/! This breaks dual-stack networks with HTTP 403 Forbidden."
+    exit 1
+fi
+
 run_with_watchdog "🔍 1/4: Analyzing Dart code (lib/)..." $FLUTTER_BIN analyze lib/ --no-fatal-infos
 
 run_with_watchdog "🧪 2/4: Running Unit Tests..." $FLUTTER_BIN test test/unit/

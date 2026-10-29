@@ -29,6 +29,10 @@ docker run --rm -v "$(pwd)":/app -w /app flutter_linux_builder bash -c "
 echo "🔨 Running flatpak-builder using standard io.github.danilovsergei.wtt.json manifest..."
 flatpak-builder build-dir io.github.danilovsergei.wtt.json --force-clean --disable-rofiles-fuse --repo=repo
 
+echo "🛡️ REGRESSION GATE: Verifying Deno and yt-dlp integration inside Flatpak sandbox..."
+flatpak-builder --run build-dir io.github.danilovsergei.wtt.json /app/bin/deno --version
+flatpak-builder --run build-dir io.github.danilovsergei.wtt.json /app/bin/yt-dlp_linux --js-runtimes "deno:/app/bin/deno" --version
+
 echo "📦 Creating flatpak bundle..."
 flatpak build-bundle repo wtt.flatpak io.github.danilovsergei.wtt
 

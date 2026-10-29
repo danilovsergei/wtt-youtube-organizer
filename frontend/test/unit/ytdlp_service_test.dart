@@ -91,6 +91,59 @@ void main() {
       expect(metadata.audioUrl, isNull);
     });
 
+    test('REGRESSION GUARD: parseManifest strictly prioritizes HLS format 312 over split DASH format 299', () {
+      final mockManifest = {
+        'formats': [
+          // Direct HTTPS DASH video stream (format 299)
+          {
+            'format_id': '299',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'none',
+            'height': 1080,
+            'protocol': 'https',
+            'url': 'https://rr4---sn-o097znsd.googlevideo.com/videoplayback?itag=299',
+          },
+          // Native HLS stream (format 312) - must be prioritized to bypass IP-pinning 403s
+          {
+            'format_id': '312',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'none',
+            'height': 1080,
+            'protocol': 'm3u8_native',
+            'url': 'https://manifest.googlevideo.com/api/manifest/hls_playlist/format_312.m3u8',
+          },
+          // Audio stream
+          {
+            'format_id': '140',
+            'acodec': 'mp4a.40.2',
+            'vcodec': 'none',
+            'abr': 128,
+            'url': 'https://audio.com/140.m4a',
+          },
+        ],
+      };
+
+      final metadata = LinuxYtDlpService.parseManifest(mockManifest);
+
+      // Must select HLS format 312 as primary 1080p stream
+      expect(metadata.videoStreams.first.url, contains('hls_playlist/format_312.m3u8'));
+      expect(metadata.videoStreams.first.height, 1080);
+    });
+
+    test('REGRESSION GUARD: buildArgs includes Deno JS runtime and NEVER includes forced IPv4 (-4)', () {
+      // 1. With Deno present
+      final argsWithDeno = LinuxYtDlpService.buildArgs('sample_yt_id', denoPath: '/app/bin/deno');
+      expect(argsWithDeno, containsAll(['--js-runtimes', 'deno:/app/bin/deno']));
+      expect(argsWithDeno, isNot(contains('-4')));
+      expect(argsWithDeno, isNot(contains('--force-ipv4')));
+
+      // 2. Without Deno present
+      final argsWithoutDeno = LinuxYtDlpService.buildArgs('sample_yt_id');
+      expect(argsWithoutDeno, isNot(contains('--js-runtimes')));
+      expect(argsWithoutDeno, isNot(contains('-4')));
+      expect(argsWithoutDeno, isNot(contains('--force-ipv4')));
+    });
+
     test('YtDlpService singleton instance is swappable', () {
       final original = YtDlpService.instance;
       final testService = TestYtDlpService();
