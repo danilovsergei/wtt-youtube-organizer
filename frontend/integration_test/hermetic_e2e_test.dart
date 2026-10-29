@@ -223,8 +223,8 @@ void main() {
       final currentPosSec = player.state.position.inSeconds;
       final overlayPresent = find.byKey(const Key('match_loading_overlay')).evaluate().isNotEmpty;
 
-      // STRICT FLICKER INVARIANT:
-      // If position has not reached target offset (120s), loading shield MUST NOT be dismissed!
+      // STRICT FLICKER & MOTION INVARIANT:
+      // 1. If position has not reached target offset (120s), loading shield MUST NOT be dismissed!
       if (currentPosSec < 118) {
         expect(
           overlayPresent,
@@ -233,7 +233,17 @@ void main() {
         );
       }
 
+      // 2. If player is buffering or paused on keyframe, loading shield MUST NOT be dismissed!
+      if (!seekedAndPlaying && (player.state.buffering || !player.state.playing)) {
+        expect(
+          overlayPresent,
+          isTrue,
+          reason: 'Freeze regression detected! match_loading_overlay was prematurely dismissed while buffering=${player.state.buffering} or playing=${player.state.playing}!',
+        );
+      }
+
       if (player.state.playing &&
+          !player.state.buffering &&
           currentPosSec >= 120 &&
           !overlayPresent) {
         seekedAndPlaying = true;
@@ -247,6 +257,23 @@ void main() {
     );
     expect(player.state.playing, isTrue, reason: 'Player must be actively playing');
     expect(player.state.duration.inSeconds, equals(300), reason: 'Test video duration should be 300s');
+
+    // REGRESSION GUARD 1: Verify playback started directly at target offset (120s), NEVER at 0s!
+    expect(
+      player.state.position.inSeconds,
+      greaterThanOrEqualTo(118),
+      reason: 'Playback MUST start at target match offset (120s), NEVER at 0 seconds from stream start!',
+    );
+
+    // REGRESSION GUARD 2: Verify video timeline is actively moving forward in time (no frozen still frames)
+    final motionCheckPos1 = player.state.position.inMilliseconds;
+    await tester.pump(const Duration(milliseconds: 250));
+    final motionCheckPos2 = player.state.position.inMilliseconds;
+    expect(
+      motionCheckPos2,
+      greaterThan(motionCheckPos1),
+      reason: 'Playback must be continuously moving forward in time without frozen still frames. Actual: pos1=$motionCheckPos1 ms, pos2=$motionCheckPos2 ms',
+    );
 
     // Verify loading overlay shield is dismissed ONLY after playback has successfully started
     expect(find.byKey(const Key('match_loading_overlay')), findsNothing, reason: 'Loading overlay must be dismissed once playing');

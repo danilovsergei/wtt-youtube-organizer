@@ -170,6 +170,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
   Duration? _targetSeekPosition;
   Timer? _seekCommitTimer;
   int _cumulativeSeekSeconds = 0;
+  final Stopwatch _loadSw = Stopwatch();
 
   void _handleNativeSurfaceChanged(int width, int height) {
     _surfaceWidth = width;
@@ -382,8 +383,19 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
         });
       }
     });
-    _syncDebugTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _logPlayer('[PLAY_CLOCK] pos=${_player.state.position.inSeconds}s / ${_player.state.duration.inSeconds}s, play=${_player.state.playing}, buf=${_player.state.buffering}');
+    _syncDebugTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      String cacheInfo = '';
+      if (!Platform.isAndroid) {
+        try {
+          final np = _player.platform as dynamic;
+          final pausedForCache = await np.getProperty('paused-for-cache');
+          final cacheDuration = await np.getProperty('demuxer-cache-duration');
+          if (pausedForCache == 'yes' || _player.state.buffering) {
+            cacheInfo = ', [CACHE_STALL] paused-for-cache=$pausedForCache, cache-secs=${cacheDuration}s';
+          }
+        } catch (_) {}
+      }
+      _logPlayer('[PLAY_CLOCK] pos=${_player.state.position.inSeconds}s / ${_player.state.duration.inSeconds}s, play=${_player.state.playing}, buf=${_player.state.buffering}$cacheInfo');
     });
     if (!Platform.isAndroid) {
       _controller = VideoController(
@@ -503,8 +515,10 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
   }
 
   void _loadVideo(String youtubeId, int startSeconds, [YtStreamInfo? specificStream]) async {
+    _loadSw.reset();
+    _loadSw.start();
     _errorMessage = null;
-    _logPlayer('_loadVideo START: yt=$youtubeId, offset=${startSeconds}s, specific=${specificStream?.height}p');
+    _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] _loadVideo START: yt=$youtubeId, offset=${startSeconds}s, specific=${specificStream?.height}p');
     
     final isHeadless = WidgetsBinding.instance.runtimeType.toString().contains('Automated');
     if (!isHeadless) {
@@ -515,7 +529,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
     }
     try {
       final metadata = await YtDlpService.instance.getVideoStreamMetadata(youtubeId);
-      _logPlayer('metadata received: streams=${metadata.videoStreams.length}, audioUrl=${metadata.audioUrl != null}');
+      _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] Metadata received: streams=${metadata.videoStreams.length}, audioUrl=${metadata.audioUrl != null}');
       if (metadata.videoStreams.isEmpty) {
         _logPlayer('No video streams extracted for $youtubeId');
         if (mounted) setState(() => _isLoadingVideo = false);
@@ -593,19 +607,29 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
         }
       });
 
-      _logPlayer('Calling _player.open (targetOffset=${startSeconds}s)...');
-if (Platform.isAndroid && _nativeSurfaceWid != null) {
+      // 2. Check if user previously watched this match and calculate resume offset BEFORE opening!
+      final resumeOffset = await PlaybackProgressService.instance.getResumePosition(
+        matchId: widget.matchId,
+        defaultOffsetSeconds: startSeconds,
+        matchDurationSeconds: widget.matchDurationSeconds,
+        youtubeId: widget.youtubeId,
+      );
+
+      _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] Calling _player.open with native start=${resumeOffset}s (res=${_selectedStream?.height}p)...');
+      if (Platform.isAndroid && _nativeSurfaceWid != null) {
         await _applyNativeSurfaceWid(_nativeSurfaceWid!);
       }
 
+      // Pass start parameter directly to Media so MPV initializes playback natively at resume offset!
       await _player.open(
         Media(
           _selectedStream!.url,
           httpHeaders: metadata.httpHeaders,
+          start: resumeOffset > 0 ? Duration(seconds: resumeOffset) : null,
         ),
         play: false,
       );
-      _logPlayer('_player.open completed!');
+      _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] _player.open completed!');
       try {
         final activeHwdec = await nativePlayer.getProperty('hwdec-current');
         _logPlayer('[HARDWARE_ACCELERATION] Current active hwdec: $activeHwdec');
@@ -624,10 +648,10 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         }
       });
 
-      // 3. Fast non-blocking track readiness confirmation (1.5s max timeout)
+      // 3. Track readiness confirmation (3.5s max timeout to accommodate HLS master playlist parsing)
       _logPlayer('Waiting for MPV video track readiness...');
       try {
-        await newTracksCompleter.future.timeout(const Duration(milliseconds: 1500));
+        await newTracksCompleter.future.timeout(const Duration(milliseconds: 3500));
         _logPlayer('Video track confirmed ready in MPV core!');
       } catch (e) {
         _logPlayer('Video track wait fast-fallback: $e');
@@ -656,21 +680,13 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         } catch (_) {}
       }
 
-      // 5. Check if user previously watched this match and resume!
-      final resumeOffset = await PlaybackProgressService.instance.getResumePosition(
-        matchId: widget.matchId,
-        defaultOffsetSeconds: startSeconds,
-        matchDurationSeconds: widget.matchDurationSeconds,
-        youtubeId: widget.youtubeId,
-      );
-
-      // Seek unified timeline (aligns BOTH video and audio clocks to target offset!)
-      if (resumeOffset > 0) {
-        _logPlayer('Seeking unified timeline to ${resumeOffset}s (initial=${startSeconds}s)...');
+      // 5. Reinforce seek if current position is not yet at target offset
+      if (resumeOffset > 0 && _player.state.position.inSeconds < (resumeOffset - 2)) {
+        _logPlayer('Reinforcing seek to target offset ${resumeOffset}s (current=${_player.state.position.inSeconds}s)...');
         try {
           await _player.seek(Duration(seconds: resumeOffset));
         } catch (e) {
-          _logPlayer('Initial seek error: $e');
+          _logPlayer('Seek reinforcement note: $e');
         }
       }
 
@@ -680,25 +696,52 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         _logPlayer('Resumed synchronized playback from ${resumeOffset}s');
       } catch (_) {}
 
-      // 6. Wait until playback has settled at target match offset before revealing screen
+      // 6. Wait until playback has reached target match offset
       if (resumeOffset > 0) {
         final minTargetMs = (resumeOffset > 2 ? resumeOffset - 2 : 0) * 1000;
         try {
           await _player.stream.position
               .firstWhere((p) => p.inMilliseconds >= minTargetMs)
               .timeout(Duration(seconds: Platform.isAndroid ? 5 : 3));
-          _logPlayer('Target offset confirmed reached! pos=${_player.state.position.inMilliseconds}ms');
+          _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] Target offset reached! pos=${_player.state.position.inMilliseconds}ms');
         } catch (e) {
-          _logPlayer('Target offset wait: $e (pos=${_player.state.position.inMilliseconds}ms)');
+          _logPlayer('⚠️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] Target offset wait fallback: $e (pos=${_player.state.position.inMilliseconds}ms)');
         }
       } else {
         try {
           await _player.stream.position
               .firstWhere((p) => p.inMilliseconds > 50)
               .timeout(Duration(seconds: Platform.isAndroid ? 5 : 3));
+          _logPlayer('⏱️ [PLAY_TIMING +${_loadSw.elapsedMilliseconds}ms] Initial zero-offset frame decoded! pos=${_player.state.position.inMilliseconds}ms');
         } catch (_) {}
       }
-      // Reveal video immediately once offset is settled
+
+      // 7. KEEP LOADING SHIELD AND SPINNER VISIBLE UNTIL ACTIVE MOTION CONFIRMED!
+      // When MPV seeks to a keyframe, it decodes a single static image first and stalls while
+      // filling its demuxer cache. Dismissing the loading overlay too early flashes a frozen frame.
+      // We keep the overlay up and wait until the timeline actively advances forward by >= 150ms!
+      final firstFrameMs = _loadSw.elapsedMilliseconds;
+      final startPosMs = _player.state.position.inMilliseconds;
+      _logPlayer('⏱️ [PLAY_TIMING +${firstFrameMs}ms] First frame decoded. Holding loading overlay until active playback motion starts...');
+
+      int motionConfirmedMs = firstFrameMs;
+      try {
+        await _player.stream.position.firstWhere((p) {
+          final advanced = p.inMilliseconds >= startPosMs + 150;
+          final isPlayingAndNotBuffering = _player.state.playing && !_player.state.buffering;
+          return advanced && isPlayingAndNotBuffering;
+        }).timeout(const Duration(seconds: 8));
+
+        motionConfirmedMs = _loadSw.elapsedMilliseconds;
+        final currentPosMs = _player.state.position.inMilliseconds;
+        final freezeGapMs = motionConfirmedMs - firstFrameMs;
+        _logPlayer('🎬 [PLAY_TIMING +${motionConfirmedMs}ms] Active playback motion confirmed! (pos: ${startPosMs}ms -> ${currentPosMs}ms, first-frame-stall-gap: ${freezeGapMs}ms, buf=${_player.state.buffering})');
+      } catch (e) {
+        motionConfirmedMs = _loadSw.elapsedMilliseconds;
+        _logPlayer('⚠️ [PLAY_TIMING +${motionConfirmedMs}ms] Motion confirmation timeout ($e, pos=${_player.state.position.inMilliseconds}ms)');
+      }
+
+      // Reveal video to user ONLY once it is actively playing in smooth motion!
       if (mounted) {
         setState(() {
           _isLoadingVideo = false;
@@ -706,7 +749,8 @@ if (Platform.isAndroid && _nativeSurfaceWid != null) {
         });
         _videoPlayerFocusNode.requestFocus();
       }
-      _logPlayer('Dismissed loading shield! _isLoadingVideo=$_isLoadingVideo');
+      final revealMs = _loadSw.elapsedMilliseconds;
+      _logPlayer('✨ [PLAY_TIMING +${revealMs}ms] Dismissed loading shield! Revealed video to user (Total load-to-motion: ${revealMs}ms)');
 
       // Unmute audio non-blockingly
       try {

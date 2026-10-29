@@ -413,10 +413,50 @@ void main() {
         findsOneWidget,
         reason: 'Video widget must be mounted from startup so native Android Surface is warm and does not trigger dynamic mount race crashes',
       );
+    });
 
+    testWidgets('REGRESSION GUARD: Spinning wheel remains visible during loading until active playback', (
+      WidgetTester tester,
+    ) async {
+      final delayedService = _DelayedYtDlpService();
+      delayedService.completer = Completer<void>();
+      YtDlpService.instance = delayedService;
 
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: VideoPlayerWidget.create(
+              key: const Key('offset_test_player'),
+              matchId: 'm_offset_120',
+              youtubeId: 'test_yt_4',
+              imageUrl: 'https://example.com/thumb.jpg',
+              offsetSeconds: 120, // Match start timestamp
+              onDoubleTap: () {},
+              autoPlay: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
 
+      // Guard 1: Overlay with spinning wheel is mounted immediately and remains visible
+      final overlayFinder = find.byKey(const Key('match_loading_overlay'));
+      expect(overlayFinder, findsOneWidget, reason: 'Loading overlay must be mounted initially');
 
+      // The CircularProgressIndicator (spinning wheel) must be present inside the overlay
+      expect(
+        find.descendant(of: overlayFinder, matching: find.byType(CircularProgressIndicator)),
+        findsOneWidget,
+        reason: 'Spinning wheel must be visible on the loading overlay',
+      );
+
+      // Complete extraction
+      delayedService.completer!.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Once stream is ready, overlay is cleanly dismissed
+      expect(find.byKey(const Key('match_loading_overlay')), findsNothing);
     });
   });
 }
