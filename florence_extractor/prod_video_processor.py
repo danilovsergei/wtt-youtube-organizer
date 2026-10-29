@@ -575,12 +575,17 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             return []
         print(f'Validating video ID: {after_video_id}...')
         if not self.validate_video_exists(after_video_id):
-            if self.last_fetch_is_bot_blocked:
+            code, category = self.classify_youtube_error(self.last_fetch_error or "")
+            if self.last_fetch_is_bot_blocked or category == "bot_blocked":
                 print(
                     f"Warning: YouTube requested bot confirmation / sign-in for video '{after_video_id}'. Video is NOT deleted.")
                 return "BOT_BLOCKED"
+            if category == "retryable" or code == "LIVE_EVENT_PROCESSING":
+                print(
+                    f"Warning: Video '{after_video_id}' is temporarily unavailable ({code}): {self.last_fetch_error}. Video is NOT deleted.")
+                return "RETRYABLE"
             print(
-                f"Error: Video '{after_video_id}' does not exist or is not accessible.")
+                f"Error: Video '{after_video_id}' does not exist or is not accessible ({code}).")
             return None
         playlist_url = 'https://www.youtube.com/@WTTGlobal/streams'
         for batch_num in range(1, max_batches + 1):

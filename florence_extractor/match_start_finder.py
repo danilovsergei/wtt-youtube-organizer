@@ -787,6 +787,10 @@ def main():
         if videos == "BOT_BLOCKED":
             print(f"YouTube requires bot confirmation or sign-in for video ID '{args.process_all_matches_after}'.")
             print("Retaining video in queue and aborting to retry later.")
+            sys.exit(3)
+        elif videos == "RETRYABLE":
+            print(f"Video ID '{args.process_all_matches_after}' is temporarily unavailable (live event ended / processing).")
+            print("Retaining video in queue and aborting to retry later.")
             sys.exit(1)
         elif videos is None:
             print(f"Video ID '{args.process_all_matches_after}' does not exist or was deleted.")
