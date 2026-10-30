@@ -40,6 +40,11 @@ if grep -rn -E -- "('-4'|'--force-ipv4')" lib/video/; then
     exit 1
 fi
 
+if grep -rn -i "skipping external audio" lib/video/ || grep -rn "isHls.*setAudioTrack" lib/video/; then
+    echo "❌ REGRESSION: Found conditional audio track bypass in lib/video/! All YouTube adaptive HD video streams (including HLS format 312) are video-only and MUST ALWAYS attach audio."
+    exit 1
+fi
+
 run_with_watchdog "🔍 1/4: Analyzing Dart code (lib/)..." $FLUTTER_BIN analyze lib/ --no-fatal-infos
 
 run_with_watchdog "🧪 2/4: Running Unit Tests..." $FLUTTER_BIN test test/unit/

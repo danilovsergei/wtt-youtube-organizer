@@ -24,3 +24,11 @@ Assume all project files, dependencies, and development environments reside on t
 **Docker & Environment Notes:**
 - **DO NOT** run or build the OpenVINO container on this machine. This is an NVIDIA-specific machine.
 - To build the Docker image, ALWAYS use the script: `/home/geonix/Build/wtt-youtube-organizer/florence_extractor/docker/cuda/build.py` (defaults to `--model mineru`, with optional `--model qwen`).
+
+### 🎵 YouTube Audio/Video Stream Pairing & MPV Invariants
+- **NEVER assume HLS video contains internal audio**: YouTube adaptive HD video streams (format 312 1080p60, format 299 1080p60, format 617 VP9, format 137) are `acodec: none` (video-only).
+- **NEVER skip attaching the audio track**: In `lib/video/video_player_desktop.dart`, `_player.setAudioTrack(AudioTrack.uri(_audioUrl!))` MUST ALWAYS execute for any stream where `_audioUrl` is present. Any conditional bypass (such as `if (!isHls)`) is strictly prohibited and causes completely silent playback.
+- **Audio Stream Selection Protocol**:
+  1. When **HLS video (format 312)** is selected: ALWAYS prioritize **HLS audio (format 234)**. Format 234 uses the identical `manifest.googlevideo.com/.../itag/234/` session as format 312, eliminating single-IP pinning, cipher throttling, and HTTP 403 Forbidden ("Can not open external file").
+  2. When **DASH video (format 299)** is selected: Pair with direct DASH audio (format 140 / 251).
+  3. `parseManifest` in `linux_ytdlp.dart` must strictly enforce this protocol.

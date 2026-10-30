@@ -163,6 +163,32 @@ void main() {
       expect(metadata.audioUrl, contains('hls_playlist/format_234.m3u8'));
     });
 
+    test('REGRESSION GUARD: parseManifest selects format 140 DASH audio when video is DASH (format 299)', () {
+      final mockManifest = {
+        'formats': [
+          {
+            'format_id': '299',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'none',
+            'height': 1080,
+            'protocol': 'https',
+            'url': 'https://rr.googlevideo.com/videoplayback?itag=299',
+          },
+          {
+            'format_id': '140',
+            'acodec': 'mp4a.40.2',
+            'vcodec': 'none',
+            'abr': 128,
+            'url': 'https://audio.com/140.m4a',
+          },
+        ],
+      };
+
+      final metadata = LinuxYtDlpService.parseManifest(mockManifest);
+      expect(metadata.videoStreams.first.url, contains('itag=299'));
+      expect(metadata.audioUrl, contains('140.m4a'));
+    });
+
     test('REGRESSION GUARD: buildArgs includes Deno JS runtime and NEVER includes forced IPv4 (-4)', () {
       // 1. With Deno present
       final argsWithDeno = LinuxYtDlpService.buildArgs('sample_yt_id', denoPath: '/app/bin/deno');
