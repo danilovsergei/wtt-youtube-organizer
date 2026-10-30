@@ -289,3 +289,143 @@ func TestProcessQueue_BotConfirmationErrorKeepsVideoInQueue(t *testing.T) {
                 t.Fatalf("expected BOT_VID to remain in queue for retry, got: %+v", remaining)
         }
 }
+
+// TestAddNewStreamsWithFallback_ExitCode1_RetainsVideoInQueueAndTriesNextCandidate tests that
+// when a video fails with exit code 1 (live event processing / temporary error), it is NOT
+// purged from the queue, and AddNewStreamsWithFallback continues to the next fallback candidate.
+func TestAddNewStreamsWithFallback_ExitCode1_RetainsVideoInQueueAndTriesNextCandidate(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	initialQueue := []QueueEntry{
+		entry("RETRYABLE_TOP", "Processing Live Stream", "1771200000"),
+	}
+	if err := SaveQueue(queuePath, initialQueue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	exitCode1Err := exec.Command("sh", "-c", "exit 1").Run()
+
+	fetcher := &mockFallbackFetcher{
+		errors: map[string]error{
+			"RETRYABLE_TOP": exitCode1Err,
+		},
+		results: map[string][]QueueEntry{
+			"FALLBACK_DB_ID": {
+				entry("NEW_STREAM_UNBLOCKED", "New Stream Discovered", "1771300000"),
+			},
+		},
+	}
+
+	candidates := []string{"RETRYABLE_TOP", "FALLBACK_DB_ID"}
+	count, err := AddNewStreamsWithFallback(queuePath, candidates, fetcher, "")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 new stream added, got %d", count)
+	}
+
+	// Verify both candidates were attempted in order
+	if len(fetcher.calledWithVideoIDs) != 2 ||
+		fetcher.calledWithVideoIDs[0] != "RETRYABLE_TOP" ||
+		fetcher.calledWithVideoIDs[1] != "FALLBACK_DB_ID" {
+		t.Fatalf("expected fetcher called with [RETRYABLE_TOP, FALLBACK_DB_ID], got %v", fetcher.calledWithVideoIDs)
+	}
+
+	// Verify RETRYABLE_TOP was RETAINED in queue, and NEW_STREAM_UNBLOCKED was prepended to the top
+	updatedQueue, err := LoadQueue(queuePath)
+	if err != nil {
+		t.Fatalf("LoadQueue failed: %v", err)
+	}
+
+	expectedIDs := []string{"NEW_STREAM_UNBLOCKED", "RETRYABLE_TOP"}
+	if len(updatedQueue) != len(expectedIDs) {
+		t.Fatalf("expected %d entries, got %d: %+v", len(expectedIDs), len(updatedQueue), updatedQueue)
+	}
+	for i, expectedID := range expectedIDs {
+		if updatedQueue[i].VideoID != expectedID {
+			t.Errorf("expected queue[%d]=%s, got %s", i, expectedID, updatedQueue[i].VideoID)
+		}
+	}
+}
+
+// TestAddNewStreamsWithFallback_ExitCode1_AllRetryable_RetainsAllInQueueAndReturnsError tests
+// that when all candidates fail with exit code 1, none are purged, and the error is returned.
+func TestAddNewStreamsWithFallback_ExitCode1_AllRetryable_RetainsAllInQueueAndReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	initialQueue := []QueueEntry{
+		entry("RETRYABLE_1", "Processing Live Stream 1", "1771200000"),
+		entry("RETRYABLE_2", "Processing Live Stream 2", "1771100000"),
+	}
+	if err := SaveQueue(queuePath, initialQueue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	exitCode1Err := exec.Command("sh", "-c", "exit 1").Run()
+
+	fetcher := &mockFallbackFetcher{
+		errors: map[string]error{
+			"RETRYABLE_1": exitCode1Err,
+			"RETRYABLE_2": exitCode1Err,
+		},
+	}
+
+	candidates := []string{"RETRYABLE_1", "RETRYABLE_2"}
+	count, err := AddNewStreamsWithFallback(queuePath, candidates, fetcher, "")
+	if err == nil {
+		t.Fatalf("expected error when all candidates fail with exit code 1, got nil (count=%d)", count)
+	}
+
+	// Verify neither candidate was purged from the queue
+	remainingQueue, err := LoadQueue(queuePath)
+	if err != nil {
+		t.Fatalf("LoadQueue failed: %v", err)
+	}
+	if len(remainingQueue) != 2 ||
+		remainingQueue[0].VideoID != "RETRYABLE_1" ||
+		remainingQueue[1].VideoID != "RETRYABLE_2" {
+		t.Fatalf("expected both retryable videos to remain in queue, got: %+v", remainingQueue)
+	}
+}
+
+// TestAddNewStreamsWithCutoff_UsesExplicitCutoffEvenIfQueueHasEntries tests that AddNewStreamsWithCutoff
+// always queries the exact requested cutoff video ID rather than overriding it with queue[0].VideoID.
+func TestAddNewStreamsWithCutoff_UsesExplicitCutoffEvenIfQueueHasEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	initialQueue := []QueueEntry{
+		entry("EXISTING_TOP", "Top Entry", "1771200000"),
+	}
+	if err := SaveQueue(queuePath, initialQueue); err != nil {
+		t.Fatalf("SaveQueue failed: %v", err)
+	}
+
+	fetcher := &mockFallbackFetcher{
+		results: map[string][]QueueEntry{
+			"FALLBACK_CANDIDATE": {
+				entry("DISCOVERED_STREAM", "Discovered Stream", "1771300000"),
+			},
+		},
+	}
+
+	count, err := AddNewStreamsWithCutoff(queuePath, "FALLBACK_CANDIDATE", fetcher, "")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 new stream added, got %d", count)
+	}
+
+	if len(fetcher.calledWithVideoIDs) != 1 || fetcher.calledWithVideoIDs[0] != "FALLBACK_CANDIDATE" {
+		t.Fatalf("expected fetcher called with FALLBACK_CANDIDATE, got %v", fetcher.calledWithVideoIDs)
+	}
+
+	updatedQueue, _ := LoadQueue(queuePath)
+	if len(updatedQueue) != 2 || updatedQueue[0].VideoID != "DISCOVERED_STREAM" || updatedQueue[1].VideoID != "EXISTING_TOP" {
+		t.Fatalf("unexpected updated queue: %+v", updatedQueue)
+	}
+}

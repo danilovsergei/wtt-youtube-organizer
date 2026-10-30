@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -154,6 +155,9 @@ func TestIntegration_AddNewStreams_OpenVINO(t *testing.T) {
 	if os.Getenv("SKIP_DOCKER_TESTS") == "1" {
 		t.Skip("Skipping Docker integration test because SKIP_DOCKER_TESTS=1")
 	}
+	if !dockerImageExists("wtt-stream-match-finder-openvino:latest") {
+		t.Skip("Skipping OpenVINO test: wtt-stream-match-finder-openvino:latest not built on host")
+	}
 
 	goldenPath := getGoldenDataset(t)
 	dockerDir = "docker/openvino"
@@ -185,6 +189,9 @@ func TestIntegration_AddNewStreams_OpenVINO(t *testing.T) {
 func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 	if os.Getenv("SKIP_DOCKER_TESTS") == "1" {
 		t.Skip("Skipping Docker integration test because SKIP_DOCKER_TESTS=1")
+	}
+	if !dockerImageExists("wtt-stream-match-finder-openvino:latest") {
+		t.Skip("Skipping OpenVINO test: wtt-stream-match-finder-openvino:latest not built on host")
 	}
 
 	goldenPath := getGoldenDataset(t)
@@ -261,5 +268,74 @@ func TestIntegration_ProcessQueue_OpenVINO(t *testing.T) {
 
 	if result.Matches[1].Player1 != "WANG CHUQIN" || result.Matches[1].Player2 != "LIN YUN-JU" {
 		t.Errorf("Match 2 players incorrect: %s vs %s", result.Matches[1].Player1, result.Matches[1].Player2)
+	}
+}
+
+func TestIntegration_AddNewStreamsWithFallback_ExitCode1(t *testing.T) {
+	if os.Getenv("SKIP_DOCKER_TESTS") == "1" {
+		t.Skip("Skipping Docker integration test because SKIP_DOCKER_TESTS=1")
+	}
+
+	goldenPath := getGoldenDataset(t)
+	dockerDir = "docker/cuda"
+	imageName = "geonix/wtt-stream-match-finder-cuda:latest"
+
+	queueFile, err := os.CreateTemp("", "integration_fallback_*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp queue file: %v", err)
+	}
+	defer os.Remove(queueFile.Name())
+
+	// Start with a retryable stream in queue
+	initialQueue := []QueueEntry{
+		{
+			VideoID:    "RETRYABLE_LIVE_STREAM",
+			VideoTitle: "Live Event Still Processing",
+			UploadDate: "2026-01-01",
+		},
+	}
+	if err := SaveQueue(queueFile.Name(), initialQueue); err != nil {
+		t.Fatalf("failed to save queue: %v", err)
+	}
+
+	exitCode1Err := exec.Command("sh", "-c", "exit 1").Run()
+
+	fetcher := &dockerStreamFetcher{
+		extraArgs: []string{},
+		runDocker: func(outputFile string, args []string) error {
+			for _, arg := range args {
+				// If checking the retryable live stream, simulate exit status 1
+				if arg == "--process_all_matches_after=RETRYABLE_LIVE_STREAM" {
+					return exitCode1Err
+				}
+			}
+			// Fallback candidate uses the hermetic golden dataset
+			return injectGoldenToDocker(outputFile, args, goldenPath)
+		},
+	}
+
+	candidates := []string{"RETRYABLE_LIVE_STREAM", "FALLBACK_GOLDEN_ID"}
+	count, err := AddNewStreamsWithFallback(queueFile.Name(), candidates, fetcher, "")
+	if err != nil {
+		t.Fatalf("expected nil error on fallback, got: %v", err)
+	}
+	if count < 1 {
+		t.Fatalf("expected at least 1 video added via fallback, got %d", count)
+	}
+
+	updatedQueue, err := LoadQueue(queueFile.Name())
+	if err != nil {
+		t.Fatalf("failed to load updated queue: %v", err)
+	}
+
+	// Verify RETRYABLE_LIVE_STREAM is still in queue, and golden video (hJXfBULLDro) is prepended
+	if len(updatedQueue) != 2 {
+		t.Fatalf("expected 2 entries in queue, got %d: %+v", len(updatedQueue), updatedQueue)
+	}
+	if updatedQueue[0].VideoID != "hJXfBULLDro" {
+		t.Errorf("expected top video 'hJXfBULLDro', got '%s'", updatedQueue[0].VideoID)
+	}
+	if updatedQueue[1].VideoID != "RETRYABLE_LIVE_STREAM" {
+		t.Errorf("expected second video 'RETRYABLE_LIVE_STREAM' (retained), got '%s'", updatedQueue[1].VideoID)
 	}
 }

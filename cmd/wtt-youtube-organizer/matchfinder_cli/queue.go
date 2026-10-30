@@ -174,8 +174,20 @@ func AddNewStreams(queuePath string, afterVideoID string, fetcher StreamFetcher,
 		cutoffVideoID = existingQueue[0].VideoID
 	}
 
+	return AddNewStreamsWithCutoff(queuePath, cutoffVideoID, fetcher, filterTitle, checker...)
+}
+
+// AddNewStreamsWithCutoff fetches new streams using the specified cutoffVideoID without overriding it,
+// prepending newly discovered streams to the queue file.
+func AddNewStreamsWithCutoff(queuePath string, cutoffVideoID string, fetcher StreamFetcher, filterTitle string, checker ...ProcessedChecker) (int, error) {
 	if cutoffVideoID == "" {
 		return 0, fmt.Errorf("no cutoff video ID available")
+	}
+
+	// Load existing queue
+	existingQueue, err := LoadQueue(queuePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to load queue: %w", err)
 	}
 
 	// Fetch new streams after cutoff
@@ -275,7 +287,7 @@ func AddNewStreamsWithFallback(queuePath string, candidateVideoIDs []string, fet
 		afterVideoID := vid
 		logPrintf("Using video ID as cutoff: %s\n", afterVideoID)
 
-		count, err = AddNewStreams(queuePath, afterVideoID, fetcher, filterTitle, checker...)
+		count, err = AddNewStreamsWithCutoff(queuePath, afterVideoID, fetcher, filterTitle, checker...)
 		if err != nil {
 			var exitErr *exec.ExitError
 			errLower := strings.ToLower(err.Error())
@@ -287,6 +299,11 @@ func AddNewStreamsWithFallback(queuePath string, candidateVideoIDs []string, fet
 			if isBotBlocked {
 				logPrintf("WARNING: yt-dlp reported bot confirmation / sign-in challenge for video %s. Retaining in queue and aborting.\n", afterVideoID)
 				return 0, err
+			}
+
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+				logPrintf("Video %s is temporarily unavailable (live event ended/processing). Retaining in queue and trying fallback candidate...\n", afterVideoID)
+				continue
 			}
 
 			if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
