@@ -4,6 +4,7 @@ import 'services/playback_progress_service.dart';
 import 'services/user_database_sync_service.dart';
 import 'widgets/diagnostics_screen.dart';
 import 'widgets/cloud_sync_screen.dart';
+import 'widgets/linked_devices_screen.dart';
 import 'widgets/tv_focusable.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -958,8 +959,252 @@ class _MainScreenState extends State<MainScreen> {
         _triggerRefresh();
         return true;
       }
+
+      final isMenuKey = event.logicalKey == LogicalKeyboardKey.contextMenu ||
+          event.logicalKey == LogicalKeyboardKey.settings;
+      if (isMenuKey) {
+        openTvQuickMenu(context);
+        return true;
+      }
     }
     return false;
+  }
+
+  static void openTvQuickMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.menu_rounded, color: Color(0xFF0D7FF2), size: 22),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Quick Menu',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'TV Remote Menu',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // 1. Cloud Sync
+                ListenableBuilder(
+                  listenable: UserDatabaseSyncService.instance,
+                  builder: (context, _) {
+                    final syncService = UserDatabaseSyncService.instance;
+                    final status = syncService.status;
+                    final isConnected = syncService.isConnected;
+
+                    final Color statusColor;
+                    final Widget statusIcon;
+                    final String statusSubtitle;
+
+                    switch (status) {
+                      case SyncStatus.paused:
+                        statusColor = const Color(0xFFF59E0B);
+                        statusIcon = const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFF59E0B), size: 20);
+                        statusSubtitle = 'Paused (Action Required)';
+                        break;
+                      case SyncStatus.error:
+                        statusColor = const Color(0xFFEF4444);
+                        statusIcon = const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 20);
+                        statusSubtitle = 'Sync Error';
+                        break;
+                      case SyncStatus.syncing:
+                        statusColor = const Color(0xFF0D7FF2);
+                        statusIcon = const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D7FF2)),
+                        );
+                        statusSubtitle = 'Syncing...';
+                        break;
+                      case SyncStatus.idle:
+                        if (isConnected) {
+                          statusColor = const Color(0xFF10B981);
+                          statusIcon = const Icon(Icons.cloud_done, color: Color(0xFF10B981), size: 20);
+                          statusSubtitle = 'Connected to Supabase';
+                        } else {
+                          statusColor = Colors.grey[500]!;
+                          statusIcon = Icon(Icons.cloud_queue, color: Colors.grey[400], size: 20);
+                          statusSubtitle = 'Offline / Local only';
+                        }
+                        break;
+                      case SyncStatus.disconnected:
+                        statusColor = Colors.grey[500]!;
+                        statusIcon = Icon(Icons.cloud_queue, color: Colors.grey[400], size: 20);
+                        statusSubtitle = 'Offline / Local only';
+                        break;
+                    }
+
+                    return TvFocusable(
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const CloudSyncScreen()),
+                        );
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Row(
+                        children: [
+                          statusIcon,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'Cloud Sync',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (status == SyncStatus.paused) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFFF59E0B), width: 0.8),
+                                        ),
+                                        child: const Text(
+                                          'PAUSED',
+                                          style: TextStyle(
+                                            color: Color(0xFFF59E0B),
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  statusSubtitle,
+                                  style: TextStyle(fontSize: 12, color: statusColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // 2. Linked Devices
+                TvFocusable(
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const LinkedDevicesScreen()),
+                    );
+                  },
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.devices_rounded, color: Color(0xFF818CF8), size: 20),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Linked Devices',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Link TV, phone, or PC via 6-digit code or QR',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // 3. Diagnostics & Logs
+                TvFocusable(
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
+                    );
+                  },
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.terminal_rounded, color: Color(0xFF0D7FF2), size: 20),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Diagnostics & Logs',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Inspect playback and sync health',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _triggerRefresh() async {
@@ -1299,8 +1544,8 @@ class _SidebarState extends State<Sidebar> {
               // Logo Area
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
+                  horizontal: 16,
+                  vertical: 16,
                 ),
                 decoration: const BoxDecoration(
                   border: Border(bottom: BorderSide(color: Color(0xFF223649))),
@@ -1309,18 +1554,47 @@ class _SidebarState extends State<Sidebar> {
                   children: [
                     SvgPicture.asset(
                       'assets/app_icon.svg',
-                      width: 30,
-                      height: 30,
+                      width: 28,
+                      height: 28,
                     ),
-                    const SizedBox(width: 12),
-                    Flexible(
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: Text(
                         'WTT Organizer',
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.splineSans(
-                          fontSize: 20,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Prominent on-screen MENU button
+                    TvFocusable(
+                      onTap: () => _MainScreenState.openTvQuickMenu(context),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF182634),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF0D7FF2)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.menu_rounded, color: Color(0xFF0D7FF2), size: 16),
+                            SizedBox(width: 5),
+                            Text(
+                              'Menu',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1382,6 +1656,161 @@ class _SidebarState extends State<Sidebar> {
                             color: Colors.white,
                             fontSize: 14,
                           ),
+                        ),
+                      ),
+
+                      // Top Quick Action Bar (Cloud Sync & Linked Devices)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        child: Row(
+                          children: [
+                            // Cloud Sync Quick Button
+                            Expanded(
+                              child: ListenableBuilder(
+                                listenable: UserDatabaseSyncService.instance,
+                                builder: (context, _) {
+                                  final syncService = UserDatabaseSyncService.instance;
+                                  final status = syncService.status;
+                                  final isConnected = syncService.isConnected;
+                                  final Color badgeColor;
+                                  final IconData badgeIcon;
+                                  final String badgeText;
+
+                                  switch (status) {
+                                    case SyncStatus.paused:
+                                      badgeColor = const Color(0xFFF59E0B);
+                                      badgeIcon = Icons.pause_circle_filled_rounded;
+                                      badgeText = 'PAUSED';
+                                      break;
+                                    case SyncStatus.error:
+                                      badgeColor = const Color(0xFFEF4444);
+                                      badgeIcon = Icons.error_outline_rounded;
+                                      badgeText = 'Error';
+                                      break;
+                                    case SyncStatus.syncing:
+                                      badgeColor = const Color(0xFF0D7FF2);
+                                      badgeIcon = Icons.sync;
+                                      badgeText = 'Syncing';
+                                      break;
+                                    case SyncStatus.idle:
+                                      badgeColor = isConnected ? const Color(0xFF10B981) : Colors.grey[500]!;
+                                      badgeIcon = isConnected ? Icons.cloud_done : Icons.cloud_queue;
+                                      badgeText = isConnected ? 'Sync' : 'Offline';
+                                      break;
+                                    case SyncStatus.disconnected:
+                                      badgeColor = Colors.grey[500]!;
+                                      badgeIcon = Icons.cloud_queue;
+                                      badgeText = 'Offline';
+                                      break;
+                                  }
+
+                                  return TvFocusable(
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (_) => const CloudSyncScreen()),
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF182634),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: status == SyncStatus.paused
+                                              ? const Color(0xFFF59E0B)
+                                              : const Color(0xFF223649),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(badgeIcon, size: 15, color: badgeColor),
+                                          const SizedBox(width: 5),
+                                          Flexible(
+                                            child: Text(
+                                              badgeText,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: badgeColor,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Linked Devices Quick Button
+                            Expanded(
+                              child: TvFocusable(
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const LinkedDevicesScreen()),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF182634),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF223649)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.devices_rounded, size: 15, color: Color(0xFF818CF8)),
+                                      SizedBox(width: 5),
+                                      Flexible(
+                                        child: Text(
+                                          'Link TV',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF818CF8),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Quick Menu Button
+                            TvFocusable(
+                              onTap: () => _MainScreenState.openTvQuickMenu(context),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF182634),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFF223649)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.menu_rounded, size: 15, color: Colors.white70),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Menu',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
 
@@ -2090,6 +2519,67 @@ class _SidebarState extends State<Sidebar> {
                     ),
                   );
                 },
+              ),
+
+              // Linked Devices
+              TvFocusable(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const LinkedDevicesScreen()),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0D1319),
+                    border: Border(top: BorderSide(color: Color(0xFF223649))),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: const Color(0xFF6366F1),
+                            width: 1,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.devices_rounded,
+                          color: Color(0xFF818CF8),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Linked Devices',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Link TV, phone, or PC',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
               // Diagnostics & Logs

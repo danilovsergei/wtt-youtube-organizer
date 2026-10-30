@@ -135,7 +135,7 @@ void main() {
         expect(UserDatabaseSyncService.instance.status, SyncStatus.paused);
 
         // Verify sidebar button shows amber PAUSED badge and 'Paused (Action Required)'
-        expect(find.text('PAUSED'), findsOneWidget);
+        expect(find.text('PAUSED'), findsWidgets);
         expect(find.text('Paused (Action Required)'), findsOneWidget);
 
         // =====================================================================

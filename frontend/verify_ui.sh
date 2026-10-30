@@ -55,8 +55,9 @@ if [ "$1" != "--no-e2e" ]; then
     run_with_watchdog "⚡ 5/6: Running Paginated Loading E2E Desktop Test (Infinite Scroll, On-Demand Matches)..." $FLUTTER_BIN test integration_test/paginated_loading_e2e_test.dart -d linux
     run_with_watchdog "🛑 6/7: Running Extraction Error Overlay E2E Desktop Test..." $FLUTTER_BIN test integration_test/extraction_error_e2e_test.dart -d linux
     run_with_watchdog "⏯️  7/8: Running Playback Progress Save/Resume E2E Desktop Test..." $FLUTTER_BIN test integration_test/playback_progress_e2e_test.dart -d linux
-    run_with_watchdog "☁️  8/9: Running Cloud Sync Two-Way Reconciliation E2E Desktop Test..." $FLUTTER_BIN test integration_test/cloud_sync_e2e_test.dart -d linux
-    run_with_watchdog "⏸️  9/9: Running Supabase Paused Detection & Keep-Alive E2E Desktop Test..." $FLUTTER_BIN test integration_test/supabase_keepalive_paused_e2e_test.dart -d linux
+    run_with_watchdog "☁️  8/10: Running Cloud Sync Two-Way Reconciliation E2E Desktop Test..." $FLUTTER_BIN test integration_test/cloud_sync_e2e_test.dart -d linux
+    run_with_watchdog "⏸️  9/10: Running Supabase Paused Detection & Keep-Alive E2E Desktop Test..." $FLUTTER_BIN test integration_test/supabase_keepalive_paused_e2e_test.dart -d linux
+    run_with_watchdog "🔗 10/10: Running Device Pairing & Facilitated Cloud Sync E2E Desktop Test..." $FLUTTER_BIN test integration_test/device_pairing_e2e_test.dart -d linux
 fi
 
 echo "=================================================="

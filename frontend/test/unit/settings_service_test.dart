@@ -70,5 +70,23 @@ void main() {
       await service.saveKeepaliveRegisteredUrl(null);
       expect(await service.loadKeepaliveRegisteredUrl(), isNull);
     });
+
+    test('Saves, loads, and removes linked devices', () async {
+      expect(await service.loadLinkedDevices(), isEmpty);
+
+      await service.saveLinkedDevice(
+        name: 'Android TV',
+        role: 'controlled',
+        status: 'Active',
+      );
+
+      final devices = await service.loadLinkedDevices();
+      expect(devices.length, 1);
+      expect(devices.first['name'], 'Android TV');
+      expect(devices.first['status'], 'Active');
+
+      await service.removeLinkedDevice('Android TV');
+      expect(await service.loadLinkedDevices(), isEmpty);
+    });
   });
 }

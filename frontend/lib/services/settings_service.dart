@@ -115,6 +115,32 @@ class SettingsService {
     return _pendingSave!;
   }
 
+  Future<List<Map<String, dynamic>>> loadLinkedDevices() async {
+    final data = await _readSettingsJson();
+    final list = data['linked_devices'] as List<dynamic>?;
+    if (list == null) return [];
+    final devices = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    // Automatically purge legacy generic placeholder if a named device is linked
+    if (devices.any((d) => d['name'] != 'Facilitating Device')) {
+      devices.removeWhere((d) => d['name'] == 'Facilitating Device');
+    }
+    return devices;
+  }
+
+  Future<void> saveLinkedDevice({
+    required String name,
+    required String role,
+    String? status,
+  }) {
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSaveLinkedDevice(name, role, status));
+    return _pendingSave!;
+  }
+
+  Future<void> removeLinkedDevice(String name) {
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doRemoveLinkedDevice(name));
+    return _pendingSave!;
+  }
+
   Future<void> _doSaveTypes(Set<String> typeNames) async {
     if (kIsWeb) return;
     try {
@@ -178,6 +204,42 @@ class SettingsService {
         data.remove('keepalive_registered_url');
       }
 
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
+
+  Future<void> _doSaveLinkedDevice(String name, String role, String? status) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      final data = await _readSettingsJson();
+      final list = (data['linked_devices'] as List<dynamic>?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+      list.removeWhere((d) => d['name'] == name);
+      list.insert(0, {
+        'name': name,
+        'role': role,
+        'status': status ?? 'Active',
+        'linked_at': DateTime.now().toIso8601String(),
+      });
+      data['linked_devices'] = list;
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
+
+  Future<void> _doRemoveLinkedDevice(String name) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      final data = await _readSettingsJson();
+      final list = (data['linked_devices'] as List<dynamic>?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+      list.removeWhere((d) => d['name'] == name);
+      data['linked_devices'] = list;
       final tmpFile = File('${file.path}.tmp');
       await tmpFile.writeAsString(jsonEncode(data), flush: true);
       await tmpFile.rename(file.path);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/user_database_sync_service.dart';
+import 'linked_devices_screen.dart';
 import '../services/supabase_management_service.dart';
 
 class CloudSyncScreen extends StatefulWidget {
@@ -173,6 +174,21 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LinkedDevicesScreen()),
+              );
+            },
+            icon: const Icon(Icons.devices_rounded, size: 15, color: Colors.white),
+            label: const Text('Link Device', style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF6366F1)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: () => UserDatabaseSyncService.instance.disconnect(),
             icon: const Icon(Icons.link_off, color: Color(0xFFEF4444)),
@@ -187,7 +203,22 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         iconWidget = Icon(Icons.cloud_off_rounded, size: 40, color: Colors.grey[500]);
         title = 'Not Connected (Local Only)';
         subtitle = 'Connect your personal free Supabase account to sync match progress across devices.';
-        actions = [];
+        actions = [
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LinkedDevicesScreen()),
+              );
+            },
+            icon: const Icon(Icons.devices_rounded, size: 16, color: Color(0xFF818CF8)),
+            label: const Text('Link from Phone or PC (Auto-Setup)', style: TextStyle(color: Color(0xFF818CF8), fontSize: 13, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF6366F1)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ];
         break;
     }
 

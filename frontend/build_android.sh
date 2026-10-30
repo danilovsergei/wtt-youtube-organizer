@@ -77,6 +77,10 @@ if [ -n "$TARGET_ABI" ]; then
     BUILD_ARGS+=("--target-platform" "$TARGET_ABI")
 fi
 
+if [ "$OUTPUT_NAME" = "wtt-organizer-tv.apk" ]; then
+    BUILD_ARGS+=("--dart-define=IS_TV=true")
+fi
+
 if [ -f "$DIR/.env" ]; then
     set -a
     source "$DIR/.env"
