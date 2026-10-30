@@ -99,12 +99,11 @@ class LinuxYtDlpService implements YtDlpService {
       f['height'] != null
     ).cast<Map<String, dynamic>>().toList();
 
-    // Extract adaptive audio streams (matching direct HTTPS DASH streams, avoiding DRC variants)
+    // Extract audio streams (including HLS and DASH, avoiding DRC variants)
     var audioFormats = formats.where((f) =>
       f is Map<String, dynamic> &&
       f['acodec'] != 'none' &&
       f['vcodec'] == 'none' &&
-      !isHlsFormat(f) &&
       !f['format_id'].toString().contains('drc')
     ).cast<Map<String, dynamic>>().toList();
 
@@ -155,9 +154,21 @@ class LinuxYtDlpService implements YtDlpService {
       return tbrB.compareTo(tbrA);
     });
 
-    // Sort audio by ABR descending, preferring m4a/aac
+    // Determine if the selected video stream is HLS
+    final topVideoIsHls = videoFormats.isNotEmpty && isHlsFormat(videoFormats.first);
+
+    // Sort audio streams:
+    // If video is HLS (format 312), prioritize matching HLS audio (format 234)
+    // to bypass IP-pinning, cipher throttling, and 403 Forbidden errors!
     if (audioFormats.isNotEmpty) {
       audioFormats.sort((a, b) {
+        if (topVideoIsHls) {
+          final isHlsA = isHlsFormat(a);
+          final isHlsB = isHlsFormat(b);
+          if (isHlsA && !isHlsB) return -1;
+          if (!isHlsA && isHlsB) return 1;
+        }
+
         final abrA = (a['abr'] ?? 0) as num;
         final abrB = (b['abr'] ?? 0) as num;
         if (abrA != abrB) return abrB.compareTo(abrA);

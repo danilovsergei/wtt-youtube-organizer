@@ -1571,7 +1571,7 @@ class _SidebarState extends State<Sidebar> {
                     ),
                     const SizedBox(width: 8),
                     // Prominent on-screen MENU button
-                    TvFocusable(
+                    InkWell(
                       onTap: () => _MainScreenState.openTvQuickMenu(context),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
@@ -1659,6 +1659,7 @@ class _SidebarState extends State<Sidebar> {
                         ),
                       ),
 
+                      if (!isDetailView) ...[
                       // Top Quick Action Bar (Cloud Sync & Linked Devices)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -1814,7 +1815,7 @@ class _SidebarState extends State<Sidebar> {
                         ),
                       ),
 
-                      if (!isDetailView) ...[
+                      
                         // --- LIST VIEW (Filters + Tournament List) ---
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),

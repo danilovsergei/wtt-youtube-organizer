@@ -130,6 +130,39 @@ void main() {
       expect(metadata.videoStreams.first.height, 1080);
     });
 
+    test('REGRESSION GUARD: parseManifest selects matching HLS audio (format 234) when HLS video (format 312) is prioritized', () {
+      final mockManifest = {
+        'formats': [
+          {
+            'format_id': '312',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'none',
+            'height': 1080,
+            'protocol': 'm3u8_native',
+            'url': 'https://manifest.googlevideo.com/api/manifest/hls_playlist/format_312.m3u8',
+          },
+          {
+            'format_id': '140',
+            'acodec': 'mp4a.40.2',
+            'vcodec': 'none',
+            'abr': 128,
+            'url': 'https://audio.com/140.m4a',
+          },
+          {
+            'format_id': '234',
+            'acodec': 'mp4a.40.2',
+            'vcodec': 'none',
+            'protocol': 'm3u8_native',
+            'url': 'https://manifest.googlevideo.com/api/manifest/hls_playlist/format_234.m3u8',
+          },
+        ],
+      };
+
+      final metadata = LinuxYtDlpService.parseManifest(mockManifest);
+      expect(metadata.videoStreams.first.url, contains('hls_playlist/format_312.m3u8'));
+      expect(metadata.audioUrl, contains('hls_playlist/format_234.m3u8'));
+    });
+
     test('REGRESSION GUARD: buildArgs includes Deno JS runtime and NEVER includes forced IPv4 (-4)', () {
       // 1. With Deno present
       final argsWithDeno = LinuxYtDlpService.buildArgs('sample_yt_id', denoPath: '/app/bin/deno');

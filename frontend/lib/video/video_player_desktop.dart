@@ -659,18 +659,17 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
         await tracksSub.cancel();
       }
 
-      // 4. Attach external audio track cleanly (only for non-HLS streams; HLS already includes audio)
-      final isHls = _selectedStream!.url.contains('m3u8') || _selectedStream!.url.contains('hls_playlist');
-      if (!isHls && _audioUrl != null && _audioUrl!.isNotEmpty) {
+      // 4. Always attach external audio track (YouTube adaptive HD streams, including HLS 312, are video-only!)
+      if (_audioUrl != null && _audioUrl!.isNotEmpty) {
         try {
-          _logPlayer('Attaching audio track...');
+          _logPlayer('Attaching audio track from yt-dlp: $_audioUrl');
           await _player.setAudioTrack(AudioTrack.uri(_audioUrl!));
-          _logPlayer('Audio track attached!');
+          _logPlayer('Audio track attached successfully!');
         } catch (e) {
           _logPlayer('Audio track attach error: $e');
         }
-      } else if (isHls) {
-        _logPlayer('Stream is HLS (contains internal audio), skipping external audio track attach.');
+      } else {
+        _logPlayer('Warning: No audio track URL provided by yt-dlp.');
       }
 
       if (Platform.isAndroid) {
@@ -748,6 +747,9 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
           _showTvControls = false;
         });
         _videoPlayerFocusNode.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _videoPlayerFocusNode.requestFocus();
+        });
       }
       final revealMs = _loadSw.elapsedMilliseconds;
       _logPlayer('✨ [PLAY_TIMING +${revealMs}ms] Dismissed loading shield! Revealed video to user (Total load-to-motion: ${revealMs}ms)');

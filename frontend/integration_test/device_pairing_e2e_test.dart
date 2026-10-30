@@ -147,6 +147,7 @@ void main() {
         // Fulfill the pairing session with user Cloud Sync credentials
         final ok = await DevicePairingService.instance.fulfillPairing('789012', {
           'action': 'cloud_sync',
+          'source_device': 'Google Pixel 9',
           'project_url': 'http://127.0.0.1:$port',
           'anon_key': 'transferred-anon-key',
           'project_ref': 'transferred-ref',
@@ -163,7 +164,7 @@ void main() {
 
         // 4. Verify linked device is rendered directly in the list (no blocking dialog, no redundant active badge)
         expect(find.text('LINKED DEVICES'), findsOneWidget);
-        expect(find.text('WTT Client'), findsOneWidget);
+        expect(find.text('Google Pixel 9'), findsOneWidget);
 
         // 5. Verify UserDatabaseSyncService is now connected with transferred credentials
         expect(UserDatabaseSyncService.instance.isConnected, isTrue);
