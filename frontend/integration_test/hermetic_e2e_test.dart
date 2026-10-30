@@ -477,17 +477,69 @@ void main() {
       reason: 'Diagnostics badge must auto-hide after short inactivity during playback',
     );
 
-    // 12. Verify F5 refresh shortcut hermetically preserves selected match
+    // 12. Hermetic E2E Refresh Test:
+    // Ensure sidebar view is visible (exit fullscreen if active from previous steps):
+    if (isFullscreenNotifier.value) {
+      isFullscreenNotifier.value = false;
+      await tester.pumpAndSettle();
+    }
+
+    // A) Dynamically add a brand-new match to the database while app is running:
+    final localDb = DatabaseService.instance as LocalDatabaseService;
+    final currentSchedule = await localDb.fetchTournamentSchedule();
+    final updatedSchedule = List<Map<String, dynamic>>.from(currentSchedule);
+
+    const newMatchTitle = 'Fan Zhendong vs Felix Lebrun';
+    updatedSchedule.add({
+      'tournament': 'China Smash',
+      'year': 2025,
+      'team_a': 'Fan Zhendong',
+      'team_b': 'Felix Lebrun',
+      'video_title': 'China Smash 2025 | Fan Zhendong vs Felix Lebrun',
+      'youtube_id': 'test_yt_hero',
+      'video_offset_seconds': 240,
+      'session': 2,
+      'day': 'Day 7 Finals',
+      'duration_seconds': 3600,
+      'is_doubles': false,
+    });
+    localDb.setScheduleData(updatedSchedule);
+
+    // Verify before refresh: new match must NOT exist in the UI:
+    expect(
+      find.text(newMatchTitle),
+      findsNothing,
+      reason: 'Newly added match must not appear in UI before refresh is triggered',
+    );
+
+    // B) Trigger refresh purely through the UI via F5 shortcut:
     await tester.sendKeyEvent(LogicalKeyboardKey.f5);
     await tester.pump();
-
     expect(find.text('Refreshing...'), findsOneWidget);
-
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 200));
-
     expect(find.text('Refreshing...'), findsNothing);
-    expect(filterController.selectedMatch.title, 'Lin Shidong vs Ma Long');
+    await tester.pump(const Duration(milliseconds: 300));
+
+
+    // C) Verify that the newly added match appeared in the tournament match list on the UI:
+    expect(
+      find.text(newMatchTitle),
+      findsOneWidget,
+      reason: 'New match must appear in tournament match list on UI after refresh',
+    );
+
+    // D) Tap the new match in the UI and verify it loads:
+    await tester.ensureVisible(find.text(newMatchTitle));
+    await tester.tap(find.text(newMatchTitle));
+    await tester.pumpAndSettle();
+    expect(
+      filterController.selectedMatch.title,
+      newMatchTitle,
+      reason: 'Tapping the newly refreshed match in the UI must select it and begin playback',
+    );
+
+
 
     // 14. Android TV Focus Traversal & Fullscreen Back Navigation Test:
     // A) Ensure fullscreen is active:

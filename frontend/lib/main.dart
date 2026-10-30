@@ -323,7 +323,7 @@ class FilterController extends ChangeNotifier {
         matchTime = DateTime.now();
       }
 
-      final youtubeId = row['youtube_id'] as String?;
+      final youtubeId = (row['youtube_id'] ?? row['video_id']) as String?;
       final imageUrl = (youtubeId != null && youtubeId.isNotEmpty)
           ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
           : '';
@@ -397,7 +397,7 @@ class FilterController extends ChangeNotifier {
         matchTime = DateTime.now();
       }
 
-      final youtubeId = row['youtube_id'] as String?;
+      final youtubeId = (row['youtube_id'] ?? row['video_id']) as String?;
       final imageUrl = (youtubeId != null && youtubeId.isNotEmpty)
           ? 'https://img.youtube.com/vi/$youtubeId/hqdefault.jpg'
           : 'https://via.placeholder.com/320x180';
@@ -461,6 +461,46 @@ class FilterController extends ChangeNotifier {
         );
         _parseTournamentRows(rows, append: false);
         _hasMoreTournaments = rows.length == _tournamentPageSize;
+
+        // Reset loaded tournaments cache on refresh so fresh match data is retrieved
+        final previouslyLoaded = Set<String>.from(_loadedTournamentIds);
+        _loadedTournamentIds.clear();
+
+        final toReload = Set<String>.from(previouslyLoaded);
+        if (_selectedTournamentId.isNotEmpty) {
+          toReload.add(_selectedTournamentId);
+        }
+
+        for (final tId in toReload) {
+          final tournament = _allTournaments.firstWhere(
+            (t) => t.id == tId,
+            orElse: () => const Tournament(
+              id: '',
+              name: '',
+              year: 0,
+              type: TournamentType.contender,
+              location: '',
+            ),
+          );
+
+          if (tournament.name.isNotEmpty) {
+            final matchRows = await DatabaseService.instance.fetchTournamentMatches(
+              tournament.name,
+              tournament.year,
+            );
+            _allMatches.removeWhere((m) => m.tournamentId == tId);
+            _parseMatchRows(matchRows);
+            _loadedTournamentIds.add(tId);
+          }
+        }
+
+        if (_selectedMatch != null) {
+          final stillExists = _allMatches.firstWhere(
+            (m) => m.id == _selectedMatch!.id,
+            orElse: () => _allMatches.isNotEmpty ? _allMatches.first : _selectedMatch!,
+          );
+          _selectedMatch = stillExists;
+        }
       }
     } catch (e) {
       debugPrint('Error fetching tournaments: $e');
@@ -759,7 +799,7 @@ class FilterController extends ChangeNotifier {
         hasNewData = true;
       }
 
-      final youtubeId = row['youtube_id'] as String?;
+      final youtubeId = (row['youtube_id'] ?? row['video_id']) as String?;
       final offsetSeconds = row['video_offset_seconds'] as int?;
       final matchId = (row['match_id'] ?? row['id'])?.toString() ??
           (youtubeId != null ? '${youtubeId}_${offsetSeconds ?? 0}' : 'm_${row.hashCode}');
@@ -1198,13 +1238,57 @@ class _MainScreenState extends State<MainScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+
+                // 4. Refresh Data
+                TvFocusable(
+                  key: const Key('quick_menu_refresh_button'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _MainScreenState.triggerRefresh(context);
+                  },
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.refresh_rounded, color: Color(0xFF10B981), size: 20),
+                        SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Refresh Matches',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Reload latest tournaments and matches',
+                                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                const SizedBox(height: 4),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  static void triggerRefresh(BuildContext context) {
+    context.findAncestorStateOfType<_MainScreenState>()?._triggerRefresh();
   }
 
   Future<void> _triggerRefresh() async {
@@ -1572,6 +1656,7 @@ class _SidebarState extends State<Sidebar> {
                     const SizedBox(width: 8),
                     // Prominent on-screen MENU button
                     InkWell(
+                      key: const Key('sidebar_logo_menu_button'),
                       onTap: () => _MainScreenState.openTvQuickMenu(context),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
