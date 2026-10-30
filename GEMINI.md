@@ -32,3 +32,8 @@ Assume all project files, dependencies, and development environments reside on t
   1. When **HLS video (format 312)** is selected: ALWAYS prioritize **HLS audio (format 234)**. Format 234 uses the identical `manifest.googlevideo.com/.../itag/234/` session as format 312, eliminating single-IP pinning, cipher throttling, and HTTP 403 Forbidden ("Can not open external file").
   2. When **DASH video (format 299)** is selected: Pair with direct DASH audio (format 140 / 251).
   3. `parseManifest` in `linux_ytdlp.dart` must strictly enforce this protocol.
+
+### 🔄 Tournament & Match Refresh Invariants
+- **`FilterController.fetchData()` must reload matches**: When `fetchData()` is invoked (via F5, Ctrl+R, or UI Quick Menu), it MUST clear `_loadedTournamentIds` and re-fetch `DatabaseService.instance.fetchTournamentMatches(...)` for the currently selected tournament and previously loaded tournaments.
+- **Never optimize `fetchData()` to only fetch tournaments**: Omitting `fetchTournamentMatches` freezes `_allMatches` and prevents newly ingested matches from appearing on the screen after refresh.
+- **Hermetic E2E Guard**: Step 12 in `hermetic_e2e_test.dart` strictly guards this flow (injects a dynamic match into the database, triggers UI refresh via F5, and asserts the new match renders and plays). Never delete or loosen this check.

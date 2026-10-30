@@ -96,5 +96,44 @@ void main() {
       expect(controller.allMatches.length, 3);
       expect(controller.selectedMatch.title, 'Wang Chuqin vs Liang Jingkun');
     });
+
+    test('REGRESSION GUARD: FilterController.fetchData reloads fresh matches for selected tournament', () async {
+      final localDb = LocalDatabaseService(
+        localJsonPath: 'test/assets/mock_schedule.json',
+      );
+      await localDb.initialize();
+      DatabaseService.instance = localDb;
+
+      final controller = FilterController();
+      controller.customDataFetcher = null;
+
+      await controller.fetchData();
+      await controller.selectTournament('China Smash_2025');
+      expect(controller.allMatches.length, 3);
+
+      // Dynamically add a new match to the database
+      final currentSchedule = await localDb.fetchTournamentSchedule();
+      final updatedSchedule = List<Map<String, dynamic>>.from(currentSchedule);
+      updatedSchedule.add({
+        'tournament': 'China Smash',
+        'year': 2025,
+        'team_a': 'Fan Zhendong',
+        'team_b': 'Felix Lebrun',
+        'youtube_id': 'test_yt_dynamic',
+        'is_doubles': false,
+        'day': 'Day 7 Finals',
+        'session': 2,
+        'duration_seconds': 3600,
+      });
+      localDb.setScheduleData(updatedSchedule);
+
+      // Trigger refresh via controller.fetchData()
+      await controller.fetchData();
+
+      // Regression check: fresh match count must be 4, and the new match must be present in allMatches & filteredMatches
+      expect(controller.allMatches.length, 4);
+      expect(controller.allMatches.any((m) => m.title == 'Fan Zhendong vs Felix Lebrun'), isTrue);
+      expect(controller.filteredMatches.any((m) => m.title == 'Fan Zhendong vs Felix Lebrun'), isTrue);
+    });
   });
 }

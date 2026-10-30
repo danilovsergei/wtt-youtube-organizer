@@ -45,6 +45,11 @@ if grep -rn -i "skipping external audio" lib/video/ || grep -rn "isHls.*setAudio
     exit 1
 fi
 
+if ! grep -A 45 "Future<void> fetchData" lib/main.dart | grep -q "fetchTournamentMatches"; then
+    echo "❌ REGRESSION: FilterController.fetchData must call fetchTournamentMatches to reload matches on refresh!"
+    exit 1
+fi
+
 run_with_watchdog "🔍 1/4: Analyzing Dart code (lib/)..." $FLUTTER_BIN analyze lib/ --no-fatal-infos
 
 run_with_watchdog "🧪 2/4: Running Unit Tests..." $FLUTTER_BIN test test/unit/
