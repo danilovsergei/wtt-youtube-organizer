@@ -319,6 +319,18 @@ class SupabaseManagementService {
         create policy "Allow anon settings" on public.user_settings for all using (true) with check (true);
       end if;
     end \$\$;
+
+    create table if not exists public._wtt_keepalive (
+        id int primary key default 1,
+        last_ping timestamptz not null default now()
+    );
+    alter table public._wtt_keepalive enable row level security;
+    do \$\$ begin
+      if not exists (select 1 from pg_policies where tablename = '_wtt_keepalive' and policyname = 'Allow anon keepalive') then
+        create policy "Allow anon keepalive" on public._wtt_keepalive for all using (true) with check (true);
+      end if;
+    end \$\$;
+    insert into public._wtt_keepalive (id, last_ping) values (1, now()) on conflict (id) do update set last_ping = now();
     ''';
 
     final queryResp = await http.post(

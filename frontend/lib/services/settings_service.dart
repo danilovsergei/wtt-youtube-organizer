@@ -105,6 +105,16 @@ class SettingsService {
     return _pendingSave!;
   }
 
+  Future<String?> loadKeepaliveRegisteredUrl() async {
+    final data = await _readSettingsJson();
+    return data['keepalive_registered_url'] as String?;
+  }
+
+  Future<void> saveKeepaliveRegisteredUrl(String? url) {
+    _pendingSave = (_pendingSave ?? Future.value()).then((_) => _doSaveKeepalive(url));
+    return _pendingSave!;
+  }
+
   Future<void> _doSaveTypes(Set<String> typeNames) async {
     if (kIsWeb) return;
     try {
@@ -145,6 +155,27 @@ class SettingsService {
         data['user_supabase_project_ref'] = projectRef;
       } else {
         data.remove('user_supabase_project_ref');
+      }
+
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
+
+  Future<void> _doSaveKeepalive(String? url) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      if (!await file.parent.exists()) {
+        await file.parent.create(recursive: true);
+      }
+      final data = await _readSettingsJson();
+      if (url != null) {
+        data['keepalive_registered_url'] = url;
+      } else {
+        data.remove('keepalive_registered_url');
       }
 
       final tmpFile = File('${file.path}.tmp');

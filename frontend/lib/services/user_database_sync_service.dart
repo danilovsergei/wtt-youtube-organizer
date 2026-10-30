@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/prod_database.dart';
 import 'log_service.dart';
 import 'playback_progress_service.dart';
 import 'settings_service.dart';
@@ -9,10 +12,50 @@ enum SyncStatus {
   disconnected,
   idle,
   syncing,
+  paused,
   error,
 }
 
 class UserDatabaseSyncService extends ChangeNotifier {
+  @visibleForTesting
+  String? customCentralKeepaliveUrl;
+
+  bool _isKeepaliveActive = false;
+  bool get isKeepaliveActive => _isKeepaliveActive;
+
+  Future<bool> _registerKeepalive(String projectUrl, String anonKey) async {
+    try {
+      final centralRpcUrl = customCentralKeepaliveUrl ??
+          '${ProdDatabaseService.supabaseUrl}/rest/v1/rpc/register_sync_keepalive';
+      final headers = {
+        'apikey': ProdDatabaseService.supabasePublishableKey,
+        'Authorization': 'Bearer ${ProdDatabaseService.supabasePublishableKey}',
+        'Content-Type': 'application/json',
+      };
+      final body = jsonEncode({
+        'p_url': projectUrl,
+        'p_key': anonKey,
+      });
+      final res = await http.post(Uri.parse(centralRpcUrl), headers: headers, body: body);
+      if (res.statusCode == 200) {
+        _isKeepaliveActive = true;
+        await SettingsService.instance.saveKeepaliveRegisteredUrl(projectUrl);
+        LogService.instance.log('[KEEPALIVE] Registered sync project for daily keep-alive: 200 OK');
+        notifyListeners();
+        return true;
+      } else {
+        LogService.instance.log('[KEEPALIVE] Registration returned status: ${res.statusCode}');
+      }
+    } catch (e) {
+      LogService.instance.log('Note: Failed to register keep-alive ($e)');
+    }
+    return false;
+  }
+
+  Future<bool> registerKeepaliveManually() async {
+    if (_userProjectUrl == null || _userAnonKey == null) return false;
+    return _registerKeepalive(_userProjectUrl!, _userAnonKey!);
+  }
   static final UserDatabaseSyncService instance = UserDatabaseSyncService._();
   UserDatabaseSyncService._();
 
@@ -33,14 +76,24 @@ class UserDatabaseSyncService extends ChangeNotifier {
 
   String? get projectUrl => _userProjectUrl;
   String? get projectRef => _projectRef;
+
+  String? get effectiveProjectRef {
+    if (_projectRef != null && _projectRef!.isNotEmpty) return _projectRef;
+    if (_userProjectUrl == null) return null;
+    final uri = Uri.tryParse(_userProjectUrl!);
+    if (uri == null) return null;
+    final parts = uri.host.split('.');
+    if (parts.isNotEmpty) return parts.first;
+    return null;
+  }
   String? get anonKey => _userAnonKey;
 
   @visibleForTesting
-  void setClientForTesting(SupabaseClient client, {String? projectUrl, String? projectRef}) {
+  void setClientForTesting(SupabaseClient client, {String? projectUrl, String? projectRef, bool clearProjectRef = false}) {
     _client = client;
     _userProjectUrl = projectUrl ?? 'https://mock.supabase.co';
     _userAnonKey = 'mock-key';
-    _projectRef = projectRef ?? 'mock-ref';
+    _projectRef = clearProjectRef ? null : (projectRef ?? 'mock-ref');
     _status = SyncStatus.idle;
     notifyListeners();
   }
@@ -60,6 +113,17 @@ class UserDatabaseSyncService extends ChangeNotifier {
         _status = SyncStatus.idle;
         LogService.instance.log('[SYNC] Initialized with user Supabase project: $url');
         unawaited(syncAll());
+
+        // Only register keep-alive if not yet registered for this project!
+        final registeredUrl = await SettingsService.instance.loadKeepaliveRegisteredUrl();
+        if (registeredUrl != null && registeredUrl == url) {
+          _isKeepaliveActive = true;
+          LogService.instance.log('[KEEPALIVE] Project $url is already registered for keep-alive.');
+        } else {
+          _isKeepaliveActive = false;
+          LogService.instance.log('[KEEPALIVE] Project $url not yet registered. Registering on startup...');
+          unawaited(_registerKeepalive(url, anonKey));
+        }
       } catch (e) {
         _status = SyncStatus.error;
         _lastError = e.toString();
@@ -90,6 +154,7 @@ class UserDatabaseSyncService extends ChangeNotifier {
     );
 
     LogService.instance.log('[SYNC] Connected to user Supabase project: $projectUrl');
+    await _registerKeepalive(projectUrl, anonKey);
     notifyListeners();
     await syncAll();
   }
@@ -103,6 +168,8 @@ class UserDatabaseSyncService extends ChangeNotifier {
     _lastError = null;
     _lastSyncTime = null;
 
+    _isKeepaliveActive = false;
+    await SettingsService.instance.saveKeepaliveRegisteredUrl(null);
     await SettingsService.instance.saveUserSupabaseConfig(
       url: null,
       anonKey: null,
@@ -120,17 +187,31 @@ class UserDatabaseSyncService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await syncPlaybackProgress();
-      await syncSettings();
+      await syncPlaybackProgress().timeout(const Duration(seconds: 8));
+      await syncSettings().timeout(const Duration(seconds: 8));
       _lastSyncTime = DateTime.now();
       _status = SyncStatus.idle;
       LogService.instance.log('[SYNC] Full sync completed successfully');
     } catch (e, stack) {
-      _status = SyncStatus.error;
-      _lastError = e.toString();
-      LogService.instance.log('[SYNC] Sync error: $e\n$stack');
+      final errStr = e.toString();
+      _lastError = errStr;
+      if (isPausedError(errStr)) {
+        _status = SyncStatus.paused;
+        LogService.instance.log('[SYNC] Project is PAUSED by Supabase (7-day inactivity): $e');
+      } else {
+        _status = SyncStatus.error;
+        LogService.instance.log('[SYNC] Sync error: $e\n$stack');
+      }
     }
     notifyListeners();
+  }
+
+  static bool isPausedError(String error) {
+    final lower = error.toLowerCase();
+    return lower.contains('failed host lookup') ||
+           lower.contains('name or service not known') ||
+           lower.contains('paused') ||
+           lower.contains('503');
   }
 
   Future<void> syncPlaybackProgress() async {

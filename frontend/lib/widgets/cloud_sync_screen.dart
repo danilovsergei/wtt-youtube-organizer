@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/user_database_sync_service.dart';
 import '../services/supabase_management_service.dart';
 
@@ -19,6 +20,328 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   String _provisioningStep = '';
   String? _errorMessage;
   bool _showManualSetup = false;
+
+  Widget _buildStatusCard(BuildContext context, SyncStatus status, bool isConnected, DateTime? lastSync) {
+    final Color borderColor;
+    final Color bgColor;
+    final Widget iconWidget;
+    final String title;
+    final String subtitle;
+    final List<Widget> actions;
+
+    switch (status) {
+      case SyncStatus.paused:
+        borderColor = const Color(0xFFF59E0B);
+        bgColor = const Color(0xFF78350F).withValues(alpha: 0.25);
+        iconWidget = const Icon(Icons.pause_circle_filled_rounded, size: 40, color: Color(0xFFF59E0B));
+        title = 'Supabase Project is Paused (Inactive 7+ Days)';
+        subtitle = 'Supabase paused your project due to 7 days of inactivity. All your viewing history is safely preserved! Please click below to open your Supabase dashboard and restore it (~1 minute).';
+        final ref = UserDatabaseSyncService.instance.effectiveProjectRef;
+        final dashboardUrl = ref != null
+            ? 'https://supabase.com/dashboard/project/$ref'
+            : 'https://supabase.com/dashboard';
+        actions = [
+          ElevatedButton.icon(
+            onPressed: () {
+              launchUrl(Uri.parse(dashboardUrl), mode: LaunchMode.externalApplication);
+            },
+            icon: const Icon(Icons.open_in_new, size: 15, color: Colors.white),
+            label: const Text('Restore in Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: dashboardUrl));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('📋 Dashboard restore link copied to clipboard! Paste it into your browser to unpause.'),
+                    backgroundColor: Color(0xFFF59E0B),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.copy_rounded, size: 15, color: Colors.white),
+            label: const Text('Copy Link', style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFF59E0B)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () => UserDatabaseSyncService.instance.syncAll(),
+            icon: const Icon(Icons.refresh, size: 15, color: Colors.white),
+            label: const Text('Check Again', style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF94A3B8)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => UserDatabaseSyncService.instance.disconnect(),
+            icon: const Icon(Icons.link_off, color: Color(0xFFEF4444)),
+            tooltip: 'Disconnect',
+          ),
+        ];
+        break;
+
+      case SyncStatus.error:
+        borderColor = const Color(0xFFEF4444);
+        bgColor = const Color(0xFF7F1D1D).withValues(alpha: 0.25);
+        iconWidget = const Icon(Icons.cloud_off_rounded, size: 40, color: Color(0xFFEF4444));
+        title = 'Cloud Sync Connection Error';
+        subtitle = 'Unable to connect to your Supabase database. Please check your internet connection or verify your project settings.';
+        actions = [
+          ElevatedButton.icon(
+            onPressed: () => UserDatabaseSyncService.instance.syncAll(),
+            icon: const Icon(Icons.sync, size: 15, color: Colors.white),
+            label: const Text('Retry Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => UserDatabaseSyncService.instance.disconnect(),
+            icon: const Icon(Icons.link_off, color: Color(0xFFEF4444)),
+            tooltip: 'Disconnect',
+          ),
+        ];
+        break;
+
+      case SyncStatus.syncing:
+        borderColor = const Color(0xFF0D7FF2);
+        bgColor = const Color(0xFF1E293B);
+        iconWidget = const SizedBox(
+          width: 36,
+          height: 36,
+          child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFF0D7FF2)),
+        );
+        title = 'Syncing in Progress...';
+        subtitle = 'Reconciling playback progress and settings with your database...';
+        actions = [
+          ElevatedButton.icon(
+            onPressed: null,
+            icon: const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+            ),
+            label: const Text('Syncing...', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3A8A),
+              disabledBackgroundColor: const Color(0xFF1E3A8A),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ];
+        break;
+
+      case SyncStatus.idle:
+        borderColor = const Color(0xFF10B981);
+        bgColor = const Color(0xFF1E293B);
+        iconWidget = const Icon(Icons.cloud_done_rounded, size: 40, color: Color(0xFF10B981));
+        title = 'Connected to Personal Supabase';
+        subtitle = lastSync != null
+            ? 'Last sync: ${lastSync.toLocal().toString().split('.').first}'
+            : 'Connected and ready to sync';
+        actions = [
+          ElevatedButton.icon(
+            onPressed: () => UserDatabaseSyncService.instance.syncAll(),
+            icon: const Icon(Icons.sync, size: 16, color: Colors.white),
+            label: const Text('Sync Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0D7FF2),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => UserDatabaseSyncService.instance.disconnect(),
+            icon: const Icon(Icons.link_off, color: Color(0xFFEF4444)),
+            tooltip: 'Disconnect',
+          ),
+        ];
+        break;
+
+      case SyncStatus.disconnected:
+        borderColor = const Color(0xFF334155);
+        bgColor = const Color(0xFF1E293B);
+        iconWidget = Icon(Icons.cloud_off_rounded, size: 40, color: Colors.grey[500]);
+        title = 'Not Connected (Local Only)';
+        subtitle = 'Connect your personal free Supabase account to sync match progress across devices.';
+        actions = [];
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              iconWidget,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (isConnected) ...[
+                      Text(
+                        UserDatabaseSyncService.instance.projectUrl ?? '',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    Text(
+                      subtitle,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1), height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: actions,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKeepaliveCard(BuildContext context) {
+    final isKeepaliveActive = UserDatabaseSyncService.instance.isKeepaliveActive;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isKeepaliveActive
+              ? const Color(0xFF10B981).withValues(alpha: 0.4)
+              : const Color(0xFFF59E0B).withValues(alpha: 0.4),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isKeepaliveActive ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                size: 20,
+                color: isKeepaliveActive ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Keep-Alive (7-Day Pause Prevention)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isKeepaliveActive
+                      ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                      : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isKeepaliveActive ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  isKeepaliveActive ? 'ACTIVE' : 'PENDING REGISTRATION',
+                  style: TextStyle(
+                    color: isKeepaliveActive ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isKeepaliveActive
+                ? 'Keep-alive is active. Your project is automatically registered with our daily keep-alive service. A background worker sends daily pings via GitHub Actions to reset Supabase\'s 7-day inactivity timer so your database stays awake.'
+                : 'Keep-alive automatically registers your project on initial setup or app startup to prevent Supabase 7-day inactivity pauses.',
+            style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1), height: 1.4),
+          ),
+          if (!isKeepaliveActive) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final ok = await UserDatabaseSyncService.instance.registerKeepaliveManually();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(ok
+                            ? '✅ Keep-alive successfully registered!'
+                            : '⚠️ Keep-alive registration failed. Please check connection.'),
+                        backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.refresh, size: 14, color: Color(0xFF0D7FF2)),
+                label: const Text('Register Keep-Alive Now', style: TextStyle(fontSize: 12, color: Color(0xFF0D7FF2), fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -206,94 +529,13 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Status Card
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isConnected ? const Color(0xFF10B981) : const Color(0xFF334155),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isConnected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                            size: 40,
-                            color: isConnected ? const Color(0xFF10B981) : Colors.grey[500],
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isConnected ? 'Connected to Personal Supabase' : 'Not Connected (Local Only)',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                if (isConnected) ...[
-                                  Text(
-                                    UserDatabaseSyncService.instance.projectUrl ?? '',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    lastSync != null
-                                        ? 'Last sync: ${lastSync.toLocal().toString().split('.').first}'
-                                        : 'Syncing in progress...',
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                                  ),
-                                ] else ...[
-                                  const Text(
-                                    'Connect your personal free Supabase account to sync match progress across devices.',
-                                    style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (isConnected) ...[
-                            ElevatedButton.icon(
-                              onPressed: status == SyncStatus.syncing
-                                  ? null
-                                  : () => UserDatabaseSyncService.instance.syncAll(),
-                              icon: status == SyncStatus.syncing
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                    )
-                                  : const Icon(Icons.sync, size: 16, color: Colors.white),
-                              label: const Text(
-                                'Sync Now',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0D7FF2),
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: const Color(0xFF1E3A8A),
-                                disabledForegroundColor: Colors.white70,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: () => UserDatabaseSyncService.instance.disconnect(),
-                              icon: const Icon(Icons.link_off, color: Color(0xFFEF4444)),
-                              tooltip: 'Disconnect',
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                    // Status Card (State-driven for Paused, Syncing, Error, Idle, and Disconnected)
+                    _buildStatusCard(context, status, isConnected, lastSync),
+
+                    if (isConnected) ...[
+                      const SizedBox(height: 16),
+                      _buildKeepaliveCard(context),
+                    ],
 
                     const SizedBox(height: 24),
 

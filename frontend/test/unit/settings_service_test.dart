@@ -60,5 +60,15 @@ void main() {
       loaded = await service.loadSelectedTournamentTypeNames();
       expect(loaded, isEmpty);
     });
+
+    test('Saves, loads, and clears keepalive registered URL', () async {
+      expect(await service.loadKeepaliveRegisteredUrl(), isNull);
+
+      await service.saveKeepaliveRegisteredUrl('https://myproject.supabase.co');
+      expect(await service.loadKeepaliveRegisteredUrl(), 'https://myproject.supabase.co');
+
+      await service.saveKeepaliveRegisteredUrl(null);
+      expect(await service.loadKeepaliveRegisteredUrl(), isNull);
+    });
   });
 }

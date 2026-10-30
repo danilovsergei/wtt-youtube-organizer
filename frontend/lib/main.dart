@@ -1964,7 +1964,52 @@ class _SidebarState extends State<Sidebar> {
               ListenableBuilder(
                 listenable: UserDatabaseSyncService.instance,
                 builder: (context, _) {
-                  final isConnected = UserDatabaseSyncService.instance.isConnected;
+                  final syncService = UserDatabaseSyncService.instance;
+                  final status = syncService.status;
+                  final isConnected = syncService.isConnected;
+
+                  final Color statusColor;
+                  final Widget statusIcon;
+                  final String statusSubtitle;
+
+                  switch (status) {
+                    case SyncStatus.paused:
+                      statusColor = const Color(0xFFF59E0B);
+                      statusIcon = const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFF59E0B), size: 18);
+                      statusSubtitle = 'Paused (Action Required)';
+                      break;
+                    case SyncStatus.error:
+                      statusColor = const Color(0xFFEF4444);
+                      statusIcon = const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18);
+                      statusSubtitle = 'Sync Error';
+                      break;
+                    case SyncStatus.syncing:
+                      statusColor = const Color(0xFF0D7FF2);
+                      statusIcon = const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D7FF2)),
+                      );
+                      statusSubtitle = 'Syncing...';
+                      break;
+                    case SyncStatus.idle:
+                      if (isConnected) {
+                        statusColor = const Color(0xFF10B981);
+                        statusIcon = const Icon(Icons.cloud_done, color: Color(0xFF10B981), size: 18);
+                        statusSubtitle = 'Connected to Supabase';
+                      } else {
+                        statusColor = Colors.grey[500]!;
+                        statusIcon = Icon(Icons.cloud_queue, color: Colors.grey[400], size: 18);
+                        statusSubtitle = 'Offline / Local only';
+                      }
+                      break;
+                    case SyncStatus.disconnected:
+                      statusColor = Colors.grey[500]!;
+                      statusIcon = Icon(Icons.cloud_queue, color: Colors.grey[400], size: 18);
+                      statusSubtitle = 'Offline / Local only';
+                      break;
+                  }
+
                   return TvFocusable(
                     onTap: () {
                       Navigator.of(context).push(
@@ -1984,37 +2029,57 @@ class _SidebarState extends State<Sidebar> {
                             height: 32,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: isConnected ? const Color(0xFF10B981).withValues(alpha: 0.2) : const Color(0xFF223649),
+                              color: statusColor.withValues(alpha: 0.15),
                               border: Border.all(
-                                color: isConnected ? const Color(0xFF10B981) : Colors.transparent,
+                                color: statusColor,
                                 width: 1,
                               ),
                             ),
                             alignment: Alignment.center,
-                            child: Icon(
-                              isConnected ? Icons.cloud_done : Icons.cloud_queue,
-                              color: isConnected ? const Color(0xFF10B981) : Colors.grey[400],
-                              size: 18,
-                            ),
+                            child: statusIcon,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Cloud Sync',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'Cloud Sync',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (status == SyncStatus.paused) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFFF59E0B), width: 0.8),
+                                        ),
+                                        child: const Text(
+                                          'PAUSED',
+                                          style: TextStyle(
+                                            color: Color(0xFFF59E0B),
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 Text(
-                                  isConnected ? 'Connected to Supabase' : 'Offline / Local only',
+                                  statusSubtitle,
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: isConnected ? const Color(0xFF10B981) : Colors.grey[500],
+                                    fontWeight: status == SyncStatus.paused ? FontWeight.w600 : FontWeight.normal,
+                                    color: statusColor,
                                   ),
                                 ),
                               ],

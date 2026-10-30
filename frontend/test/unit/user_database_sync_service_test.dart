@@ -11,6 +11,7 @@ void main() {
     late HttpServer server;
     late int port;
     late Directory tempDir;
+    late SupabaseClient client;
     final List<Map<String, dynamic>> remotePlaybackRows = [];
     final List<Map<String, dynamic>> remoteSettingsRows = [];
     final List<Map<String, dynamic>> upsertedPlaybackRecords = [];
@@ -60,7 +61,7 @@ void main() {
         await request.response.close();
       });
 
-      final client = SupabaseClient('http://127.0.0.1:$port', 'mock-key');
+      client = SupabaseClient('http://127.0.0.1:$port', 'mock-key');
       UserDatabaseSyncService.instance.setClientForTesting(client, projectUrl: 'http://127.0.0.1:$port');
     });
 
@@ -162,6 +163,31 @@ void main() {
 
       final types = await SettingsService.instance.loadSelectedTournamentTypeNames();
       expect(types, containsAll(['smash', 'feeder']));
+    });
+
+    test('isPausedError accurately detects DNS NXDOMAIN, 503, and paused messages', () {
+      expect(UserDatabaseSyncService.isPausedError('ClientException with SocketException: Failed host lookup: "foo.supabase.co"'), isTrue);
+      expect(UserDatabaseSyncService.isPausedError('OS Error: Name or service not known, errno = -2'), isTrue);
+      expect(UserDatabaseSyncService.isPausedError('PostgrestException: Project is paused by Supabase'), isTrue);
+      expect(UserDatabaseSyncService.isPausedError('HTTP 503 Service Unavailable'), isTrue);
+      expect(UserDatabaseSyncService.isPausedError('Database connection timeout'), isFalse);
+      expect(UserDatabaseSyncService.isPausedError('Invalid JWT token'), isFalse);
+    });
+
+    test('effectiveProjectRef correctly extracts ref from stored ref or URL', () {
+      UserDatabaseSyncService.instance.setClientForTesting(
+        client,
+        projectUrl: 'https://kbklcoospalxtmtalltm.supabase.co',
+        projectRef: 'kbklcoospalxtmtalltm',
+      );
+      expect(UserDatabaseSyncService.instance.effectiveProjectRef, 'kbklcoospalxtmtalltm');
+
+      UserDatabaseSyncService.instance.setClientForTesting(
+        client,
+        projectUrl: 'https://myref123.supabase.co',
+        clearProjectRef: true,
+      );
+      expect(UserDatabaseSyncService.instance.effectiveProjectRef, 'myref123');
     });
   });
 }
