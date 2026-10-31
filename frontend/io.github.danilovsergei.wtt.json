@@ -10,7 +10,10 @@
         "--socket=wayland",
         "--socket=pulseaudio",
         "--device=dri",
-        "--share=ipc"
+        "--share=ipc",
+        "--talk-name=org.freedesktop.ScreenSaver",
+        "--talk-name=org.freedesktop.PowerManagement.Inhibit",
+        "--talk-name=org.gnome.SessionManager"
     ],
     "modules": [
         {

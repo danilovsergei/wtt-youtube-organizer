@@ -420,12 +420,10 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
           filterController.focusPlayButton();
         }
       }
-      if (Platform.isLinux) {
-        if (isPlaying) {
-          LinuxScreenInhibitor.enable();
-        } else {
-          LinuxScreenInhibitor.disable();
-        }
+      if (isPlaying) {
+        ScreenLockService.enable();
+      } else {
+        ScreenLockService.disable();
       }
     });
 
@@ -506,7 +504,7 @@ class _DesktopVideoPlayerState extends State<_DesktopVideoPlayerWidget> with Wid
     _singleClickTimer?.cancel();
     _tvControlsTimer?.cancel();
     _syncDebugTimer?.cancel();
-    LinuxScreenInhibitor.disable();
+    ScreenLockService.disable();
     try {
       _player.stop();
     } catch (_) {}
