@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"wtt-youtube-organizer/config"
 	"wtt-youtube-organizer/db/importer"
@@ -105,7 +106,8 @@ var (
 	excludeProcessed bool
 	cudaDeviceID     int
 	getCookies       bool
-	modelName        string
+	modelName          string
+	concurrencyWorkers int = 2
 )
 
 func getCudaDevices() []string {
@@ -289,6 +291,7 @@ func initCmd(flags *pflag.FlagSet) {
 	flags.IntVar(&cudaDeviceID, "cuda_device_id", -1, "The ID of the CUDA device to use for PyTorch (if multiple are available)")
 	flags.BoolVar(&getCookies, "get_cookies", false, "Run ytdlp-rookie to extract browser cookies and pass them to yt-dlp")
 	flags.StringVar(&modelName, "model", "mineru", "The model to use for extraction (e.g. mineru, qwen)")
+	flags.IntVarP(&concurrencyWorkers, "concurrency", "j", 2, "Number of concurrent video extraction workers (default: 2)")
 }
 
 // buildContainerArgs constructs the additional arguments to be passed to the Docker container
@@ -630,13 +633,13 @@ func processQueueVideos(queuePath string, containerArgs []string) error {
 	if settings != nil {
 		processFilter = settings.ProcessFilter
 	}
-	return processQueueVideosWithDeps(queuePath, defaultQueueDeps(), containerArgs, processFilter)
+	return processQueueVideosWithDeps(queuePath, defaultQueueDeps(), containerArgs, processFilter, concurrencyWorkers)
 }
 
 // processQueueVideosWithDeps is the testable implementation of processQueueVideos.
 // Processes videos oldest-first: successful videos are removed from queue,
 // failed videos (docker error) are kept in queue for retry and processing continues.
-func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string, processFilter string) error {
+func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string, processFilter string, concurrency ...int) error {
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		return fmt.Errorf("failed to load queue: %w", err)
@@ -647,147 +650,223 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		return nil
 	}
 
-	// Process from end (oldest) to start (newest)
-	failedCount := 0
-	for i := len(queue) - 1; i >= 0; i-- {
-		entry := queue[i]
-
-		// Skip PARA videos and remove from queue
+	// 1. Initial cleanup of PARA videos in queue
+	var initialCleaned []QueueEntry
+	paraRemoved := 0
+	for _, entry := range queue {
 		if paraWordRegex.MatchString(entry.VideoTitle) {
-			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))
 			logPrintf("Skipping and removing video %s (%s) - Title contains 'PARA'\n", entry.VideoTitle, entry.VideoID)
-			queue = append(queue[:i], queue[i+1:]...)
-			_ = SaveQueue(queuePath, queue)
+			paraRemoved++
 			continue
 		}
+		initialCleaned = append(initialCleaned, entry)
+	}
+	if paraRemoved > 0 {
+		queue = initialCleaned
+		_ = SaveQueue(queuePath, queue)
+	}
 
-		// Apply process_filter
+	// 2. Identify candidate videos to process in oldest-first order (queue is stored newest-first)
+	var candidateVideos []QueueEntry
+	for i := len(queue) - 1; i >= 0; i-- {
+		entry := queue[i]
 		if processFilter != "" && !strings.Contains(entry.VideoTitle, processFilter) {
 			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))
 			logPrintf("Skipping video %s (%s) - Title does not contain process_filter: '%s'\n", entry.VideoTitle, entry.VideoID, processFilter)
 			continue
 		}
+		candidateVideos = append(candidateVideos, entry)
+	}
 
-		logPrintf("\n=== Processing queue [%d remaining] ===\n", len(queue))
-		logPrintf("Video: %s (%s)\n", entry.VideoTitle, entry.VideoID)
-		// Create temp directory for this video's output
-		tmpDir, err := os.MkdirTemp("", "matchfinder-")
-		if err != nil {
-			return fmt.Errorf("failed to create temp directory: %w", err)
+	if len(candidateVideos) == 0 {
+		if len(queue) > 0 {
+			logPrintf("\n=== %d video(s) remain in queue (skipped by filter) ===\n", len(queue))
+		} else {
+			logPrintln("\n=== Queue is empty. All videos processed! ===")
 		}
-		if err := os.Chmod(tmpDir, 0777); err != nil {
-			return fmt.Errorf("failed to set temp directory permissions: %w", err)
-		}
-		ts := time.Now().Format("20060102-150405")
-		outputFile := filepath.Join(tmpDir, fmt.Sprintf("matches-%s-%s.json", entry.VideoID, ts))
+		return nil
+	}
 
-		// Run docker to process this single video
-		youtubeURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID)
-		containerArgs := []string{
-			"--youtube_video=" + youtubeURL,
-		}
+	// 3. Concurrency worker configuration
+	numWorkers := 1
+	if len(concurrency) > 0 && concurrency[0] > 1 {
+		numWorkers = concurrency[0]
+	}
+	if numWorkers > len(candidateVideos) {
+		numWorkers = len(candidateVideos)
+	}
 
-		// Inject CUDA args if missing
-		if cudaDeviceID >= 0 && !strings.Contains(strings.Join(containerArgs, " "), "--cuda_device_id") {
-			containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
-			if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
-				containerArgs = append(containerArgs, "--cuda_device_name", devName)
+	logPrintf("Starting queue processing with %d worker(s) across %d candidate video(s)...\n", numWorkers, len(candidateVideos))
+
+	jobs := make(chan QueueEntry, len(candidateVideos))
+	for _, entry := range candidateVideos {
+		jobs <- entry
+	}
+	close(jobs)
+
+	var (
+		queueMu       sync.Mutex
+		failedCount   int
+		firstFatalErr error
+		fatalOnce     sync.Once
+		wg            sync.WaitGroup
+	)
+
+	removeVideoFromQueue := func(videoID string) error {
+		var updated []QueueEntry
+		for _, qe := range queue {
+			if qe.VideoID != videoID {
+				updated = append(updated, qe)
 			}
 		}
+		queue = updated
+		return SaveQueue(queuePath, queue)
+	}
 
-		containerArgs = append(containerArgs, extraArgs...)
-		dockerErr := deps.runDocker(outputFile, containerArgs)
-		if dockerErr != nil {
-			var errRes struct {
-				Status        string `json:"status"`
-				ErrorCode     string `json:"error_code"`
-				ErrorCategory string `json:"error_category"`
-				Error         string `json:"error"`
-				IsBotBlocked  bool   `json:"is_bot_blocked"`
-			}
-			hasJSON := false
-			if data, readErr := os.ReadFile(outputFile); readErr == nil {
-				if json.Unmarshal(data, &errRes) == nil {
-					hasJSON = true
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for entry := range jobs {
+				queueMu.Lock()
+				if firstFatalErr != nil {
+					queueMu.Unlock()
+					return
 				}
-			}
+				logPrintf("\n=== [Worker %d] Processing queue [%d remaining] ===\n", workerID, len(queue))
+				logPrintf("[Worker %d] Video: %s (%s)\n", workerID, entry.VideoTitle, entry.VideoID)
+				queueMu.Unlock()
 
-			isPermanent := false
-			isBotBlocked := false
-			errorCode := errRes.ErrorCode
-			if errorCode == "" {
-				errorCode = "UNKNOWN"
-			}
-
-			if hasJSON && errRes.ErrorCategory != "" {
-				switch errRes.ErrorCategory {
-				case "permanent":
-					isPermanent = true
-				case "bot_blocked":
-					isBotBlocked = true
-				case "retryable":
-					// explicitly retryable
+				tmpDir, err := os.MkdirTemp("", "matchfinder-")
+				if err != nil {
+					fatalOnce.Do(func() { firstFatalErr = fmt.Errorf("failed to create temp directory: %w", err) })
+					return
 				}
-			} else {
-				// Fallback to exit codes & legacy string matching if JSON wasn't written
-				errLower := strings.ToLower(errRes.Error + " " + dockerErr.Error())
-				if errRes.IsBotBlocked ||
-					strings.Contains(errLower, "sign in to confirm") ||
-					strings.Contains(errLower, "not a bot") ||
-					strings.Contains(errLower, "bot challenge") ||
-					strings.Contains(errLower, "captcha") {
-					isBotBlocked = true
-				} else {
-					var exitErr *exec.ExitError
-					if errors.As(dockerErr, &exitErr) {
-						if exitErr.ExitCode() == 3 {
-							isBotBlocked = true
-						} else if exitErr.ExitCode() == 2 {
-							isPermanent = true
-						}
-					} else if strings.Contains(errLower, "unavailable") ||
-						strings.Contains(errLower, "deleted") ||
-						strings.Contains(errLower, "private") {
-						isPermanent = true
+				_ = os.Chmod(tmpDir, 0777)
+				ts := time.Now().Format("20060102-150405")
+				outputFile := filepath.Join(tmpDir, fmt.Sprintf("matches-%s-%s.json", entry.VideoID, ts))
+
+				youtubeURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", entry.VideoID)
+				containerArgs := []string{
+					"--youtube_video=" + youtubeURL,
+				}
+				if cudaDeviceID >= 0 && !strings.Contains(strings.Join(containerArgs, " "), "--cuda_device_id") {
+					containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
+					if devName := getCudaDeviceName(cudaDeviceID); devName != "" {
+						containerArgs = append(containerArgs, "--cuda_device_name", devName)
 					}
 				}
-			}
+				containerArgs = append(containerArgs, extraArgs...)
 
-			if isPermanent && !isBotBlocked {
-				logPrintf("Video %s is permanently unavailable (%s). Removing from queue...\n", entry.VideoID, errorCode)
-				queue = append(queue[:i], queue[i+1:]...)
-				if err := SaveQueue(queuePath, queue); err != nil {
-					return fmt.Errorf("failed to update queue: %w", err)
+				// Run Docker extraction concurrently (NO lock held)
+				dockerErr := deps.runDocker(outputFile, containerArgs)
+
+				// Results inspection and database import under mutex lock
+				queueMu.Lock()
+				if dockerErr != nil {
+					var errRes struct {
+						Status        string `json:"status"`
+						ErrorCode     string `json:"error_code"`
+						ErrorCategory string `json:"error_category"`
+						Error         string `json:"error"`
+						IsBotBlocked  bool   `json:"is_bot_blocked"`
+					}
+					hasJSON := false
+					if data, readErr := os.ReadFile(outputFile); readErr == nil {
+						if json.Unmarshal(data, &errRes) == nil {
+							hasJSON = true
+						}
+					}
+
+					isPermanent := false
+					isBotBlocked := false
+					errorCode := errRes.ErrorCode
+					if errorCode == "" {
+						errorCode = "UNKNOWN"
+					}
+
+					if hasJSON && errRes.ErrorCategory != "" {
+						switch errRes.ErrorCategory {
+						case "permanent":
+							isPermanent = true
+						case "bot_blocked":
+							isBotBlocked = true
+						case "retryable":
+							// explicitly retryable
+						}
+					} else {
+						errLower := strings.ToLower(errRes.Error + " " + dockerErr.Error())
+						if errRes.IsBotBlocked ||
+							strings.Contains(errLower, "sign in to confirm") ||
+							strings.Contains(errLower, "not a bot") ||
+							strings.Contains(errLower, "bot challenge") ||
+							strings.Contains(errLower, "captcha") {
+							isBotBlocked = true
+						} else {
+							var exitErr *exec.ExitError
+							if errors.As(dockerErr, &exitErr) {
+								if exitErr.ExitCode() == 3 {
+									isBotBlocked = true
+								} else if exitErr.ExitCode() == 2 {
+									isPermanent = true
+								}
+							} else if strings.Contains(errLower, "unavailable") ||
+								strings.Contains(errLower, "deleted") ||
+								strings.Contains(errLower, "private") {
+								isPermanent = true
+							}
+						}
+					}
+
+					if isPermanent && !isBotBlocked {
+						logPrintf("[Worker %d] Video %s is permanently unavailable (%s). Removing from queue...\n", workerID, entry.VideoID, errorCode)
+						if err := removeVideoFromQueue(entry.VideoID); err != nil {
+							fatalOnce.Do(func() { firstFatalErr = fmt.Errorf("failed to update queue: %w", err) })
+							queueMu.Unlock()
+							return
+						}
+						queueMu.Unlock()
+						continue
+					}
+
+					if isBotBlocked {
+						logPrintf("[Worker %d] WARNING: yt-dlp requested sign-in / bot confirmation for video %s.\n", workerID, entry.VideoID)
+						logPrintf("[Worker %d] Video %s is NOT deleted. Retaining in queue for retry.\n", workerID, entry.VideoID)
+					} else {
+						logPrintf("[Worker %d] INFO: Video %s encountered temporary error (%s). Retaining in queue for retry: %v\n", workerID, entry.VideoID, errorCode, dockerErr)
+					}
+					failedCount++
+					queueMu.Unlock()
+					continue
 				}
-				continue
+
+				// Import results to database
+				logPrintf("\n=== [Worker %d] Importing results to database for %s ===\n", workerID, entry.VideoID)
+				if importErr := deps.importJSON(outputFile); importErr != nil {
+					logPrintf("ERROR importing video %s: %v\n", entry.VideoID, importErr)
+					logPrintf("JSON file: %s\n", outputFile)
+					fatalOnce.Do(func() { firstFatalErr = fmt.Errorf("failed to import video %s: %w", entry.VideoID, importErr) })
+					queueMu.Unlock()
+					return
+				}
+
+				if err := removeVideoFromQueue(entry.VideoID); err != nil {
+					fatalOnce.Do(func() { firstFatalErr = fmt.Errorf("failed to update queue: %w", err) })
+					queueMu.Unlock()
+					return
+				}
+
+				logPrintf("[Worker %d] Successfully processed and removed from queue: %s\n", workerID, entry.VideoID)
+				logPrintf("[Worker %d] Remaining in queue: %d\n", workerID, len(queue))
+				queueMu.Unlock()
 			}
+		}(w + 1)
+	}
 
-			if isBotBlocked {
-				logPrintf("WARNING: yt-dlp requested sign-in / bot confirmation for video %s.\n", entry.VideoID)
-				logPrintf("Video %s is NOT deleted. Retaining in queue for retry.\n", entry.VideoID)
-			} else {
-				logPrintf("INFO: Video %s encountered temporary error (%s). Retaining in queue for retry: %v\n", entry.VideoID, errorCode, dockerErr)
-			}
-			failedCount++
-			continue
-		}
+	wg.Wait()
 
-		// Import results to database
-		logPrintln("\n=== Importing results to database ===")
-		if importErr := deps.importJSON(outputFile); importErr != nil {
-			logPrintf("ERROR importing video %s: %v\n", entry.VideoID, importErr)
-			logPrintf("JSON file: %s\n", outputFile)
-			return fmt.Errorf("failed to import video %s: %w", entry.VideoID, importErr)
-		}
-
-		// Remove from queue after successful docker + import
-		queue = append(queue[:i], queue[i+1:]...)
-		if err := SaveQueue(queuePath, queue); err != nil {
-			return fmt.Errorf("failed to update queue: %w", err)
-		}
-
-		logPrintf("Successfully processed and removed from queue: %s\n", entry.VideoID)
-		logPrintf("Remaining in queue: %d\n", len(queue))
+	if firstFatalErr != nil {
+		return firstFatalErr
 	}
 
 	if len(queue) > 0 {
@@ -802,7 +881,6 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 
 	return nil
 }
-
 // killStaleMatchFinderContainers finds and kills any running Docker containers
 // using the match-finder image. This prevents stale containers from accumulating
 // when previous runs didn't clean up properly.

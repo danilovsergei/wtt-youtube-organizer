@@ -3,9 +3,13 @@ package matchfinder_cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // --- Mock implementations ---
@@ -1135,5 +1139,149 @@ func TestProcessQueue_SkipsAndRemovesParaVideos(t *testing.T) {
 	remaining, _ := LoadQueue(queuePath)
 	if len(remaining) != 0 {
 		t.Fatalf("Expected 0 videos left in queue after processing, got %d: %v", len(remaining), remaining)
+	}
+}
+
+// --- Tests for Parallel Queue Processing ---
+
+func TestProcessQueue_ParallelWorkers(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	entries := []QueueEntry{
+		{VideoID: "V1", VideoTitle: "Match 1"},
+		{VideoID: "V2", VideoTitle: "Match 2"},
+		{VideoID: "V3", VideoTitle: "Match 3"},
+		{VideoID: "V4", VideoTitle: "Match 4"},
+		{VideoID: "V5", VideoTitle: "Match 5"},
+		{VideoID: "V6", VideoTitle: "Match 6"},
+	}
+	if err := SaveQueue(queuePath, entries); err != nil {
+		t.Fatalf("failed to save queue: %v", err)
+	}
+
+	var (
+		mu             sync.Mutex
+		processed      []string
+		activeWorkers  int32
+		maxConcurrency int32
+	)
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error {
+			current := atomic.AddInt32(&activeWorkers, 1)
+			mu.Lock()
+			if current > maxConcurrency {
+				maxConcurrency = current
+			}
+			mu.Unlock()
+
+			// Sleep slightly to guarantee overlap
+			time.Sleep(20 * time.Millisecond)
+			atomic.AddInt32(&activeWorkers, -1)
+			return nil
+		},
+		importJSON: func(jsonFilePath string) error {
+			for _, id := range []string{"V1", "V2", "V3", "V4", "V5", "V6"} {
+				if strings.Contains(jsonFilePath, "matches-"+id+"-") {
+					mu.Lock()
+					processed = append(processed, id)
+					mu.Unlock()
+				}
+			}
+			return nil
+		},
+	}
+
+	// Run with 3 parallel workers
+	err := processQueueVideosWithDeps(queuePath, deps, []string{}, "", 3)
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Check max concurrency was indeed > 1
+	if maxConcurrency < 2 {
+		t.Errorf("expected max concurrency to be at least 2, got %d", maxConcurrency)
+	}
+
+	// Verify all 6 videos were processed
+	if len(processed) != 6 {
+		t.Fatalf("expected 6 videos to be processed, got %d: %v", len(processed), processed)
+	}
+
+	// Verify queue is now empty on disk
+	remaining, err := LoadQueue(queuePath)
+	if err != nil {
+		t.Fatalf("failed to load queue: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("expected queue on disk to be empty, got %d items: %v", len(remaining), remaining)
+	}
+}
+
+func TestProcessQueue_ParallelWorkers_WithFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	entries := []QueueEntry{
+		{VideoID: "OK1", VideoTitle: "Normal Match 1"},
+		{VideoID: "PERM", VideoTitle: "Deleted Match"},
+		{VideoID: "RETRY", VideoTitle: "Live Match Busy"},
+		{VideoID: "OK2", VideoTitle: "Normal Match 2"},
+	}
+	if err := SaveQueue(queuePath, entries); err != nil {
+		t.Fatalf("failed to save queue: %v", err)
+	}
+
+	var mu sync.Mutex
+	var processedOK []string
+
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error {
+			time.Sleep(10 * time.Millisecond)
+			argStr := strings.Join(args, " ")
+			if strings.Contains(argStr, "PERM") {
+				// Permanent failure (exit code 2)
+				return exec.Command("sh", "-c", "exit 2").Run()
+			}
+			if strings.Contains(argStr, "RETRY") {
+				// Temporary failure (exit code 1)
+				return exec.Command("sh", "-c", "exit 1").Run()
+			}
+			return nil
+		},
+		importJSON: func(jsonFilePath string) error {
+			for _, id := range []string{"OK1", "OK2"} {
+				if strings.Contains(jsonFilePath, "matches-"+id+"-") {
+					mu.Lock()
+					processedOK = append(processedOK, id)
+					mu.Unlock()
+				}
+			}
+			return nil
+		},
+	}
+
+	// Run with 2 parallel workers
+	err := processQueueVideosWithDeps(queuePath, deps, []string{}, "", 2)
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Both OK1 and OK2 should have been imported
+	if len(processedOK) != 2 {
+		t.Fatalf("expected 2 successful videos, got %d: %v", len(processedOK), processedOK)
+	}
+
+	// Only RETRY should remain in the queue
+	remaining, err := LoadQueue(queuePath)
+	if err != nil {
+		t.Fatalf("failed to load queue: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 video left in queue, got %d: %v", len(remaining), remaining)
+	}
+	if remaining[0].VideoID != "RETRY" {
+		t.Errorf("expected RETRY to be in queue, got %s", remaining[0].VideoID)
 	}
 }
