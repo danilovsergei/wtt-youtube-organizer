@@ -165,8 +165,8 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 	queryHasPara := strings.Contains(normQuery, "para")
 	queryHasStar := strings.Contains(normQuery, "star")
 	queryHasFeeder := strings.Contains(normQuery, "feeder")
-	queryHasII := strings.Contains(normQuery, " ii")
-	queryHasIII := strings.Contains(normQuery, " iii")
+	queryHasIII := strings.Contains(normQuery, " iii ") || strings.HasSuffix(normQuery, " iii") || strings.Contains(normQuery, " iii 20")
+	queryHasII := (strings.Contains(normQuery, " ii ") || strings.HasSuffix(normQuery, " ii") || strings.Contains(normQuery, " ii 20")) && !queryHasIII
 
 	// Phase 1: Exact substring match respecting category filters
 	for _, entry := range entries {
@@ -195,13 +195,13 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 			continue
 		}
 
-		eventHasII := strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")
-		if queryHasII != eventHasII {
+		eventHasIII := strings.Contains(normEventName, " iii ") || strings.Contains(normEventName, " iii-") || strings.HasSuffix(normEventName, " iii") || strings.Contains(normEventName, " iii 20")
+		eventHasII := (strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")) && !eventHasIII
+
+		if queryHasIII != eventHasIII {
 			continue
 		}
-
-		eventHasIII := strings.Contains(normEventName, " iii ") || strings.Contains(normEventName, " iii-") || strings.HasSuffix(normEventName, " iii") || strings.Contains(normEventName, " iii 20")
-		if queryHasIII != eventHasIII {
+		if queryHasII != eventHasII {
 			continue
 		}
 
@@ -248,37 +248,13 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 			continue
 		}
 
-		eventHasII := strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")
-		if queryHasII != eventHasII {
-			continue
-		}
-
 		eventHasIII := strings.Contains(normEventName, " iii ") || strings.Contains(normEventName, " iii-") || strings.HasSuffix(normEventName, " iii") || strings.Contains(normEventName, " iii 20")
+		eventHasII := (strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")) && !eventHasIII
+
 		if queryHasIII != eventHasIII {
 			continue
 		}
-
-		allTokensMatch := true
-		for _, tok := range tokens {
-			if !strings.Contains(normEventName, tok) {
-				allTokensMatch = false
-				break
-			}
-		}
-		if allTokensMatch {
-			return entry.EventID, entry.EventName, nil
-		}
-	}
-
-	// Phase 3: Lenient fallback without year check
-	for _, entry := range entries {
-		normEventName := NormalizeTournamentName(entry.EventName)
-		eventHasYouth := strings.Contains(normEventName, "youth")
-		if queryHasYouth != eventHasYouth {
-			continue
-		}
-		eventHasPara := strings.Contains(normEventName, "para")
-		if queryHasPara != eventHasPara {
+		if queryHasII != eventHasII {
 			continue
 		}
 
@@ -305,31 +281,30 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 		url = fmt.Sprintf("%s/official_%d.json", c.baseURL, eventID)
 	}
 
+	cardCount := 0
+	var archivedMatches []WTTOfficialMatch
 	data, err := c.fetchAndDecompress(ctx, url)
 	if err == nil {
-		var matches []WTTOfficialMatch
-		if err := json.Unmarshal(data, &matches); err == nil && len(matches) > 0 {
-			// Check if matches have non-null match_cards
-			hasCards := false
-			for _, m := range matches {
-				if len(m.MatchCard.Competitors) > 0 {
-					hasCards = true
-					break
+		if jErr := json.Unmarshal(data, &archivedMatches); jErr == nil && len(archivedMatches) > 0 {
+			for _, m := range archivedMatches {
+				if len(m.MatchCard.Competitors) >= 2 {
+					cardCount++
 				}
 			}
-			if hasCards {
-				return matches, nil
+			// If archive is complete and populated with competitor cards, return it
+			if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
+				return archivedMatches, nil
 			}
 		}
 	}
 
-	// Active/In-Progress live fallback (e.g. Frankfurt 2026)
+	// Active/In-Progress live fallback (e.g. Frankfurt 2026, Gaia 2026)
 	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
-	if liveErr == nil && len(liveMatches) > 0 {
+	if liveErr == nil && len(liveMatches) > cardCount {
 		return liveMatches, nil
 	}
-	if liveErr != nil {
-		fmt.Printf("fetchLiveScheduleMatches failed for event %d: %v\n", eventID, liveErr)
+	if cardCount > 0 {
+		return archivedMatches, nil
 	}
 
 	if err != nil {
@@ -339,11 +314,14 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 }
 
 func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
-	// 1. Fetch scores map from top 10 results
+	cacheBuster := time.Now().Unix()
+
+	// 1. Fetch scores map from top 10 results and live cache
 	scoresMap := make(map[string]WTTMatchCard)
 	top10URLs := []string{
-		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/%d/%d_take_10_official_results.json", eventID, eventID),
-		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/officialresult/officialresult_top10.json", eventID),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/%d/%d_take_10_official_results.json?q=%d", eventID, eventID, cacheBuster),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/officialresult/officialresult_top10.json?q=%d", eventID, cacheBuster),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/officialresult/officialresult.json?q=%d", eventID, cacheBuster),
 	}
 	for _, u := range top10URLs {
 		data, err := c.fetchAndDecompress(ctx, u)
@@ -360,75 +338,86 @@ func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) (
 		}
 	}
 
-	// 2. Fetch live schedule.json
-	schedURL := fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/schedule/schedule.json", eventID)
+	// 2. Fetch live schedule_filtered.json and schedule.json
+	schedURLs := []string{
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/schedule/schedule.json?q=%d", eventID, cacheBuster),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/schedule/schedule_filtered.json", eventID),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/schedule/schedule.json", eventID),
+	}
 	if c.baseURL != "" {
-		schedURL = fmt.Sprintf("%s/schedule_%d.json", c.baseURL, eventID)
-	}
-
-	schedData, err := c.fetchAndDecompress(ctx, schedURL)
-	if err != nil {
-		return nil, err
-	}
-
-	var schedItems []struct {
-		Competition struct {
-			Unit []struct {
-				Code            string `json:"Code"`
-				ScheduleStatus  string `json:"ScheduleStatus"`
-				SubEvent        string `json:"SubEvent"`
-				Round           string `json:"Round"`
-				StartDate       string `json:"StartDate"`
-				ActualStartDate string `json:"ActualStartDate"`
-				VenueDescription struct {
-					LocationName string `json:"LocationName"`
-					VenueName    string `json:"VenueName"`
-				} `json:"VenueDescription"`
-				ItemDescription []struct {
-					Language string `json:"Language"`
-					Value    string `json:"Value"`
-				} `json:"ItemDescription"`
-				StartList struct {
-					Start []struct {
-						Competitor struct {
-							Code         string `json:"Code"`
-							Organization string `json:"Organization"`
-							Description  struct {
-								TeamName string `json:"TeamName"`
-							} `json:"Description"`
-						} `json:"Competitor"`
-					} `json:"Start"`
-				} `json:"StartList"`
-			} `json:"Unit"`
-		} `json:"Competition"`
-	}
-	if err := json.Unmarshal(schedData, &schedItems); err != nil {
-		return nil, err
+		schedURLs = []string{fmt.Sprintf("%s/schedule_%d.json", c.baseURL, eventID)}
 	}
 
 	var result []WTTOfficialMatch
 	seenCodes := make(map[string]bool)
 
-	for _, item := range schedItems {
-		for _, u := range item.Competition.Unit {
-			if u.ScheduleStatus != "Official" && u.ScheduleStatus != "Finished" {
-				continue
-			}
+	for _, schedURL := range schedURLs {
+		schedData, err := c.fetchAndDecompress(ctx, schedURL)
+		if err != nil || len(schedData) == 0 {
+			continue
+		}
+
+		var schedItems []struct {
+			Competition struct {
+				Unit []struct {
+					Code             string `json:"Code"`
+					ScheduleStatus   string `json:"ScheduleStatus"`
+					SubEvent         string `json:"SubEvent"`
+					Round            string `json:"Round"`
+					StartDate        string `json:"StartDate"`
+					ActualStartDate  string `json:"ActualStartDate"`
+					Location         string `json:"Location"`
+					VenueDescription struct {
+						LocationName string `json:"LocationName"`
+						VenueName    string `json:"VenueName"`
+					} `json:"VenueDescription"`
+					ItemDescription []struct {
+						Language string `json:"Language"`
+						Value    string `json:"Value"`
+					} `json:"ItemDescription"`
+					StartList struct {
+						Start []struct {
+							Competitor *struct {
+								Code         string `json:"Code"`
+								Organization string `json:"Organization"`
+								Description  *struct {
+									TeamName string `json:"TeamName"`
+								} `json:"Description"`
+							} `json:"Competitor"`
+						} `json:"Start"`
+					} `json:"StartList"`
+				} `json:"Unit"`
+			} `json:"Competition"`
+		}
+		_ = json.Unmarshal(schedData, &schedItems)
+
+		for _, item := range schedItems {
+			for _, u := range item.Competition.Unit {
 			codeTrimmed := strings.TrimRight(u.Code, "-")
-			if seenCodes[codeTrimmed] {
+			if codeTrimmed == "" || seenCodes[codeTrimmed] {
 				continue
 			}
-			seenCodes[codeTrimmed] = true
 
 			starts := u.StartList.Start
-			if len(starts) < 2 {
+			if len(starts) < 2 || starts[0].Competitor == nil || starts[1].Competitor == nil {
 				continue
 			}
 
-			c1Name := starts[0].Competitor.Description.TeamName
-			c1Org := starts[0].Competitor.Organization
-			c2Name := starts[1].Competitor.Description.TeamName
-			c2Org := starts[1].Competitor.Organization
+			c1 := starts[0].Competitor
+			c2 := starts[1].Competitor
+			if c1.Description == nil || c2.Description == nil {
+				continue
+			}
+
+			c1Name := c1.Description.TeamName
+			c1Org := c1.Organization
+			c2Name := c2.Description.TeamName
+			c2Org := c2.Organization
+			if c1Name == "" || c2Name == "" {
+				continue
+			}
+
+			seenCodes[codeTrimmed] = true
 
 			desc := ""
 			for _, d := range u.ItemDescription {
@@ -438,12 +427,18 @@ func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) (
 				}
 			}
 
+			tableName := u.Location
+			if tableName == "" {
+				tableName = u.VenueDescription.LocationName
+			}
+
 			mc := WTTMatchCard{
 				EventID:             strconv.Itoa(eventID),
 				DocumentCode:        u.Code,
 				SubEventName:        u.SubEvent,
 				SubEventDescription: desc,
-				TableName:           u.VenueDescription.LocationName,
+				TableNumber:         u.Location,
+				TableName:           tableName,
 				VenueName:           u.VenueDescription.VenueName,
 				Competitors: []WTTCompetitor{
 					{CompetitorName: c1Name, CompetitorOrg: c1Org},
@@ -460,8 +455,8 @@ func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) (
 				mc.GameScores = card.GameScores
 				mc.ResultStatus = "OFFICIAL"
 			} else {
-				mc.OverallScores = "Finished"
-				mc.ResultStatus = "OFFICIAL"
+				mc.OverallScores = "Scheduled"
+				mc.ResultStatus = u.ScheduleStatus
 			}
 
 			result = append(result, WTTOfficialMatch{
@@ -473,6 +468,7 @@ func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) (
 				MatchCard:      mc,
 			})
 		}
+	}
 	}
 
 	return result, nil

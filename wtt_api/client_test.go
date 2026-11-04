@@ -72,3 +72,33 @@ func TestWTTClient_DistinguishesYouthAndSenior(t *testing.T) {
 		t.Errorf("expected Youth Event ID 3335, got %d (%s)", youthID, youthName)
 	}
 }
+
+func TestFindEventIDByQuery_RomanNumerals_II_vs_III(t *testing.T) {
+	mockDropdown := []WTTEventDropdownEntry{
+		{EventID: 3478, EventName: "WTT Youth Contender San Francisco II 2026 Presented by MongoDB"},
+		{EventID: 3479, EventName: "WTT Youth Contender San Francisco III 2026 Presented by MongoDB"},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dropdown.json" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(mockDropdown)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewWTTClient(WithBaseURL(server.URL))
+	ctx := context.Background()
+
+	idII, nameII, errII := client.FindEventIDByQuery(ctx, "WTT Youth Contender San Francisco II", 2026)
+	if errII != nil || idII != 3478 {
+		t.Fatalf("expected Event ID 3478 for San Francisco II, got %d (%s), err: %v", idII, nameII, errII)
+	}
+
+	idIII, nameIII, errIII := client.FindEventIDByQuery(ctx, "WTT Youth Contender San Francisco III", 2026)
+	if errIII != nil || idIII != 3479 {
+		t.Fatalf("expected Event ID 3479 for San Francisco III, got %d (%s), err: %v", idIII, nameIII, errIII)
+	}
+}

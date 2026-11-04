@@ -56,7 +56,12 @@ func ParseWTTStartTime(m WTTOfficialMatch) *time.Time {
 			return &utc
 		}
 	}
-	t, err := time.Parse(time.RFC3339, strings.ReplaceAll(dtStr, "Z", "+00:00"))
+	t, err := time.Parse(time.RFC3339Nano, strings.ReplaceAll(dtStr, "Z", "+00:00"))
+	if err == nil {
+		utc := t.UTC()
+		return &utc
+	}
+	t, err = time.Parse(time.RFC3339, strings.ReplaceAll(dtStr, "Z", "+00:00"))
 	if err == nil {
 		utc := t.UTC()
 		return &utc
@@ -391,35 +396,6 @@ func AlignMatches(
 			wttTable := wttTables[wIdx]
 			wttTime := wttTimes[wIdx]
 
-			timeDeltaMin := 0.0
-			timeBonus := 0.0
-			hasTimeComparison := false
-
-			if calcT != nil && wttTime != nil {
-				hasTimeComparison = true
-				diffMin := calcT.Sub(*wttTime).Minutes()
-				timeDeltaMin = diffMin
-
-				// Asymmetric empirical window: -30 min to +120 min
-				if diffMin < -30.0 || diffMin > 120.0 {
-					continue
-				}
-
-				if math.Abs(diffMin) <= 15.0 {
-					timeBonus = 0.10 * (1.0 - math.Abs(diffMin)/30.0)
-				}
-			}
-
-			tableBonus := 0.0
-			if dbTable != "" && wttTable != "" {
-				if dbTable == wttTable {
-					tableBonus = 0.15
-				} else if hasTimeComparison {
-					// Time is around now, but table is different -> skip
-					continue
-				}
-			}
-
 			direct := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanA, nwtt.tokensA) +
 				NameSimilarityPreNormalized(ndb.cleanB, ndb.tokensB, nwtt.cleanB, nwtt.tokensB)) / 2.0
 
@@ -433,13 +409,39 @@ func AlignMatches(
 				isSwapped = true
 			}
 
-			// Composite score
+			timeDeltaMin := 0.0
+			timeBonus := 0.0
+			hasTimeComparison := false
+
+			if calcT != nil && wttTime != nil {
+				hasTimeComparison = true
+				diffMin := calcT.Sub(*wttTime).Minutes()
+				timeDeltaMin = diffMin
+
+				// Time proximity guard for weak candidates
+				if (diffMin < -45.0 || diffMin > 150.0) && baseScore < 0.85 {
+					continue
+				}
+
+				if math.Abs(diffMin) <= 15.0 {
+					timeBonus = 0.10 * (1.0 - math.Abs(diffMin)/30.0)
+				}
+			}
+
+			tableBonus := 0.0
+			if dbTable != "" && wttTable != "" {
+				if dbTable == wttTable {
+					tableBonus = 0.15
+				} else if hasTimeComparison && baseScore < 0.85 {
+					continue
+				}
+			}
+
 			compositeScore := baseScore + tableBonus + timeBonus
 			if compositeScore > 1.0 {
 				compositeScore = 1.0
 			}
 
-			// If exact table and time align, allow slightly more permissive OCR threshold (e.g. 0.50)
 			minReq := threshold
 			if hasTimeComparison && tableBonus > 0 && baseScore >= 0.50 {
 				minReq = 0.60
