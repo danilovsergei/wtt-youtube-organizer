@@ -668,13 +668,18 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 
 	// 2. Identify candidate videos to process in oldest-first order (queue is stored newest-first)
 	var candidateVideos []QueueEntry
+	seenCandidateIDs := make(map[string]bool)
 	for i := len(queue) - 1; i >= 0; i-- {
 		entry := queue[i]
+		if seenCandidateIDs[entry.VideoID] {
+			continue
+		}
 		if processFilter != "" && !strings.Contains(entry.VideoTitle, processFilter) {
 			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))
 			logPrintf("Skipping video %s (%s) - Title does not contain process_filter: '%s'\n", entry.VideoTitle, entry.VideoID, processFilter)
 			continue
 		}
+		seenCandidateIDs[entry.VideoID] = true
 		candidateVideos = append(candidateVideos, entry)
 	}
 
