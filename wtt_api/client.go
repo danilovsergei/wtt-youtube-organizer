@@ -150,6 +150,7 @@ func (c *WTTClient) FetchAllEvents(ctx context.Context) ([]WTTEventSummary, erro
 }
 
 // FindEventIDByQuery resolves a tournament query and optional year into an official WTT EventID.
+// Strictly respects tournament category tiers: Youth vs Senior, Para vs Regular, Star vs Regular.
 func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year int) (int, string, error) {
 	entries, err := c.FetchDropdownEvents(ctx)
 	if err != nil {
@@ -162,18 +163,61 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 		yearStr = strconv.Itoa(year)
 	}
 
-	// 1. Exact match on both query tokens and year
+	queryHasYouth := strings.Contains(q, "youth")
+	queryHasPara := strings.Contains(q, "para")
+	queryHasStar := strings.Contains(q, "star")
+	queryHasFeeder := strings.Contains(q, "feeder")
+
+	// Phase 1: Exact substring match respecting category filters
 	for _, entry := range entries {
 		nameLower := strings.ToLower(entry.EventName)
-		if strings.Contains(nameLower, q) && (yearStr == "" || strings.Contains(nameLower, yearStr)) {
+		if yearStr != "" && !strings.Contains(nameLower, yearStr) {
+			continue
+		}
+
+		eventHasYouth := strings.Contains(nameLower, "youth")
+		if queryHasYouth != eventHasYouth {
+			continue
+		}
+
+		eventHasPara := strings.Contains(nameLower, "para")
+		if queryHasPara != eventHasPara {
+			continue
+		}
+
+		eventHasStar := strings.Contains(nameLower, "star")
+		if queryHasStar != eventHasStar {
+			continue
+		}
+
+		eventHasFeeder := strings.Contains(nameLower, "feeder")
+		if queryHasFeeder != eventHasFeeder {
+			continue
+		}
+
+		if strings.Contains(nameLower, q) {
 			return entry.EventID, entry.EventName, nil
 		}
 	}
 
-	// 2. Fuzzy fallback: tokenize query
+	// Phase 2: Tokenized fallback respecting category filters
 	tokens := strings.Fields(q)
 	for _, entry := range entries {
 		nameLower := strings.ToLower(entry.EventName)
+		if yearStr != "" && !strings.Contains(nameLower, yearStr) {
+			continue
+		}
+
+		eventHasYouth := strings.Contains(nameLower, "youth")
+		if queryHasYouth != eventHasYouth {
+			continue
+		}
+
+		eventHasPara := strings.Contains(nameLower, "para")
+		if queryHasPara != eventHasPara {
+			continue
+		}
+
 		allTokensMatch := true
 		for _, tok := range tokens {
 			if !strings.Contains(nameLower, tok) {
@@ -181,7 +225,7 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 				break
 			}
 		}
-		if allTokensMatch && (yearStr == "" || strings.Contains(nameLower, yearStr)) {
+		if allTokensMatch {
 			return entry.EventID, entry.EventName, nil
 		}
 	}

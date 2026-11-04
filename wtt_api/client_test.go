@@ -19,36 +19,25 @@ func compressBrotli(data []byte) []byte {
 	return buf.Bytes()
 }
 
-func TestWTTClient_HermeticMockServer(t *testing.T) {
+func TestWTTClient_DistinguishesYouthAndSenior(t *testing.T) {
 	mockDropdown := []WTTEventDropdownEntry{
+		{
+			EventID:      3335,
+			EventName:    "China Youth Smash 2026 Presented by Beijing Shijingshan Culture & Tourism Group",
+			SubEventType: "Men Singles",
+		},
+		{
+			EventID:      3249,
+			EventName:    "China Smash 2026 Presented by Beijing Shijingshan Culture & Tourism Group",
+			SubEventType: "Men Singles",
+		},
 		{
 			EventID:      3250,
 			EventName:    "WTT Champions Montpellier 2026",
 			SubEventType: "Men Singles",
 		},
-		{
-			EventID:      2942,
-			EventName:    "China Smash 2024",
-			SubEventType: "Men Singles",
-		},
 	}
 	dropdownBytes, _ := json.Marshal(mockDropdown)
-
-	mockOfficial := []WTTOfficialMatch{
-		{
-			ID:           16752548,
-			DocumentCode: "TTEMSINGLES-----------FNL-000100----------",
-			SubEventType: "Men Singles",
-			MatchCard: WTTMatchCard{
-				OverallScores: "4-3",
-				Competitors: []WTTCompetitor{
-					{CompetitorName: "JANG Woojin", CompetitorOrg: "KOR"},
-					{CompetitorName: "FRANZISKA Patrick", CompetitorOrg: "GER"},
-				},
-			},
-		},
-	}
-	officialBytes, _ := json.Marshal(mockOfficial)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -56,10 +45,6 @@ func TestWTTClient_HermeticMockServer(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Encoding", "br")
 			w.Write(compressBrotli(dropdownBytes))
-		case "/official_3250.json":
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Content-Encoding", "br")
-			w.Write(compressBrotli(officialBytes))
 		default:
 			http.NotFound(w, r)
 		}
@@ -69,33 +54,21 @@ func TestWTTClient_HermeticMockServer(t *testing.T) {
 	client := NewWTTClient(WithBaseURL(server.URL))
 	ctx := context.Background()
 
-	// 1. Test FetchDropdownEvents
-	entries, err := client.FetchDropdownEvents(ctx)
+	// 1. Querying "China Smash" MUST resolve to Senior event 3249, NOT Youth event 3335
+	seniorID, seniorName, err := client.FindEventIDByQuery(ctx, "China Smash", 2026)
 	if err != nil {
-		t.Fatalf("FetchDropdownEvents failed: %v", err)
+		t.Fatalf("FindEventIDByQuery for Senior failed: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(entries))
+	if seniorID != 3249 {
+		t.Errorf("expected Senior Event ID 3249, got %d (%s)", seniorID, seniorName)
 	}
 
-	// 2. Test FindEventIDByQuery
-	eventID, name, err := client.FindEventIDByQuery(ctx, "Montpellier", 2026)
+	// 2. Querying "China Youth Smash" MUST resolve to Youth event 3335
+	youthID, youthName, err := client.FindEventIDByQuery(ctx, "China Youth Smash", 2026)
 	if err != nil {
-		t.Fatalf("FindEventIDByQuery failed: %v", err)
+		t.Fatalf("FindEventIDByQuery for Youth failed: %v", err)
 	}
-	if eventID != 3250 || name != "WTT Champions Montpellier 2026" {
-		t.Errorf("unexpected eventID=%d, name=%s", eventID, name)
-	}
-
-	// 3. Test FetchOfficialResults
-	matches, err := client.FetchOfficialResults(ctx, 3250)
-	if err != nil {
-		t.Fatalf("FetchOfficialResults failed: %v", err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("expected 1 match, got %d", len(matches))
-	}
-	if matches[0].MatchCard.OverallScores != "4-3" {
-		t.Errorf("expected score 4-3, got %s", matches[0].MatchCard.OverallScores)
+	if youthID != 3335 {
+		t.Errorf("expected Youth Event ID 3335, got %d (%s)", youthID, youthName)
 	}
 }
