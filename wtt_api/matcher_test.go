@@ -2,6 +2,7 @@ package wtt_api
 
 import (
 	"testing"
+	"time"
 )
 
 func TestNameSimilarity_ExactAndAccents(t *testing.T) {
@@ -207,5 +208,50 @@ func TestAlignMatches_GeneratesAuditReportWithBooleanHighlight(t *testing.T) {
 	}
 	if !foundHarimoto {
 		t.Errorf("Harimoto WTT match was not recorded as unmatched")
+	}
+}
+
+func TestAlignMatches_DoesNotRelyOnTableNumber(t *testing.T) {
+	// Setup DB match without any table info
+	streamStart := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	dbMatches := []DBMatchRecord{
+		{
+			ID:                 101,
+			TeamA:              "DANG QIU",
+			TeamB:              "ELIAS RANEFUR",
+			VideoTitle:         "LIVE! Session 2", // No table in title
+			VideoOffsetSeconds: 1800,              // 10:30 UTC
+			StreamStartUTC:     &streamStart,
+		},
+	}
+
+	wttMatches := []WTTOfficialMatch{
+		{
+			DocumentCode: "M001",
+			MatchCard: WTTMatchCard{
+				TableNumber: "T09", // Different or arbitrary table
+				TableName:   "Table 9",
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "QIU Dang", CompetitorOrg: "GER"},
+					{CompetitorName: "RANEFUR Elias", CompetitorOrg: "SWE"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:35:00Z", // Within 5 minutes
+				},
+				OverallScores: "3-1",
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 3252, dbMatches, wttMatches, 0.70)
+	if report.MatchedCount != 1 {
+		t.Fatalf("expected 1 match, got %d", report.MatchedCount)
+	}
+	matched := report.Matches[0]
+	if !matched.IsMatched {
+		t.Errorf("expected match to be matched regardless of table number")
+	}
+	if matched.Confidence < 0.90 {
+		t.Errorf("expected high confidence match, got %f", matched.Confidence)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"math"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,26 +17,7 @@ import (
 var (
 	nonAlphaNumRe    = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
 	multipleSpacesRe = regexp.MustCompile(`\s+`)
-	tablePatternRe   = regexp.MustCompile(`(?i)\bT0*([1-9][0-9]?)\b`)
-	tableWordRe      = regexp.MustCompile(`(?i)\bTABLE\s*0*([1-9][0-9]?)\b`)
-)
-
-// ExtractTableFromTitle extracts standardized table numbers like "T01", "T04" from video titles.
-func ExtractTableFromTitle(title string) string {
-	t := strings.ToUpper(title)
-	if strings.Contains(t, "ARENA") && !tablePatternRe.MatchString(t) {
-		return "T01"
-	}
-	if m := tablePatternRe.FindStringSubmatch(t); len(m) > 1 {
-		num, _ := strconv.Atoi(m[1])
-		return fmt.Sprintf("T%02d", num)
-	}
-	if m := tableWordRe.FindStringSubmatch(t); len(m) > 1 {
-		num, _ := strconv.Atoi(m[1])
-		return fmt.Sprintf("T%02d", num)
-	}
-	return ""
-}
+	)
 
 // ParseWTTStartTime parses UTC start timestamp from WTT match object.
 func ParseWTTStartTime(m WTTOfficialMatch) *time.Time {
@@ -340,19 +320,12 @@ func AlignMatches(
 
 	// 1. Pre-normalize DB matches once
 	normDB := make([]preNormMatch, len(dbMatches))
-	dbTables := make([]string, len(dbMatches))
 	dbCalcTimes := make([]*time.Time, len(dbMatches))
 
 	for i, m := range dbMatches {
 		cA, tA := NormalizeName(m.TeamA)
 		cB, tB := NormalizeName(m.TeamB)
 		normDB[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
-
-		tbl := m.Table
-		if tbl == "" {
-			tbl = ExtractTableFromTitle(m.VideoTitle)
-		}
-		dbTables[i] = tbl
 
 		if m.StreamStartUTC != nil {
 			calcT := m.StreamStartUTC.Add(time.Duration(m.VideoOffsetSeconds) * time.Second)
@@ -362,7 +335,6 @@ func AlignMatches(
 
 	// 2. Pre-normalize WTT matches once
 	normWTT := make([]preNormMatch, len(wttMatches))
-	wttTables := make([]string, len(wttMatches))
 	wttTimes := make([]*time.Time, len(wttMatches))
 
 	for i, m := range wttMatches {
@@ -371,20 +343,13 @@ func AlignMatches(
 			cB, tB := NormalizeName(m.MatchCard.Competitors[1].CompetitorName)
 			normWTT[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
 		}
-
-		tbl := strings.ToUpper(strings.TrimSpace(m.MatchCard.TableNumber))
-		if tbl == "" {
-			tbl = ExtractTableFromTitle(m.MatchCard.TableName)
-		}
-		wttTables[i] = tbl
 		wttTimes[i] = ParseWTTStartTime(m)
 	}
 
-	// 3. Score candidate pairs with Time Window and Table Bonus
+	// 3. Score candidate pairs with Fuzzy Name Matching and Time Correlation
 	var candidates []matchPairCandidate
 	for dIdx := range dbMatches {
 		ndb := normDB[dIdx]
-		dbTable := dbTables[dIdx]
 		calcT := dbCalcTimes[dIdx]
 
 		for wIdx := range wttMatches {
@@ -393,7 +358,6 @@ func AlignMatches(
 				continue
 			}
 
-			wttTable := wttTables[wIdx]
 			wttTime := wttTimes[wIdx]
 
 			direct := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanA, nwtt.tokensA) +
@@ -411,14 +375,12 @@ func AlignMatches(
 
 			timeDeltaMin := 0.0
 			timeBonus := 0.0
-			hasTimeComparison := false
 
 			if calcT != nil && wttTime != nil {
-				hasTimeComparison = true
 				diffMin := calcT.Sub(*wttTime).Minutes()
 				timeDeltaMin = diffMin
 
-				// Time proximity guard for weak candidates
+				// Time proximity guard for weak candidates: skip if outside empirical window
 				if (diffMin < -45.0 || diffMin > 150.0) && baseScore < 0.85 {
 					continue
 				}
@@ -428,26 +390,12 @@ func AlignMatches(
 				}
 			}
 
-			tableBonus := 0.0
-			if dbTable != "" && wttTable != "" {
-				if dbTable == wttTable {
-					tableBonus = 0.15
-				} else if hasTimeComparison && baseScore < 0.85 {
-					continue
-				}
-			}
-
-			compositeScore := baseScore + tableBonus + timeBonus
+			compositeScore := baseScore + timeBonus
 			if compositeScore > 1.0 {
 				compositeScore = 1.0
 			}
 
-			minReq := threshold
-			if hasTimeComparison && tableBonus > 0 && baseScore >= 0.50 {
-				minReq = 0.60
-			}
-
-			if compositeScore >= minReq {
+			if compositeScore >= threshold {
 				candidates = append(candidates, matchPairCandidate{
 					dbIdx:     dIdx,
 					wttIdx:    wIdx,
