@@ -142,6 +142,7 @@ type MatchAuditReport struct {
 	TotalDBMatches     int             `json:"total_db_matches"`
 	TotalWTTMatches    int             `json:"total_wtt_matches"`
 	MatchedCount       int             `json:"matched_count"`
+	DuplicateCount     int             `json:"duplicate_count"`
 	UnmatchedDBCount   int             `json:"unmatched_db_count"`
 	UnmatchedWTTCount  int             `json:"unmatched_wtt_count"`
 	Matches            []MatchedRecord `json:"matches"`
@@ -159,6 +160,7 @@ type TournamentAuditEntry struct {
 	TotalDBMatches        int             `json:"total_db_matches"`
 	TotalWTTMatches       int             `json:"total_wtt_matches"`
 	MatchedMatchesCount   int             `json:"matched_matches_count"`
+	DuplicateMatchesCount int             `json:"duplicate_matches_count"`
 	UnmatchedMatchesCount int             `json:"unmatched_matches_count"`
 	FailureReason         string          `json:"failure_reason,omitempty"`
 	Matches               []MatchedRecord `json:"matches"`

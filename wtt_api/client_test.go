@@ -102,3 +102,83 @@ func TestFindEventIDByQuery_RomanNumerals_II_vs_III(t *testing.T) {
 		t.Fatalf("expected Event ID 3479 for San Francisco III, got %d (%s), err: %v", idIII, nameIII, errIII)
 	}
 }
+
+func TestWTTClient_LiveScheduleFallback(t *testing.T) {
+	// Mock schedule.json with live units
+	schedItems := []map[string]any{
+		{
+			"Competition": map[string]any{
+				"Unit": []map[string]any{
+					{
+						"Code":            "TTEMSINGLES-----------R32-000100--",
+						"ScheduleStatus":  "Start List",
+						"SubEvent":        "Men Singles",
+						"StartDate":       "2026-11-04T16:10:00",
+						"ActualStartDate": "2026-11-04T16:15:30.9876543+00:00",
+						"StartList": map[string]any{
+							"Start": []map[string]any{
+								{
+									"Competitor": map[string]any{
+										"Organization": "FRA",
+										"Description": map[string]any{
+											"TeamName": "LEBRUN Felix",
+										},
+									},
+								},
+								{
+									"Competitor": map[string]any{
+										"Organization": "JPN",
+										"Description": map[string]any{
+											"TeamName": "HARIMOTO Tomokazu",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	schedBytes, _ := json.Marshal(schedItems)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/official_8888.json":
+			// Archive endpoint returns 404 (tournament is still live)
+			http.NotFound(w, r)
+		case "/schedule_8888.json":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(schedBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewWTTClient(WithBaseURL(server.URL))
+	ctx := context.Background()
+
+	matches, err := client.FetchOfficialResults(ctx, 8888)
+	if err != nil {
+		t.Fatalf("expected live schedule fallback to succeed, got error: %v", err)
+	}
+
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match from live schedule, got %d", len(matches))
+	}
+
+	m := matches[0]
+	if len(m.MatchCard.Competitors) != 2 {
+		t.Fatalf("expected 2 competitors, got %d", len(m.MatchCard.Competitors))
+	}
+	if m.MatchCard.Competitors[0].CompetitorName != "LEBRUN Felix" {
+		t.Errorf("expected LEBRUN Felix, got %s", m.MatchCard.Competitors[0].CompetitorName)
+	}
+	if m.MatchCard.Competitors[1].CompetitorName != "HARIMOTO Tomokazu" {
+		t.Errorf("expected HARIMOTO Tomokazu, got %s", m.MatchCard.Competitors[1].CompetitorName)
+	}
+	if m.MatchCard.MatchDateTime.StartDateUTC != "2026-11-04T16:15:30.9876543+00:00" {
+		t.Errorf("expected RFC3339Nano timestamp, got %s", m.MatchCard.MatchDateTime.StartDateUTC)
+	}
+}

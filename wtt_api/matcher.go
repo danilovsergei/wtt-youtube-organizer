@@ -441,7 +441,7 @@ func AlignMatches(
 		}
 
 		rec := MatchedRecord{
-			IsMatched:        true,
+			IsMatched:        !isDup,
 			IsDuplicate:      isDup,
 			Confidence:       math.Round(cand.score*100) / 100,
 			TimeDeltaMinutes: math.Round(cand.timeDelta*10) / 10,
@@ -459,6 +459,9 @@ func AlignMatches(
 
 		if isDup {
 			rec.FailureReason = fmt.Sprintf("Intra-stream duplicate/continuation of match %d", primaryID)
+			report.DuplicateCount++
+		} else {
+			report.MatchedCount++
 		}
 
 		if mc.MatchDateTime.StartDateUTC != "" {
@@ -485,7 +488,7 @@ func AlignMatches(
 		report.Matches = append(report.Matches, rec)
 	}
 
-	report.MatchedCount = len(report.Matches)
+// MatchedCount tracked per non-duplicate match above
 
 	// Collect unmatched DB matches
 	for dIdx, dbm := range dbMatches {

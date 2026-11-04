@@ -255,3 +255,254 @@ func TestAlignMatches_DoesNotRelyOnTableNumber(t *testing.T) {
 		t.Errorf("expected high confidence match, got %f", matched.Confidence)
 	}
 }
+
+func TestParseWTTStartTime_AllFormats(t *testing.T) {
+	tests := []struct {
+		name     string
+		match    WTTOfficialMatch
+		expected time.Time
+	}{
+		{
+			name: "RFC3339Nano with 7 decimal places",
+			match: WTTOfficialMatch{
+				MatchCard: WTTMatchCard{
+					MatchDateTime: WTTMatchDateTime{
+						StartDateUTC: "2026-11-03T21:06:43.9872362+00:00",
+					},
+				},
+			},
+			expected: time.Date(2026, 11, 3, 21, 6, 43, 987236200, time.UTC),
+		},
+		{
+			name: "Standard RFC3339 with Z",
+			match: WTTOfficialMatch{
+				MatchCard: WTTMatchCard{
+					MatchDateTime: WTTMatchDateTime{
+						StartDateUTC: "2026-11-03T21:06:43Z",
+					},
+				},
+			},
+			expected: time.Date(2026, 11, 3, 21, 6, 43, 0, time.UTC),
+		},
+		{
+			name: "Slashed Date Format",
+			match: WTTOfficialMatch{
+				MatchCard: WTTMatchCard{
+					MatchDateTime: WTTMatchDateTime{
+						StartDateUTC: "11/03/2026 21:06:43",
+					},
+				},
+			},
+			expected: time.Date(2026, 11, 3, 21, 6, 43, 0, time.UTC),
+		},
+		{
+			name: "Fallback to StartDateLocal",
+			match: WTTOfficialMatch{
+				StartDateLocal: "2026-11-03T21:06:43",
+			},
+			expected: time.Date(2026, 11, 3, 21, 6, 43, 0, time.UTC),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed := ParseWTTStartTime(tc.match)
+			if parsed == nil {
+				t.Fatalf("expected non-nil parsed time")
+			}
+			if !parsed.Equal(tc.expected) {
+				t.Errorf("expected %v, got %v", tc.expected, *parsed)
+			}
+		})
+	}
+}
+
+func TestAlignMatches_IntraStreamDuplicates(t *testing.T) {
+	streamStart := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+
+	// Two DB matches in the same stream matching the same player matchup
+	dbMatches := []DBMatchRecord{
+		{
+			ID:                 201,
+			YoutubeID:          "stream_xyz",
+			TeamA:              "WANG CHUQIN",
+			TeamB:              "LIN YUN-JU",
+			VideoTitle:         "Day 1 Stream",
+			VideoOffsetSeconds: 1000,
+			StreamStartUTC:     &streamStart,
+		},
+		{
+			ID:                 202,
+			YoutubeID:          "stream_xyz", // Same stream
+			TeamA:              "WANG CHUQIN",
+			TeamB:              "LIN YUN-JU",
+			VideoTitle:         "Day 1 Stream",
+			VideoOffsetSeconds: 7000, // Later replay / highlight in the stream
+			StreamStartUTC:     &streamStart,
+		},
+	}
+
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           5001,
+			DocumentCode: "M_CHUQIN_LIN",
+			MatchCard: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "WANG Chuqin", CompetitorOrg: "CHN"},
+					{CompetitorName: "LIN Yun-Ju", CompetitorOrg: "TPE"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:15:00Z",
+				},
+				OverallScores: "3-0",
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 9999, dbMatches, wttMatches, 0.70)
+
+	if report.MatchedCount != 1 {
+		t.Fatalf("expected exactly 1 primary match, got %d", report.MatchedCount)
+	}
+
+	var primaryMatched, duplicateFound bool
+	for _, m := range report.Matches {
+		if m.DBMatch != nil && m.DBMatch.ID == 201 {
+			if m.IsMatched && !m.IsDuplicate {
+				primaryMatched = true
+			}
+		}
+		if m.DBMatch != nil && m.DBMatch.ID == 202 {
+			if !m.IsMatched && m.IsDuplicate {
+				duplicateFound = true
+			}
+		}
+	}
+
+	if !primaryMatched {
+		t.Errorf("expected first match (ID 201) to be primary matched")
+	}
+	if !duplicateFound {
+		t.Errorf("expected second match (ID 202) to be flagged as intra-stream duplicate")
+	}
+}
+
+func TestAlignMatches_TimeWindowPruningAndTolerance(t *testing.T) {
+	streamStart := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+
+	dbMatches := []DBMatchRecord{
+		{
+			ID:                 301,
+			TeamA:              "FALCK", // Partial OCR (similarity ~0.75, weak candidate)
+			TeamB:              "MOREGARD",
+			VideoOffsetSeconds: 1200, // 10:20 UTC
+			StreamStartUTC:     &streamStart,
+		},
+		{
+			ID:                 302,
+			TeamA:              "LEBRUN",   // Partial OCR + typo (similarity ~0.78, weak candidate)
+			TeamB:              "HARINOTO", // Typo in Harimoto
+			VideoOffsetSeconds: 20000,      // 15:33 UTC (5.5 hours later)
+			StreamStartUTC:     &streamStart,
+		},
+		{
+			ID:                 303,
+			TeamA:              "FELIX LEBRUN", // Exact match (similarity ~1.0)
+			TeamB:              "TOMOKAZU HARIMOTO",
+			VideoOffsetSeconds: 20000, // 15:33 UTC (5.5 hours later, but 100% exact names)
+			StreamStartUTC:     &streamStart,
+		},
+	}
+
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           6001,
+			DocumentCode: "M_FALCK_MOREGARD",
+			MatchCard: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "FALCK Mattias", CompetitorOrg: "SWE"},
+					{CompetitorName: "MOREGARD Truls", CompetitorOrg: "SWE"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:30:00Z", // Within 10 mins (inside window)
+				},
+			},
+		},
+		{
+			ID:           6002,
+			DocumentCode: "M_LEBRUN_HARIMOTO",
+			MatchCard: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "LEBRUN Felix", CompetitorOrg: "FRA"},
+					{CompetitorName: "HARIMOTO Tomokazu", CompetitorOrg: "JPN"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:00:00Z", // Scheduled at 10:00 UTC
+				},
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 9999, dbMatches, wttMatches, 0.70)
+
+	matchedMap := make(map[int64]bool)
+	for _, m := range report.Matches {
+		if m.DBMatch != nil && m.IsMatched {
+			matchedMap[m.DBMatch.ID] = true
+		}
+	}
+
+	// 1. Match 301 is weak (0.75) but inside time window -> SHOULD match
+	if !matchedMap[301] {
+		t.Errorf("expected match 301 to be matched within empirical time window")
+	}
+
+	// 2. Match 302 is weak (0.75) and far outside time window (5.5h) -> SHOULD BE PRUNED
+	if matchedMap[302] {
+		t.Errorf("expected match 302 to be pruned by time window")
+	}
+
+	// 3. Match 303 is exact (1.0) despite being far outside window -> MUST NOT BE PRUNED
+	if !matchedMap[303] {
+		t.Errorf("expected match 303 to be preserved due to high confidence baseScore >= 0.85")
+	}
+}
+
+func TestAlignMatches_DoublesMatchupPermutations(t *testing.T) {
+	dbMatches := []DBMatchRecord{
+		{
+			ID:    401,
+			TeamA: "LIN SHIDONG & KUAI MAN",
+			TeamB: "WONG CHUN TING & DOO HOI KEM",
+		},
+	}
+
+	// WTT has partners in reverse order and teams swapped left-to-right
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           7001,
+			DocumentCode: "XDOUBLES_FNL",
+			MatchCard: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "DOO Hoi Kem/WONG Chun Ting", CompetitorOrg: "HKG"},
+					{CompetitorName: "KUAI Man/LIN Shidong", CompetitorOrg: "CHN"},
+				},
+				OverallScores: "3-2",
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 9999, dbMatches, wttMatches, 0.70)
+
+	if report.MatchedCount != 1 {
+		t.Fatalf("expected doubles match to align successfully, got matched count: %d", report.MatchedCount)
+	}
+
+	m := report.Matches[0]
+	if !m.IsMatched {
+		t.Errorf("expected doubles match to be matched")
+	}
+	if m.Confidence < 0.90 {
+		t.Errorf("expected high confidence for doubles pair permutation, got %f", m.Confidence)
+	}
+}
