@@ -403,3 +403,12 @@ func AlignMatches(
 
 	return report
 }
+
+// NormalizeTournamentName strips accents, quotes, and cleans spaces for event title matching.
+func NormalizeTournamentName(name string) string {
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	normalized, _, _ := transform.String(t, name)
+	s := strings.ReplaceAll(normalized, "’", "'")
+	s = strings.ReplaceAll(s, "-", " ")
+	return strings.ToLower(strings.TrimSpace(multipleSpacesRe.ReplaceAllString(s, " ")))
+}

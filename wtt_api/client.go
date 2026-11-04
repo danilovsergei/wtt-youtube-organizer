@@ -157,70 +157,115 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 		return 0, "", err
 	}
 
-	q := strings.ToLower(strings.TrimSpace(query))
+	normQuery := NormalizeTournamentName(query)
 	yearStr := ""
 	if year > 0 {
 		yearStr = strconv.Itoa(year)
 	}
 
-	queryHasYouth := strings.Contains(q, "youth")
-	queryHasPara := strings.Contains(q, "para")
-	queryHasStar := strings.Contains(q, "star")
-	queryHasFeeder := strings.Contains(q, "feeder")
+	queryHasYouth := strings.Contains(normQuery, "youth")
+	queryHasPara := strings.Contains(normQuery, "para")
+	queryHasStar := strings.Contains(normQuery, "star")
+	queryHasFeeder := strings.Contains(normQuery, "feeder")
 
 	// Phase 1: Exact substring match respecting category filters
 	for _, entry := range entries {
-		nameLower := strings.ToLower(entry.EventName)
-		if yearStr != "" && !strings.Contains(nameLower, yearStr) {
+		normEventName := NormalizeTournamentName(entry.EventName)
+		if yearStr != "" && !strings.Contains(normEventName, yearStr) {
 			continue
 		}
 
-		eventHasYouth := strings.Contains(nameLower, "youth")
+		eventHasYouth := strings.Contains(normEventName, "youth")
 		if queryHasYouth != eventHasYouth {
 			continue
 		}
 
-		eventHasPara := strings.Contains(nameLower, "para")
+		eventHasPara := strings.Contains(normEventName, "para")
 		if queryHasPara != eventHasPara {
 			continue
 		}
 
-		eventHasStar := strings.Contains(nameLower, "star")
+		eventHasStar := strings.Contains(normEventName, "star")
 		if queryHasStar != eventHasStar {
 			continue
 		}
 
-		eventHasFeeder := strings.Contains(nameLower, "feeder")
+		eventHasFeeder := strings.Contains(normEventName, "feeder")
 		if queryHasFeeder != eventHasFeeder {
 			continue
 		}
 
-		if strings.Contains(nameLower, q) {
+		if strings.Contains(normEventName, normQuery) {
 			return entry.EventID, entry.EventName, nil
 		}
 	}
 
 	// Phase 2: Tokenized fallback respecting category filters
-	tokens := strings.Fields(q)
+	rawTokens := strings.Fields(normQuery)
+	// Filter out common noise tokens
+	var tokens []string
+	for _, t := range rawTokens {
+		if t != "wtt" && t != "presented" && t != "by" && t != "event" && t != "the" {
+			tokens = append(tokens, t)
+		}
+	}
+	if len(tokens) == 0 {
+		tokens = rawTokens
+	}
+
 	for _, entry := range entries {
-		nameLower := strings.ToLower(entry.EventName)
-		if yearStr != "" && !strings.Contains(nameLower, yearStr) {
+		normEventName := NormalizeTournamentName(entry.EventName)
+		if yearStr != "" && !strings.Contains(normEventName, yearStr) {
 			continue
 		}
 
-		eventHasYouth := strings.Contains(nameLower, "youth")
+		eventHasYouth := strings.Contains(normEventName, "youth")
 		if queryHasYouth != eventHasYouth {
 			continue
 		}
 
-		eventHasPara := strings.Contains(nameLower, "para")
+		eventHasPara := strings.Contains(normEventName, "para")
+		if queryHasPara != eventHasPara {
+			continue
+		}
+
+		eventHasStar := strings.Contains(normEventName, "star")
+		if queryHasStar != eventHasStar {
+			continue
+		}
+
+		eventHasFeeder := strings.Contains(normEventName, "feeder")
+		if queryHasFeeder != eventHasFeeder {
+			continue
+		}
+
+		allTokensMatch := true
+		for _, tok := range tokens {
+			if !strings.Contains(normEventName, tok) {
+				allTokensMatch = false
+				break
+			}
+		}
+		if allTokensMatch {
+			return entry.EventID, entry.EventName, nil
+		}
+	}
+
+	// Phase 3: Lenient fallback without year check (handles cases where video had offset year)
+	for _, entry := range entries {
+		normEventName := NormalizeTournamentName(entry.EventName)
+		eventHasYouth := strings.Contains(normEventName, "youth")
+		if queryHasYouth != eventHasYouth {
+			continue
+		}
+		eventHasPara := strings.Contains(normEventName, "para")
 		if queryHasPara != eventHasPara {
 			continue
 		}
 
 		allTokensMatch := true
 		for _, tok := range tokens {
-			if !strings.Contains(nameLower, tok) {
+			if !strings.Contains(normEventName, tok) {
 				allTokensMatch = false
 				break
 			}

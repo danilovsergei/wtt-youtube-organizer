@@ -16,6 +16,7 @@ func TestNewCommand_Structure(t *testing.T) {
 		"list-events":     false,
 		"list-matches":    false,
 		"generate-report": false,
+		"audit-all":       false,
 	}
 
 	for _, sub := range subCommands {
@@ -54,5 +55,17 @@ func TestGenerateReportCommand_RequiresTournamentName(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatalf("expected error when --tournament-name is omitted, got nil")
+	}
+}
+
+func TestAuditAllCommand_Flags(t *testing.T) {
+	cmd := newAuditAllCommand()
+	outFlag := cmd.Flag("output")
+	if outFlag == nil {
+		t.Fatalf("expected --output flag on audit-all")
+	}
+	threshFlag := cmd.Flag("threshold")
+	if threshFlag == nil {
+		t.Fatalf("expected --threshold flag on audit-all")
 	}
 }

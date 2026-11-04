@@ -27,6 +27,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(newListEventsCommand())
 	cmd.AddCommand(newListMatchesCommand())
 	cmd.AddCommand(newGenerateReportCommand())
+	cmd.AddCommand(newAuditAllCommand())
 	return cmd
 }
 
@@ -299,4 +300,259 @@ func queryDBMatches(ctx context.Context, conn *pgx.Conn, tournamentName string, 
 	}
 
 	return matches, rows.Err()
+}
+
+func newAuditAllCommand() *cobra.Command {
+	var outputPath string
+	var threshold float64
+
+	cmd := &cobra.Command{
+		Use:   "audit-all",
+		Short: "Run full-database audit aligning all tournaments and matches with official WTT records",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if outputPath == "" {
+				outputPath = "/home/geonix/Build/wtt_full_database_mapping_audit.json"
+			}
+			if threshold <= 0 {
+				threshold = 0.70
+			}
+
+			dbURL := os.Getenv("DATABASE_URL")
+			if dbURL == "" {
+				return fmt.Errorf("DATABASE_URL environment variable is required")
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+
+			fmt.Println("Connecting to Supabase...")
+			conn, err := pgx.Connect(ctx, dbURL)
+			if err != nil {
+				return fmt.Errorf("failed to connect to database: %w", err)
+			}
+			defer conn.Close(ctx)
+
+			// 1. Query all tournaments
+			tRows, err := conn.Query(ctx, "SELECT id, name, year, COALESCE(category, 'Senior') FROM tournaments ORDER BY name;")
+			if err != nil {
+				return fmt.Errorf("failed to query tournaments: %w", err)
+			}
+			defer tRows.Close()
+
+			type tourneyInfo struct {
+				id       int64
+				name     string
+				year     int
+				category string
+			}
+			var tournaments []tourneyInfo
+			for tRows.Next() {
+				var t tourneyInfo
+				if err := tRows.Scan(&t.id, &t.name, &t.year, &t.category); err != nil {
+					return err
+				}
+				tournaments = append(tournaments, t)
+			}
+			tRows.Close()
+			fmt.Printf("Loaded %d tournaments from database.\n", len(tournaments))
+
+			// 2. Query all matches grouped by tournament_id
+			fmt.Println("Loading all matches from database...")
+			mRows, err := conn.Query(ctx, `
+				SELECT 
+					m.id,
+					m.tournament_id,
+					t.name AS tournament_name,
+					t.year AS tournament_year,
+					m.video_id,
+					v.youtube_id,
+					v.title AS video_title,
+					COALESCE(v.day, '') AS day,
+					COALESCE(m.session, 1) AS session,
+					m.video_offset_seconds,
+					COALESCE(m.duration_seconds, 0) AS duration_seconds,
+					m.is_doubles,
+					COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'A'), '') AS team_a,
+					COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'B'), '') AS team_b,
+					m.created_at
+				FROM matches m
+				JOIN tournaments t ON m.tournament_id = t.id
+				JOIN videos v ON m.video_id = v.id
+				ORDER BY m.tournament_id, m.id;
+			`)
+			if err != nil {
+				return fmt.Errorf("failed to query matches: %w", err)
+			}
+			defer mRows.Close()
+
+			matchesByTourney := make(map[int64][]wtt_api.DBMatchRecord)
+			totalDBMatches := 0
+			for mRows.Next() {
+				var m wtt_api.DBMatchRecord
+				if err := mRows.Scan(
+					&m.ID, &m.TournamentID, &m.TournamentName, &m.TournamentYear,
+					&m.VideoID, &m.YoutubeID, &m.VideoTitle, &m.Day, &m.Session,
+					&m.VideoOffsetSeconds, &m.DurationSeconds, &m.IsDoubles,
+					&m.TeamA, &m.TeamB, &m.CreatedAt,
+				); err != nil {
+					return err
+				}
+				matchesByTourney[m.TournamentID] = append(matchesByTourney[m.TournamentID], m)
+				totalDBMatches++
+			}
+			mRows.Close()
+			fmt.Printf("Loaded %d matches across %d tournaments.\n\n", totalDBMatches, len(matchesByTourney))
+
+			client := wtt_api.NewWTTClient()
+			masterReport := wtt_api.MasterAuditReport{
+				GeneratedAt: time.Now().UTC(),
+			}
+
+			totalMatchedMatches := 0
+			totalUnmatchedDBMatches := 0
+			totalMatchedTournaments := 0
+			totalUnmatchedTournaments := 0
+
+			for idx, t := range tournaments {
+				dbMatches := matchesByTourney[t.id]
+				fmt.Printf("[%d/%d] Auditing %s (%d, %s) - %d DB matches...\n",
+					idx+1, len(tournaments), t.name, t.year, t.category, len(dbMatches))
+
+				eventID, eventName, err := client.FindEventIDByQuery(ctx, t.name, t.year)
+				if err != nil {
+					totalUnmatchedTournaments++
+					totalUnmatchedDBMatches += len(dbMatches)
+
+					unmatchedTourney := wtt_api.TournamentAuditEntry{
+						IsTournamentMatched:   false,
+						DBTournamentID:        t.id,
+						TournamentName:        t.name,
+						Year:                  t.year,
+						Category:              t.category,
+						TotalDBMatches:        len(dbMatches),
+						UnmatchedMatchesCount: len(dbMatches),
+						FailureReason:         err.Error(),
+					}
+
+					for _, dbm := range dbMatches {
+						rec := wtt_api.MatchedRecord{
+							IsMatched:      false,
+							Confidence:     0.0,
+							FailureReason:  "Tournament not found in official WTT events list",
+							TournamentName: t.name,
+							TournamentYear: t.year,
+							DBMatch:        &dbm,
+						}
+						rec.OCRPlayerNames.TeamA = dbm.TeamA
+						rec.OCRPlayerNames.TeamB = dbm.TeamB
+						unmatchedTourney.Matches = append(unmatchedTourney.Matches, rec)
+					}
+
+					masterReport.UnmatchedTournaments = append(masterReport.UnmatchedTournaments, unmatchedTourney)
+					masterReport.Tournaments = append(masterReport.Tournaments, unmatchedTourney)
+					continue
+				}
+
+				totalMatchedTournaments++
+
+				// Fetch official results
+				wttMatches, wErr := client.FetchOfficialResults(ctx, eventID)
+				if wErr != nil {
+					// Tournament matched, but results not found
+					unmatchedTourney := wtt_api.TournamentAuditEntry{
+						IsTournamentMatched:   true,
+						DBTournamentID:        t.id,
+						TournamentName:        t.name,
+						Year:                  t.year,
+						Category:              t.category,
+						WTTEventID:            eventID,
+						WTTEventName:          eventName,
+						TotalDBMatches:        len(dbMatches),
+						UnmatchedMatchesCount: len(dbMatches),
+						FailureReason:         fmt.Sprintf("Failed to fetch official results for Event ID %d: %v", eventID, wErr),
+					}
+					for _, dbm := range dbMatches {
+						rec := wtt_api.MatchedRecord{
+							IsMatched:      false,
+							Confidence:     0.0,
+							FailureReason:  fmt.Sprintf("WTT results unavailable for event %d", eventID),
+							TournamentName: t.name,
+							TournamentYear: t.year,
+							WTTEventID:     eventID,
+							DBMatch:        &dbm,
+						}
+						rec.OCRPlayerNames.TeamA = dbm.TeamA
+						rec.OCRPlayerNames.TeamB = dbm.TeamB
+						unmatchedTourney.Matches = append(unmatchedTourney.Matches, rec)
+					}
+					totalUnmatchedDBMatches += len(dbMatches)
+					masterReport.Tournaments = append(masterReport.Tournaments, unmatchedTourney)
+					continue
+				}
+
+				// Run alignment
+				tourneyReport := wtt_api.AlignMatches(t.name, t.year, eventID, dbMatches, wttMatches, threshold)
+				totalMatchedMatches += tourneyReport.MatchedCount
+				totalUnmatchedDBMatches += tourneyReport.UnmatchedDBCount
+
+				tEntry := wtt_api.TournamentAuditEntry{
+					IsTournamentMatched:   true,
+					DBTournamentID:        t.id,
+					TournamentName:        t.name,
+					Year:                  t.year,
+					Category:              t.category,
+					WTTEventID:            eventID,
+					WTTEventName:          eventName,
+					TotalDBMatches:        tourneyReport.TotalDBMatches,
+					TotalWTTMatches:       tourneyReport.TotalWTTMatches,
+					MatchedMatchesCount:   tourneyReport.MatchedCount,
+					UnmatchedMatchesCount: tourneyReport.UnmatchedDBCount,
+					Matches:               tourneyReport.Matches,
+				}
+				masterReport.Tournaments = append(masterReport.Tournaments, tEntry)
+			}
+
+			// Populate summary
+			masterReport.Summary.TotalTournaments = len(tournaments)
+			masterReport.Summary.MatchedTournaments = totalMatchedTournaments
+			masterReport.Summary.UnmatchedTournaments = totalUnmatchedTournaments
+			masterReport.Summary.TotalDBMatches = totalDBMatches
+			masterReport.Summary.MatchedDBMatches = totalMatchedMatches
+			masterReport.Summary.UnmatchedDBMatches = totalUnmatchedDBMatches
+			if totalDBMatches > 0 {
+				masterReport.Summary.MatchRatePercentage = float64(totalMatchedMatches) / float64(totalDBMatches) * 100.0
+			}
+
+			// Save to JSON
+			jsonData, err := json.MarshalIndent(masterReport, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to serialize master audit report: %w", err)
+			}
+
+			if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {
+				return fmt.Errorf("failed to write audit report to %s: %w", outputPath, err)
+			}
+
+			fmt.Println("\n" + strings.Repeat("=", 65))
+			fmt.Println("             FULL DATABASE WTT MAPPING AUDIT REPORT")
+			fmt.Println(strings.Repeat("=", 65))
+			fmt.Printf("  Total Tournaments in DB:   %d\n", masterReport.Summary.TotalTournaments)
+			fmt.Printf("  ✅ Matched Tournaments:    %d\n", masterReport.Summary.MatchedTournaments)
+			fmt.Printf("  ❌ Unmatched Tournaments:  %d\n", masterReport.Summary.UnmatchedTournaments)
+			fmt.Println(strings.Repeat("-", 65))
+			fmt.Printf("  Total Matches in DB:       %d\n", masterReport.Summary.TotalDBMatches)
+			fmt.Printf("  ✅ Matched Matches:        %d\n", masterReport.Summary.MatchedDBMatches)
+			fmt.Printf("  ❌ Unmatched Matches:      %d\n", masterReport.Summary.UnmatchedDBMatches)
+			fmt.Printf("  🎯 Overall Match Rate:     %.1f%%\n", masterReport.Summary.MatchRatePercentage)
+			fmt.Println(strings.Repeat("=", 65))
+			fmt.Printf("  📄 Master Audit JSON generated at:\n     %s\n", outputPath)
+			fmt.Println(strings.Repeat("=", 65))
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "/home/geonix/Build/wtt_full_database_mapping_audit.json", "Output master audit JSON path")
+	cmd.Flags().Float64VarP(&threshold, "threshold", "s", 0.70, "Minimum similarity score threshold (0.0 - 1.0, default 0.70)")
+	return cmd
 }

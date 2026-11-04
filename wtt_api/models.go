@@ -142,3 +142,36 @@ type MatchAuditReport struct {
 	UnmatchedWTTCount  int             `json:"unmatched_wtt_count"`
 	Matches            []MatchedRecord `json:"matches"`
 }
+
+// TournamentAuditEntry contains the audit result for a single tournament.
+type TournamentAuditEntry struct {
+	IsTournamentMatched   bool            `json:"is_tournament_matched"`
+	DBTournamentID        int64           `json:"db_tournament_id"`
+	TournamentName        string          `json:"tournament_name"`
+	Year                  int             `json:"year"`
+	Category              string          `json:"category"`
+	WTTEventID            int             `json:"wtt_event_id,omitempty"`
+	WTTEventName          string          `json:"wtt_event_name,omitempty"`
+	TotalDBMatches        int             `json:"total_db_matches"`
+	TotalWTTMatches       int             `json:"total_wtt_matches"`
+	MatchedMatchesCount   int             `json:"matched_matches_count"`
+	UnmatchedMatchesCount int             `json:"unmatched_matches_count"`
+	FailureReason         string          `json:"failure_reason,omitempty"`
+	Matches               []MatchedRecord `json:"matches"`
+}
+
+// MasterAuditReport aggregates the audit for all tournaments in the database.
+type MasterAuditReport struct {
+	GeneratedAt time.Time `json:"generated_at"`
+	Summary     struct {
+		TotalTournaments     int     `json:"total_tournaments"`
+		MatchedTournaments   int     `json:"matched_tournaments"`
+		UnmatchedTournaments int     `json:"unmatched_tournaments"`
+		TotalDBMatches       int     `json:"total_db_matches"`
+		MatchedDBMatches     int     `json:"matched_db_matches"`
+		UnmatchedDBMatches   int     `json:"unmatched_db_matches"`
+		MatchRatePercentage  float64 `json:"match_rate_percentage"`
+	} `json:"summary"`
+	UnmatchedTournaments []TournamentAuditEntry `json:"unmatched_tournaments"`
+	Tournaments          []TournamentAuditEntry `json:"tournaments"`
+}
