@@ -7,10 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"wtt-youtube-organizer/config"
 	"wtt-youtube-organizer/db/importer"
 )
+
+var paraWordRegex = regexp.MustCompile(`(?i)\bpara\b`)
 
 // QueueEntry represents a video in the processing queue.
 // Queue order: index 0 = newest (top), last index = oldest (bottom).
@@ -209,6 +212,11 @@ func AddNewStreamsWithCutoff(queuePath string, cutoffVideoID string, fetcher Str
 
 		if hasCeremonyOrShow && !hasFinals {
 			logPrintf("Skipping video %s (title contains ceremony/show but not finals: '%s')\n", entry.VideoID, entry.VideoTitle)
+			continue
+		}
+
+		if paraWordRegex.MatchString(entry.VideoTitle) {
+			logPrintf("Skipping video %s (title contains 'PARA': '%s')\n", entry.VideoID, entry.VideoTitle)
 			continue
 		}
 

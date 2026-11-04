@@ -652,6 +652,15 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 	for i := len(queue) - 1; i >= 0; i-- {
 		entry := queue[i]
 
+		// Skip PARA videos and remove from queue
+		if paraWordRegex.MatchString(entry.VideoTitle) {
+			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))
+			logPrintf("Skipping and removing video %s (%s) - Title contains 'PARA'\n", entry.VideoTitle, entry.VideoID)
+			queue = append(queue[:i], queue[i+1:]...)
+			_ = SaveQueue(queuePath, queue)
+			continue
+		}
+
 		// Apply process_filter
 		if processFilter != "" && !strings.Contains(entry.VideoTitle, processFilter) {
 			logPrintf("\n=== Skipping queue [%d remaining] ===\n", len(queue))

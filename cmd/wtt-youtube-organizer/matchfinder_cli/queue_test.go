@@ -1060,3 +1060,80 @@ func TestProcessQueue_RetainsBotBlockedVideo_Structured(t *testing.T) {
 		t.Errorf("expected video ID BOT1, got %s", remaining[0].VideoID)
 	}
 }
+
+// --- Tests for Filtering PARA Videos ---
+
+func TestAddNewStreams_SkipsParaVideos(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	fetcher := &mockStreamFetcher{
+		returnEntries: []QueueEntry{
+			{VideoID: "1", VideoTitle: "LIVE! | T4 |Day 1| Singapore Smash PARA Showcase 2026 | Session 1"}, // Should skip (PARA)
+			{VideoID: "2", VideoTitle: "LIVE! | T3 | Day 2 | WTT Para Table Tennis Open 2026"},             // Should skip (Para)
+			{VideoID: "3", VideoTitle: "LIVE! | T1 | Day 1 | Singapore Smash 2026 | Session 1"},            // Should keep
+			{VideoID: "4", VideoTitle: "LIVE! | T2 | Day 2 | WTT Feeder Asunción 2026"},                    // Should keep
+		},
+	}
+
+	count, err := AddNewStreams(queuePath, "dummy_id", fetcher, "", nil)
+	if err != nil {
+		t.Fatalf("AddNewStreams failed: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Expected 2 videos to be added, got %d", count)
+	}
+
+	queue, _ := LoadQueue(queuePath)
+	if len(queue) != 2 {
+		t.Fatalf("Expected 2 videos in queue, got %d", len(queue))
+	}
+
+	expectedIDs := []string{"3", "4"}
+	assertIDs(t, queue, expectedIDs)
+}
+
+func TestProcessQueue_SkipsAndRemovesParaVideos(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	entries := []QueueEntry{
+		{VideoID: "1", VideoTitle: "LIVE! | T1 | Day 1 | Singapore Smash 2026 | Session 1"},
+		{VideoID: "2", VideoTitle: "LIVE! | T4 | Day 1 | Singapore Smash PARA Showcase 2026"}, // Should skip & remove
+		{VideoID: "3", VideoTitle: "LIVE! | T2 | Day 2 | WTT Champions Frankfurt 2026"},
+	}
+	SaveQueue(queuePath, entries)
+
+	var processedIDs []string
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error { return nil },
+		importJSON: func(jsonFilePath string) error {
+			for _, id := range []string{"1", "2", "3"} {
+				if strings.Contains(jsonFilePath, "matches-"+id+"-") {
+					processedIDs = append(processedIDs, id)
+				}
+			}
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, []string{}, "")
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Only 3 and 1 should have run (processed oldest first)
+	if len(processedIDs) != 2 {
+		t.Fatalf("Expected 2 videos processed, got %d: %v", len(processedIDs), processedIDs)
+	}
+	if processedIDs[0] != "3" || processedIDs[1] != "1" {
+		t.Errorf("Expected videos 3 and 1 to be processed, got %v", processedIDs)
+	}
+
+	// Verify that PARA video 2 was REMOVED from the queue file
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("Expected 0 videos left in queue after processing, got %d: %v", len(remaining), remaining)
+	}
+}
