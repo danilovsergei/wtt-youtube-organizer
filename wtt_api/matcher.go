@@ -20,17 +20,24 @@ var (
 
 // NormalizeName strips accents, punctuation, and returns uppercase token list.
 func NormalizeName(name string) (string, []string) {
-	// Strip accents via unicode Decomposition (NFD)
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	normalized, _, _ := transform.String(t, name)
 
-	// Replace non-alphanumeric characters with spaces
 	clean := nonAlphaNumRe.ReplaceAllString(normalized, " ")
 	clean = strings.ToUpper(strings.TrimSpace(multipleSpacesRe.ReplaceAllString(clean, " ")))
 
 	tokens := strings.Fields(clean)
 	sort.Strings(tokens)
 	return clean, tokens
+}
+
+// NormalizeTournamentName strips accents, quotes, and cleans spaces for event title matching.
+func NormalizeTournamentName(name string) string {
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	normalized, _, _ := transform.String(t, name)
+	s := strings.ReplaceAll(normalized, "’", "'")
+	s = strings.ReplaceAll(s, "-", " ")
+	return strings.ToLower(strings.TrimSpace(multipleSpacesRe.ReplaceAllString(s, " ")))
 }
 
 // LevenshteinDistance calculates minimum edit operations between two strings.
@@ -60,10 +67,10 @@ func LevenshteinDistance(s1, s2 string) int {
 				cost = 1
 			}
 			dp[i][j] = int(math.Min(
-				float64(dp[i-1][j]+1), // deletion
+				float64(dp[i-1][j]+1),
 				math.Min(
-					float64(dp[i][j-1]+1),      // insertion
-					float64(dp[i-1][j-1]+cost), // substitution
+					float64(dp[i][j-1]+1),
+					float64(dp[i-1][j-1]+cost),
 				),
 			))
 		}
@@ -71,7 +78,6 @@ func LevenshteinDistance(s1, s2 string) int {
 	return dp[n][m]
 }
 
-// tokenSimilarity computes average best-token match from tokens1 into tokens2.
 func tokenSimilarity(tokens1, tokens2 []string) float64 {
 	if len(tokens1) == 0 || len(tokens2) == 0 {
 		return 0.0
@@ -95,11 +101,8 @@ func tokenSimilarity(tokens1, tokens2 []string) float64 {
 	return totalScore / float64(len(tokens1))
 }
 
-// NameSimilarity calculates fuzzy similarity between two names (0.0 to 1.0).
-func NameSimilarity(name1, name2 string) float64 {
-	clean1, tokens1 := NormalizeName(name1)
-	clean2, tokens2 := NormalizeName(name2)
-
+// NameSimilarityPreNormalized computes similarity using pre-tokenized names.
+func NameSimilarityPreNormalized(clean1 string, tokens1 []string, clean2 string, tokens2 []string) float64 {
 	if clean1 == "" || clean2 == "" {
 		return 0.0
 	}
@@ -107,46 +110,44 @@ func NameSimilarity(name1, name2 string) float64 {
 		return 1.0
 	}
 
-	// Token set equality (handles "JANG Woojin" vs "Woojin JANG")
-	joined1 := strings.Join(tokens1, " ")
-	joined2 := strings.Join(tokens2, " ")
-	if joined1 == joined2 {
+	// Token set equality
+	if len(tokens1) == len(tokens2) && strings.Join(tokens1, " ") == strings.Join(tokens2, " ") {
 		return 1.0
 	}
 
-	// Token-level bipartite similarity (handles reversed word order + character typos)
-	tokSim1 := tokenSimilarity(tokens1, tokens2)
-	tokSim2 := tokenSimilarity(tokens2, tokens1)
-	tokSim := (tokSim1 + tokSim2) / 2.0
-
-	// Subset match (e.g. "FRANZISKA" vs "FRANZISKA Patrick")
-	tokensSet1 := make(map[string]bool)
-	for _, t := range tokens1 {
-		tokensSet1[t] = true
-	}
-	tokensSet2 := make(map[string]bool)
+	// Subset match check
+	matchCount := 0
+	tokensSet2 := make(map[string]bool, len(tokens2))
 	for _, t := range tokens2 {
 		tokensSet2[t] = true
 	}
-
-	matchCount := 0
-	smallerSet := tokensSet1
-	largerSet := tokensSet2
-	if len(tokensSet1) > len(tokensSet2) {
-		smallerSet = tokensSet2
-		largerSet = tokensSet1
-	}
-
-	for tok := range smallerSet {
-		if largerSet[tok] {
+	for _, t := range tokens1 {
+		if tokensSet2[t] {
 			matchCount++
 		}
 	}
-
-	var subsetScore float64
-	if len(smallerSet) > 0 && matchCount == len(smallerSet) {
-		subsetScore = 0.90
+	if len(tokens1) > 0 && matchCount == len(tokens1) {
+		return 0.90
 	}
+
+	tokensSet1 := make(map[string]bool, len(tokens1))
+	for _, t := range tokens1 {
+		tokensSet1[t] = true
+	}
+	matchCount2 := 0
+	for _, t := range tokens2 {
+		if tokensSet1[t] {
+			matchCount2++
+		}
+	}
+	if len(tokens2) > 0 && matchCount2 == len(tokens2) {
+		return 0.90
+	}
+
+	// Token-level bipartite similarity
+	tokSim1 := tokenSimilarity(tokens1, tokens2)
+	tokSim2 := tokenSimilarity(tokens2, tokens1)
+	tokSim := (tokSim1 + tokSim2) / 2.0
 
 	// Full string Levenshtein ratio
 	maxLen := math.Max(float64(len([]rune(clean1))), float64(len([]rune(clean2))))
@@ -156,13 +157,25 @@ func NameSimilarity(name1, name2 string) float64 {
 		levScore = 0
 	}
 
-	return math.Max(tokSim, math.Max(subsetScore, levScore))
+	return math.Max(tokSim, levScore)
+}
+
+// NameSimilarity calculates fuzzy similarity between two names (0.0 to 1.0).
+func NameSimilarity(name1, name2 string) float64 {
+	c1, t1 := NormalizeName(name1)
+	c2, t2 := NormalizeName(name2)
+	return NameSimilarityPreNormalized(c1, t1, c2, t2)
 }
 
 // PairSimilarity calculates symmetrical match score for two opposing sides.
 func PairSimilarity(dbA, dbB, wttA, wttB string) (float64, bool) {
-	direct := (NameSimilarity(dbA, wttA) + NameSimilarity(dbB, wttB)) / 2.0
-	swapped := (NameSimilarity(dbA, wttB) + NameSimilarity(dbB, wttA)) / 2.0
+	cDBA, tDBA := NormalizeName(dbA)
+	cDBB, tDBB := NormalizeName(dbB)
+	cWTTA, tWTTA := NormalizeName(wttA)
+	cWTTB, tWTTB := NormalizeName(wttB)
+
+	direct := (NameSimilarityPreNormalized(cDBA, tDBA, cWTTA, tWTTA) + NameSimilarityPreNormalized(cDBB, tDBB, cWTTB, tWTTB)) / 2.0
+	swapped := (NameSimilarityPreNormalized(cDBA, tDBA, cWTTB, tWTTB) + NameSimilarityPreNormalized(cDBB, tDBB, cWTTA, tWTTA)) / 2.0
 
 	if direct >= swapped {
 		return direct, false
@@ -170,7 +183,6 @@ func PairSimilarity(dbA, dbB, wttA, wttB string) (float64, bool) {
 	return swapped, true
 }
 
-// ExtractRoundFromDocumentCode converts ITTF document codes into clean round names.
 func ExtractRoundFromDocumentCode(docCode, subEventDesc string) string {
 	doc := strings.ToUpper(docCode)
 	if strings.Contains(doc, "FNL-000100") || strings.Contains(doc, "-FNL-") {
@@ -198,7 +210,6 @@ func ExtractRoundFromDocumentCode(docCode, subEventDesc string) string {
 		return "Qualifying"
 	}
 
-	// Fallback to subEventDescription if available
 	desc := strings.ToLower(subEventDesc)
 	if strings.Contains(desc, "final") && !strings.Contains(desc, "semi") && !strings.Contains(desc, "quarter") {
 		return "Final"
@@ -219,7 +230,6 @@ func ExtractRoundFromDocumentCode(docCode, subEventDesc string) string {
 	return "Round Match"
 }
 
-// ExtractGender parses gender division from subEventType or documentCode.
 func ExtractGender(subEventType, docCode string) string {
 	combined := strings.ToUpper(subEventType + " " + docCode)
 	if strings.Contains(combined, "MIXED") {
@@ -241,7 +251,14 @@ type matchPairCandidate struct {
 	isSwapped bool
 }
 
-// AlignMatches executes optimal 1-to-1 bipartite fuzzy matching between DB matches and WTT official results.
+type preNormMatch struct {
+	cleanA  string
+	tokensA []string
+	cleanB  string
+	tokensB []string
+}
+
+// AlignMatches executes optimal 1-to-1 bipartite fuzzy matching with pre-normalized caching.
 func AlignMatches(
 	tournamentName string,
 	tournamentYear int,
@@ -264,19 +281,46 @@ func AlignMatches(
 		threshold = 0.70
 	}
 
-	// Build candidate pairs matrix
+	// Pre-normalize DB matches once
+	normDB := make([]preNormMatch, len(dbMatches))
+	for i, m := range dbMatches {
+		cA, tA := NormalizeName(m.TeamA)
+		cB, tB := NormalizeName(m.TeamB)
+		normDB[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
+	}
+
+	// Pre-normalize WTT matches once
+	normWTT := make([]preNormMatch, len(wttMatches))
+	for i, m := range wttMatches {
+		if len(m.MatchCard.Competitors) >= 2 {
+			cA, tA := NormalizeName(m.MatchCard.Competitors[0].CompetitorName)
+			cB, tB := NormalizeName(m.MatchCard.Competitors[1].CompetitorName)
+			normWTT[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
+		}
+	}
+
 	var candidates []matchPairCandidate
-	for dIdx, dbm := range dbMatches {
-		for wIdx, wttm := range wttMatches {
-			mc := wttm.MatchCard
-			if len(mc.Competitors) < 2 {
+	for dIdx := range dbMatches {
+		ndb := normDB[dIdx]
+		for wIdx := range wttMatches {
+			nwtt := normWTT[wIdx]
+			if nwtt.cleanA == "" && nwtt.cleanB == "" {
 				continue
 			}
 
-			wttTeamA := mc.Competitors[0].CompetitorName
-			wttTeamB := mc.Competitors[1].CompetitorName
+			direct := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanA, nwtt.tokensA) +
+				NameSimilarityPreNormalized(ndb.cleanB, ndb.tokensB, nwtt.cleanB, nwtt.tokensB)) / 2.0
 
-			score, isSwapped := PairSimilarity(dbm.TeamA, dbm.TeamB, wttTeamA, wttTeamB)
+			swapped := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanB, nwtt.tokensB) +
+				NameSimilarityPreNormalized(ndb.cleanB, ndb.tokensB, nwtt.cleanA, nwtt.tokensA)) / 2.0
+
+			score := direct
+			isSwapped := false
+			if swapped > direct {
+				score = swapped
+				isSwapped = true
+			}
+
 			if score >= threshold {
 				candidates = append(candidates, matchPairCandidate{
 					dbIdx:     dIdx,
@@ -288,13 +332,12 @@ func AlignMatches(
 		}
 	}
 
-	// Sort candidates by score descending for greedy 1-to-1 assignment
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].score > candidates[j].score
 	})
 
-	assignedDB := make(map[int]bool)
-	assignedWTT := make(map[int]bool)
+	assignedDB := make(map[int]bool, len(dbMatches))
+	assignedWTT := make(map[int]bool, len(wttMatches))
 
 	for _, cand := range candidates {
 		if assignedDB[cand.dbIdx] || assignedWTT[cand.wttIdx] {
@@ -329,11 +372,9 @@ func AlignMatches(
 			rec.WTTMatchStartUTC = wttm.StartDateLocal
 		}
 
-		// DB OCR Names
 		rec.OCRPlayerNames.TeamA = dbm.TeamA
 		rec.OCRPlayerNames.TeamB = dbm.TeamB
 
-		// Authoritative WTT Names and Countries (oriented to match DB Team A/B)
 		if !cand.isSwapped {
 			rec.WTTPlayerNames.TeamA = mc.Competitors[0].CompetitorName
 			rec.WTTPlayerNames.TeamB = mc.Competitors[1].CompetitorName
@@ -351,7 +392,6 @@ func AlignMatches(
 
 	report.MatchedCount = len(report.Matches)
 
-	// Collect unmatched DB matches
 	for dIdx, dbm := range dbMatches {
 		if assignedDB[dIdx] {
 			continue
@@ -371,7 +411,6 @@ func AlignMatches(
 		report.UnmatchedDBCount++
 	}
 
-	// Collect unmatched WTT matches
 	for wIdx, wttm := range wttMatches {
 		if assignedWTT[wIdx] {
 			continue
@@ -402,13 +441,4 @@ func AlignMatches(
 	}
 
 	return report
-}
-
-// NormalizeTournamentName strips accents, quotes, and cleans spaces for event title matching.
-func NormalizeTournamentName(name string) string {
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	normalized, _, _ := transform.String(t, name)
-	s := strings.ReplaceAll(normalized, "’", "'")
-	s = strings.ReplaceAll(s, "-", " ")
-	return strings.ToLower(strings.TrimSpace(multipleSpacesRe.ReplaceAllString(s, " ")))
 }

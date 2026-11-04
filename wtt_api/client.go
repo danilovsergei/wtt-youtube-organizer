@@ -20,7 +20,6 @@ const (
 	wttDropdownURL    = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_event_subevent_dropdown_list.json"
 	wttAllEventsURL   = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_all_events_only_name.json"
 	wttOfficialURLFmt = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitearchivedresults/%d/officialresult/officialresult.json"
-	wttLiveCacheURLFmt= "https://wtt-web-frontdoor-withoutcache-cqakg0andqf5hchn.a01.azurefd.net/websitecacheddata/%d/officialresult/officialresult_minimal.json"
 )
 
 // WTTClient fetches data from the official WTT Azure CDN endpoints.
@@ -150,7 +149,6 @@ func (c *WTTClient) FetchAllEvents(ctx context.Context) ([]WTTEventSummary, erro
 }
 
 // FindEventIDByQuery resolves a tournament query and optional year into an official WTT EventID.
-// Strictly respects tournament category tiers: Youth vs Senior, Para vs Regular, Star vs Regular.
 func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year int) (int, string, error) {
 	entries, err := c.FetchDropdownEvents(ctx)
 	if err != nil {
@@ -202,7 +200,6 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 
 	// Phase 2: Tokenized fallback respecting category filters
 	rawTokens := strings.Fields(normQuery)
-	// Filter out common noise tokens
 	var tokens []string
 	for _, t := range rawTokens {
 		if t != "wtt" && t != "presented" && t != "by" && t != "event" && t != "the" {
@@ -251,7 +248,7 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 		}
 	}
 
-	// Phase 3: Lenient fallback without year check (handles cases where video had offset year)
+	// Phase 3: Lenient fallback without year check
 	for _, entry := range entries {
 		normEventName := NormalizeTournamentName(entry.EventName)
 		eventHasYouth := strings.Contains(normEventName, "youth")
@@ -279,6 +276,7 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 }
 
 // FetchOfficialResults retrieves the official match records for a given WTT event ID.
+// Seamlessly falls back to live in-progress schedule and top-10 cache for active tournaments.
 func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
 	url := fmt.Sprintf(wttOfficialURLFmt, eventID)
 	if c.baseURL != "" {
@@ -286,23 +284,171 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 	}
 
 	data, err := c.fetchAndDecompress(ctx, url)
+	if err == nil {
+		var matches []WTTOfficialMatch
+		if err := json.Unmarshal(data, &matches); err == nil && len(matches) > 0 {
+			// Check if matches have non-null match_cards
+			hasCards := false
+			for _, m := range matches {
+				if len(m.MatchCard.Competitors) > 0 {
+					hasCards = true
+					break
+				}
+			}
+			if hasCards {
+				return matches, nil
+			}
+		}
+	}
+
+	// Active/In-Progress live fallback (e.g. Frankfurt 2026)
+	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
+	if liveErr == nil && len(liveMatches) > 0 {
+		return liveMatches, nil
+	}
+
 	if err != nil {
-		// Try live cache endpoint as fallback
-		liveURL := fmt.Sprintf(wttLiveCacheURLFmt, eventID)
-		if c.baseURL != "" {
-			liveURL = fmt.Sprintf("%s/live_%d.json", c.baseURL, eventID)
+		return nil, fmt.Errorf("failed to fetch official results for event %d: %w", eventID, err)
+	}
+	return nil, fmt.Errorf("no valid official matches found for event %d", eventID)
+}
+
+func (c *WTTClient) fetchLiveScheduleMatches(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
+	// 1. Fetch scores map from top 10 results
+	scoresMap := make(map[string]WTTMatchCard)
+	top10URLs := []string{
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/%d/%d_take_10_official_results.json", eventID, eventID),
+		fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/officialresult/officialresult_top10.json", eventID),
+	}
+	for _, u := range top10URLs {
+		data, err := c.fetchAndDecompress(ctx, u)
+		if err == nil {
+			var rawList []WTTOfficialMatch
+			if err := json.Unmarshal(data, &rawList); err == nil {
+				for _, rm := range rawList {
+					if rm.DocumentCode != "" && rm.MatchCard.OverallScores != "" {
+						trimmed := strings.TrimRight(rm.DocumentCode, "-")
+						scoresMap[trimmed] = rm.MatchCard
+					}
+				}
+			}
 		}
-		liveData, liveErr := c.fetchAndDecompress(ctx, liveURL)
-		if liveErr != nil {
-			return nil, fmt.Errorf("failed to fetch both archived results (%v) and live cache (%v)", err, liveErr)
-		}
-		data = liveData
 	}
 
-	var matches []WTTOfficialMatch
-	if err := json.Unmarshal(data, &matches); err != nil {
-		return nil, fmt.Errorf("failed to parse official results JSON for event %d: %w", eventID, err)
+	// 2. Fetch live schedule.json
+	schedURL := fmt.Sprintf("https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitecacheddata/%d/schedule/schedule.json", eventID)
+	if c.baseURL != "" {
+		schedURL = fmt.Sprintf("%s/schedule_%d.json", c.baseURL, eventID)
 	}
 
-	return matches, nil
+	schedData, err := c.fetchAndDecompress(ctx, schedURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var schedItems []struct {
+		Competition struct {
+			Unit []struct {
+				Code            string `json:"Code"`
+				ScheduleStatus  string `json:"ScheduleStatus"`
+				SubEvent        string `json:"SubEvent"`
+				Round           string `json:"Round"`
+				StartDate       string `json:"StartDate"`
+				ActualStartDate string `json:"ActualStartDate"`
+				VenueDescription struct {
+					LocationName string `json:"LocationName"`
+					VenueName    string `json:"VenueName"`
+				} `json:"VenueDescription"`
+				ItemDescription []struct {
+					Language string `json:"Language"`
+					Value    string `json:"Value"`
+				} `json:"ItemDescription"`
+				StartList struct {
+					Start []struct {
+						Competitor struct {
+							Code         string `json:"Code"`
+							Organization string `json:"Organization"`
+							Description  struct {
+								TeamName string `json:"TeamName"`
+							} `json:"Description"`
+						} `json:"Competitor"`
+					} `json:"Start"`
+				} `json:"StartList"`
+			} `json:"Unit"`
+		} `json:"Competition"`
+	}
+	if err := json.Unmarshal(schedData, &schedItems); err != nil {
+		return nil, err
+	}
+
+	var result []WTTOfficialMatch
+	seenCodes := make(map[string]bool)
+
+	for _, item := range schedItems {
+		for _, u := range item.Competition.Unit {
+			if u.ScheduleStatus != "Official" && u.ScheduleStatus != "Finished" {
+				continue
+			}
+			codeTrimmed := strings.TrimRight(u.Code, "-")
+			if seenCodes[codeTrimmed] {
+				continue
+			}
+			seenCodes[codeTrimmed] = true
+
+			starts := u.StartList.Start
+			if len(starts) < 2 {
+				continue
+			}
+
+			c1Name := starts[0].Competitor.Description.TeamName
+			c1Org := starts[0].Competitor.Organization
+			c2Name := starts[1].Competitor.Description.TeamName
+			c2Org := starts[1].Competitor.Organization
+
+			desc := ""
+			for _, d := range u.ItemDescription {
+				if d.Language == "ENG" {
+					desc = d.Value
+					break
+				}
+			}
+
+			mc := WTTMatchCard{
+				EventID:             strconv.Itoa(eventID),
+				DocumentCode:        u.Code,
+				SubEventName:        u.SubEvent,
+				SubEventDescription: desc,
+				TableName:           u.VenueDescription.LocationName,
+				VenueName:           u.VenueDescription.VenueName,
+				Competitors: []WTTCompetitor{
+					{CompetitorName: c1Name, CompetitorOrg: c1Org},
+					{CompetitorName: c2Name, CompetitorOrg: c2Org},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC:   u.ActualStartDate,
+					StartDateLocal: u.StartDate,
+				},
+			}
+
+			if card, ok := scoresMap[codeTrimmed]; ok {
+				mc.OverallScores = card.OverallScores
+				mc.GameScores = card.GameScores
+				mc.ResultStatus = "OFFICIAL"
+			} else {
+				mc.OverallScores = "Finished"
+				mc.ResultStatus = "OFFICIAL"
+			}
+
+			result = append(result, WTTOfficialMatch{
+				EventID:        strconv.Itoa(eventID),
+				DocumentCode:   u.Code,
+				SubEventType:   u.SubEvent,
+				FullResults:    "OFFICIAL",
+				StartDateLocal: u.StartDate,
+				MatchCard:      mc,
+			})
+		}
+	}
+
+	return result, nil
 }
