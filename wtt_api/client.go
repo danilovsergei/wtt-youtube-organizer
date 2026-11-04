@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/andybalholm/brotli"
 )
+
+var tournamentDatesRe = regexp.MustCompile(`\(\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*-\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})\s*\)`)
 
 const (
 	defaultWTTTimeout = 30 * time.Second
@@ -271,6 +274,71 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 	}
 
 	return 0, "", fmt.Errorf("no WTT event found matching query %q (year: %d)", query, year)
+}
+
+// ParseTournamentDates extracts the start and end dates from eventName (e.g. "WTT Finals Hong Kong 2027 (07 Dec 2027 - 12 Dec 2027)").
+func ParseTournamentDates(eventName string) (time.Time, time.Time, error) {
+	m := tournamentDatesRe.FindStringSubmatch(eventName)
+	if len(m) < 3 {
+		return time.Time{}, time.Time{}, fmt.Errorf("no date range found in event name %q", eventName)
+	}
+	start, err := time.Parse("02 Jan 2006", strings.TrimSpace(m[1]))
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse start date %q: %w", m[1], err)
+	}
+	end, err := time.Parse("02 Jan 2006", strings.TrimSpace(m[2]))
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("failed to parse end date %q: %w", m[2], err)
+	}
+	return start.UTC(), end.UTC(), nil
+}
+
+// FindEventIDByDate resolves a tournament query and specific target date into an official WTT EventID.
+func (c *WTTClient) FindEventIDByDate(ctx context.Context, query string, targetDate time.Time) (int, string, error) {
+	summaries, err := c.FetchAllEvents(ctx)
+	if err != nil {
+		return c.FindEventIDByQuery(ctx, query, targetDate.Year())
+	}
+
+	normQuery := NormalizeTournamentName(query)
+	targetUTC := targetDate.UTC()
+
+	type candEvent struct {
+		eventID   int
+		eventName string
+		start     time.Time
+		end       time.Time
+	}
+	var candidates []candEvent
+
+	for _, s := range summaries {
+		normEvent := NormalizeTournamentName(s.EventName)
+		if !strings.Contains(normEvent, normQuery) {
+			continue
+		}
+		start, end, err := ParseTournamentDates(s.EventName)
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, candEvent{
+			eventID:   s.EventID,
+			eventName: s.EventName,
+			start:     start,
+			end:       end,
+		})
+	}
+
+	// 1. Check if targetDate falls within [start - 1 day, end + 1 day]
+	for _, cand := range candidates {
+		bufferedStart := cand.start.Add(-24 * time.Hour)
+		bufferedEnd := cand.end.Add(24 * time.Hour)
+		if !targetUTC.Before(bufferedStart) && !targetUTC.After(bufferedEnd) {
+			return cand.eventID, cand.eventName, nil
+		}
+	}
+
+	// 2. Fall back to standard query by year
+	return c.FindEventIDByQuery(ctx, query, targetDate.Year())
 }
 
 // FetchOfficialResults retrieves the official match records for a given WTT event ID.

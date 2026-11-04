@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/andybalholm/brotli"
 )
@@ -180,5 +181,64 @@ func TestWTTClient_LiveScheduleFallback(t *testing.T) {
 	}
 	if m.MatchCard.MatchDateTime.StartDateUTC != "2026-11-04T16:15:30.9876543+00:00" {
 		t.Errorf("expected RFC3339Nano timestamp, got %s", m.MatchCard.MatchDateTime.StartDateUTC)
+	}
+}
+
+func TestParseTournamentDates(t *testing.T) {
+	name := "WTT Finals Hong Kong 2027 (07 Dec 2027 - 12 Dec 2027)"
+	start, end, err := ParseTournamentDates(name)
+	if err != nil {
+		t.Fatalf("failed to parse dates: %v", err)
+	}
+
+	expectedStart := time.Date(2027, 12, 7, 0, 0, 0, 0, time.UTC)
+	expectedEnd := time.Date(2027, 12, 12, 0, 0, 0, 0, time.UTC)
+
+	if !start.Equal(expectedStart) {
+		t.Errorf("expected start %v, got %v", expectedStart, start)
+	}
+	if !end.Equal(expectedEnd) {
+		t.Errorf("expected end %v, got %v", expectedEnd, end)
+	}
+}
+
+func TestFindEventIDByDate_ResolvesBetweenSameCityTournaments(t *testing.T) {
+	mockAllEvents := []WTTEventSummary{
+		{
+			EventID:   3301,
+			EventName: "WTT Feeder Istanbul 2026 (13 May 2026 - 17 May 2026)",
+		},
+		{
+			EventID:   3351,
+			EventName: "WTT Feeder Istanbul 2026 (29 Jul 2026 - 02 Aug 2026)",
+		},
+	}
+	eventsBytes, _ := json.Marshal(mockAllEvents)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/all_events.json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(eventsBytes)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewWTTClient(WithBaseURL(server.URL))
+	ctx := context.Background()
+
+	// 1. Target date in May 2026 -> should resolve to 3301
+	mayDate := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	idMay, nameMay, errMay := client.FindEventIDByDate(ctx, "WTT Feeder Istanbul", mayDate)
+	if errMay != nil || idMay != 3301 {
+		t.Fatalf("expected Event ID 3301 for May date, got %d (%s), err: %v", idMay, nameMay, errMay)
+	}
+
+	// 2. Target date in July 2026 -> should resolve to 3351
+	julyDate := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	idJuly, nameJuly, errJuly := client.FindEventIDByDate(ctx, "WTT Feeder Istanbul", julyDate)
+	if errJuly != nil || idJuly != 3351 {
+		t.Fatalf("expected Event ID 3351 for July date, got %d (%s), err: %v", idJuly, nameJuly, errJuly)
 	}
 }

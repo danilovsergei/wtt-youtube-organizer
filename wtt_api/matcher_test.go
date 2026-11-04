@@ -506,3 +506,145 @@ func TestAlignMatches_DoublesMatchupPermutations(t *testing.T) {
 		t.Errorf("expected high confidence for doubles pair permutation, got %f", m.Confidence)
 	}
 }
+
+func TestAlignMatches_DisambiguatesRematchUsingTime(t *testing.T) {
+	morningStreamStart := time.Date(2026, 11, 3, 9, 30, 0, 0, time.UTC)
+	eveningStreamStart := time.Date(2026, 11, 3, 17, 30, 0, 0, time.UTC)
+
+	// Two DB segments from two different video streams featuring the exact same players
+	dbMatches := []DBMatchRecord{
+		{
+			ID:                 501,
+			YoutubeID:          "morning_stream",
+			TeamA:              "MA LONG",
+			TeamB:              "FAN ZHENDONG",
+			VideoTitle:         "Day 1 Morning Session",
+			VideoOffsetSeconds: 1800, // 10:00 UTC
+			StreamStartUTC:     &morningStreamStart,
+		},
+		{
+			ID:                 502,
+			YoutubeID:          "evening_stream",
+			TeamA:              "MA LONG",
+			TeamB:              "FAN ZHENDONG",
+			VideoTitle:         "Day 1 Evening Session",
+			VideoOffsetSeconds: 1800, // 18:00 UTC
+			StreamStartUTC:     &eveningStreamStart,
+		},
+	}
+
+	// Two official WTT matches with the same players at 10:00 UTC and 18:00 UTC
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           8001,
+			DocumentCode: "M_GROUP_STAGE",
+			MatchCard: WTTMatchCard{
+				SubEventDescription: "Men's Singles - Group Stage",
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "MA Long", CompetitorOrg: "CHN"},
+					{CompetitorName: "FAN Zhendong", CompetitorOrg: "CHN"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:00:00Z",
+				},
+				OverallScores: "3-1",
+			},
+		},
+		{
+			ID:           8002,
+			DocumentCode: "M_FINAL_STAGE",
+			MatchCard: WTTMatchCard{
+				SubEventDescription: "Men's Singles - Final",
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "MA Long", CompetitorOrg: "CHN"},
+					{CompetitorName: "FAN Zhendong", CompetitorOrg: "CHN"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T18:00:00Z",
+				},
+				OverallScores: "4-3",
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 9999, dbMatches, wttMatches, 0.70)
+
+	if report.MatchedCount != 2 {
+		t.Fatalf("expected both rematches to be matched, got %d", report.MatchedCount)
+	}
+
+	var morningCorrect, eveningCorrect bool
+	for _, m := range report.Matches {
+		if m.DBMatch != nil && m.DBMatch.ID == 501 && m.WTTMatchID == 8001 {
+			morningCorrect = true
+		}
+		if m.DBMatch != nil && m.DBMatch.ID == 502 && m.WTTMatchID == 8002 {
+			eveningCorrect = true
+		}
+	}
+
+	if !morningCorrect {
+		t.Errorf("morning video segment was not routed to the morning WTT match using time")
+	}
+	if !eveningCorrect {
+		t.Errorf("evening video segment was not routed to the evening WTT match using time")
+	}
+}
+
+func TestAlignMatches_TimeBonusElevatesNearThresholdMatch(t *testing.T) {
+	streamStart := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+
+	// OCR corrupted names giving ~0.66 similarity (strictly below 0.70 threshold)
+	dbMatches := []DBMatchRecord{
+		{
+			ID:                 601,
+			TeamA:              "MOREGAHD", // OCR typos (base score ~0.66 < 0.70)
+			TeamB:              "FALC",
+			VideoOffsetSeconds: 600, // 10:10 UTC (within 5 mins of scheduled 10:15)
+			StreamStartUTC:     &streamStart,
+		},
+		{
+			ID:                 602,
+			TeamA:              "MOREGAHD", // Same corrupted names
+			TeamB:              "FALC",
+			VideoOffsetSeconds: 18000, // 15:00 UTC (5 hours away, no time bonus)
+			StreamStartUTC:     &streamStart,
+		},
+	}
+
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           9001,
+			DocumentCode: "M_FALCK_MOREGARD",
+			MatchCard: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{CompetitorName: "MOREGARD Truls", CompetitorOrg: "SWE"},
+					{CompetitorName: "FALCK Mattias", CompetitorOrg: "SWE"},
+				},
+				MatchDateTime: WTTMatchDateTime{
+					StartDateUTC: "2026-11-03T10:15:00Z",
+				},
+				OverallScores: "3-0",
+			},
+		},
+	}
+
+	report := AlignMatches("Test Tournament", 2026, 9999, dbMatches, wttMatches, 0.70)
+
+	matchedMap := make(map[int64]bool)
+	for _, m := range report.Matches {
+		if m.DBMatch != nil && m.IsMatched {
+			matchedMap[m.DBMatch.ID] = true
+		}
+	}
+
+	// 1. Match 601 earns time proximity bonus, reaching >= 0.70
+	if !matchedMap[601] {
+		t.Errorf("expected match 601 to be elevated above threshold by time proximity bonus")
+	}
+
+	// 2. Match 602 gets no time bonus, fails to reach threshold
+	if matchedMap[602] {
+		t.Errorf("expected match 602 to remain unmatched without time bonus")
+	}
+}
