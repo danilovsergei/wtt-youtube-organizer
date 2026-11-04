@@ -165,6 +165,8 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 	queryHasPara := strings.Contains(normQuery, "para")
 	queryHasStar := strings.Contains(normQuery, "star")
 	queryHasFeeder := strings.Contains(normQuery, "feeder")
+	queryHasII := strings.Contains(normQuery, " ii")
+	queryHasIII := strings.Contains(normQuery, " iii")
 
 	// Phase 1: Exact substring match respecting category filters
 	for _, entry := range entries {
@@ -190,6 +192,16 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 
 		eventHasFeeder := strings.Contains(normEventName, "feeder")
 		if queryHasFeeder != eventHasFeeder {
+			continue
+		}
+
+		eventHasII := strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")
+		if queryHasII != eventHasII {
+			continue
+		}
+
+		eventHasIII := strings.Contains(normEventName, " iii ") || strings.Contains(normEventName, " iii-") || strings.HasSuffix(normEventName, " iii") || strings.Contains(normEventName, " iii 20")
+		if queryHasIII != eventHasIII {
 			continue
 		}
 
@@ -233,6 +245,16 @@ func (c *WTTClient) FindEventIDByQuery(ctx context.Context, query string, year i
 
 		eventHasFeeder := strings.Contains(normEventName, "feeder")
 		if queryHasFeeder != eventHasFeeder {
+			continue
+		}
+
+		eventHasII := strings.Contains(normEventName, " ii ") || strings.Contains(normEventName, " ii-") || strings.HasSuffix(normEventName, " ii") || strings.Contains(normEventName, " ii 20")
+		if queryHasII != eventHasII {
+			continue
+		}
+
+		eventHasIII := strings.Contains(normEventName, " iii ") || strings.Contains(normEventName, " iii-") || strings.HasSuffix(normEventName, " iii") || strings.Contains(normEventName, " iii 20")
+		if queryHasIII != eventHasIII {
 			continue
 		}
 
@@ -305,6 +327,9 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
 	if liveErr == nil && len(liveMatches) > 0 {
 		return liveMatches, nil
+	}
+	if liveErr != nil {
+		fmt.Printf("fetchLiveScheduleMatches failed for event %d: %v\n", eventID, liveErr)
 	}
 
 	if err != nil {
