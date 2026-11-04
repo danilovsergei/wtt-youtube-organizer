@@ -37,3 +37,11 @@ Assume all project files, dependencies, and development environments reside on t
 - **`FilterController.fetchData()` must reload matches**: When `fetchData()` is invoked (via F5, Ctrl+R, or UI Quick Menu), it MUST clear `_loadedTournamentIds` and re-fetch `DatabaseService.instance.fetchTournamentMatches(...)` for the currently selected tournament and previously loaded tournaments.
 - **Never optimize `fetchData()` to only fetch tournaments**: Omitting `fetchTournamentMatches` freezes `_allMatches` and prevents newly ingested matches from appearing on the screen after refresh.
 - **Hermetic E2E Guard**: Step 12 in `hermetic_e2e_test.dart` strictly guards this flow (injects a dynamic match into the database, triggers UI refresh via F5, and asserts the new match renders and plays). Never delete or loosen this check.
+
+## Mandatory Testing & Zero-Regression Pipeline
+
+Every code change in this repository is governed by an automated `AfterAgent` verification pipeline:
+
+1. **Mandatory Test Coverage:** Whenever you modify production code, you **must** either create a new test file or extend an existing unit/E2E test file with new test cases before finishing your turn. Finishing a turn without adding test coverage will be automatically rejected by the `AfterAgent` hook.
+2. **Append-Only Existing Tests:** When extending an existing committed test file, **only append new `test(...)` / `def test_*` blocks**. Never delete, weaken, mock out, or alter existing test lines—a `BeforeTool` and `AfterAgent` diff guard will block any removal or modification of existing test lines unless the user specifies `@allow-test-edit`.
+3. **Red-Green Verification:** Your new test cases must **fail** against `HEAD` production code and **pass** with your new production code. Do not write trivial/hollow assertions.

@@ -1,0 +1,49 @@
+{
+  "hooksConfig": {
+    "enabled": true
+  },
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "pipeline-init",
+            "type": "command",
+            "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/regression_and_coverage_guard.py",
+            "timeout": 10000,
+            "description": "Initializes turn state and checks for @allow-test-edit or @skip-test-gate"
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "write_file|replace|mcp_ssh-remote_ssh-edit-block|mcp_ssh-remote_ssh-write-chunk",
+        "hooks": [
+          {
+            "name": "append-only-test-guard",
+            "type": "command",
+            "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/regression_and_coverage_guard.py",
+            "timeout": 10000,
+            "description": "Allows extending existing tests with new cases, blocks modifying existing assertions"
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "mandatory-coverage-and-regression-gate",
+            "type": "command",
+            "command": "$GEMINI_PROJECT_DIR/.gemini/hooks/regression_and_coverage_guard.py",
+            "timeout": 180000,
+            "description": "Enforces mandatory test coverage and runs 3-step cross-checkout verification"
+          }
+        ]
+      }
+    ]
+  }
+}
