@@ -1,9 +1,11 @@
 package wtt_api
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -16,7 +18,56 @@ import (
 var (
 	nonAlphaNumRe    = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
 	multipleSpacesRe = regexp.MustCompile(`\s+`)
+	tablePatternRe   = regexp.MustCompile(`(?i)\bT0*([1-9][0-9]?)\b`)
+	tableWordRe      = regexp.MustCompile(`(?i)\bTABLE\s*0*([1-9][0-9]?)\b`)
 )
+
+// ExtractTableFromTitle extracts standardized table numbers like "T01", "T04" from video titles.
+func ExtractTableFromTitle(title string) string {
+	t := strings.ToUpper(title)
+	if strings.Contains(t, "ARENA") && !tablePatternRe.MatchString(t) {
+		return "T01"
+	}
+	if m := tablePatternRe.FindStringSubmatch(t); len(m) > 1 {
+		num, _ := strconv.Atoi(m[1])
+		return fmt.Sprintf("T%02d", num)
+	}
+	if m := tableWordRe.FindStringSubmatch(t); len(m) > 1 {
+		num, _ := strconv.Atoi(m[1])
+		return fmt.Sprintf("T%02d", num)
+	}
+	return ""
+}
+
+// ParseWTTStartTime parses UTC start timestamp from WTT match object.
+func ParseWTTStartTime(m WTTOfficialMatch) *time.Time {
+	dtStr := m.MatchCard.MatchDateTime.StartDateUTC
+	if dtStr == "" {
+		dtStr = m.StartDateLocal
+	}
+	if dtStr == "" {
+		return nil
+	}
+	dtStr = strings.TrimSpace(dtStr)
+	if strings.Contains(dtStr, "/") {
+		t, err := time.Parse("01/02/2006 15:04:05", dtStr)
+		if err == nil {
+			utc := t.UTC()
+			return &utc
+		}
+	}
+	t, err := time.Parse(time.RFC3339, strings.ReplaceAll(dtStr, "Z", "+00:00"))
+	if err == nil {
+		utc := t.UTC()
+		return &utc
+	}
+	t, err = time.Parse("2006-01-02T15:04:05", dtStr)
+	if err == nil {
+		utc := t.UTC()
+		return &utc
+	}
+	return nil
+}
 
 // NormalizeName strips accents, punctuation, and returns uppercase token list.
 func NormalizeName(name string) (string, []string) {
@@ -249,6 +300,7 @@ type matchPairCandidate struct {
 	wttIdx    int
 	score     float64
 	isSwapped bool
+	timeDelta float64
 }
 
 type preNormMatch struct {
@@ -258,7 +310,7 @@ type preNormMatch struct {
 	tokensB []string
 }
 
-// AlignMatches executes optimal 1-to-1 bipartite fuzzy matching with pre-normalized caching.
+// AlignMatches executes time-window and table-aware bipartite matching.
 func AlignMatches(
 	tournamentName string,
 	tournamentYear int,
@@ -281,31 +333,91 @@ func AlignMatches(
 		threshold = 0.70
 	}
 
-	// Pre-normalize DB matches once
+	// 1. Pre-normalize DB matches once
 	normDB := make([]preNormMatch, len(dbMatches))
+	dbTables := make([]string, len(dbMatches))
+	dbCalcTimes := make([]*time.Time, len(dbMatches))
+
 	for i, m := range dbMatches {
 		cA, tA := NormalizeName(m.TeamA)
 		cB, tB := NormalizeName(m.TeamB)
 		normDB[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
+
+		tbl := m.Table
+		if tbl == "" {
+			tbl = ExtractTableFromTitle(m.VideoTitle)
+		}
+		dbTables[i] = tbl
+
+		if m.StreamStartUTC != nil {
+			calcT := m.StreamStartUTC.Add(time.Duration(m.VideoOffsetSeconds) * time.Second)
+			dbCalcTimes[i] = &calcT
+		}
 	}
 
-	// Pre-normalize WTT matches once
+	// 2. Pre-normalize WTT matches once
 	normWTT := make([]preNormMatch, len(wttMatches))
+	wttTables := make([]string, len(wttMatches))
+	wttTimes := make([]*time.Time, len(wttMatches))
+
 	for i, m := range wttMatches {
 		if len(m.MatchCard.Competitors) >= 2 {
 			cA, tA := NormalizeName(m.MatchCard.Competitors[0].CompetitorName)
 			cB, tB := NormalizeName(m.MatchCard.Competitors[1].CompetitorName)
 			normWTT[i] = preNormMatch{cleanA: cA, tokensA: tA, cleanB: cB, tokensB: tB}
 		}
+
+		tbl := strings.ToUpper(strings.TrimSpace(m.MatchCard.TableNumber))
+		if tbl == "" {
+			tbl = ExtractTableFromTitle(m.MatchCard.TableName)
+		}
+		wttTables[i] = tbl
+		wttTimes[i] = ParseWTTStartTime(m)
 	}
 
+	// 3. Score candidate pairs with Time Window and Table Bonus
 	var candidates []matchPairCandidate
 	for dIdx := range dbMatches {
 		ndb := normDB[dIdx]
+		dbTable := dbTables[dIdx]
+		calcT := dbCalcTimes[dIdx]
+
 		for wIdx := range wttMatches {
 			nwtt := normWTT[wIdx]
 			if nwtt.cleanA == "" && nwtt.cleanB == "" {
 				continue
+			}
+
+			wttTable := wttTables[wIdx]
+			wttTime := wttTimes[wIdx]
+
+			timeDeltaMin := 0.0
+			timeBonus := 0.0
+			hasTimeComparison := false
+
+			if calcT != nil && wttTime != nil {
+				hasTimeComparison = true
+				diffMin := calcT.Sub(*wttTime).Minutes()
+				timeDeltaMin = diffMin
+
+				// Asymmetric empirical window: -30 min to +120 min
+				if diffMin < -30.0 || diffMin > 120.0 {
+					continue
+				}
+
+				if math.Abs(diffMin) <= 15.0 {
+					timeBonus = 0.10 * (1.0 - math.Abs(diffMin)/30.0)
+				}
+			}
+
+			tableBonus := 0.0
+			if dbTable != "" && wttTable != "" {
+				if dbTable == wttTable {
+					tableBonus = 0.15
+				} else if hasTimeComparison {
+					// Time is around now, but table is different -> skip
+					continue
+				}
 			}
 
 			direct := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanA, nwtt.tokensA) +
@@ -314,19 +426,32 @@ func AlignMatches(
 			swapped := (NameSimilarityPreNormalized(ndb.cleanA, ndb.tokensA, nwtt.cleanB, nwtt.tokensB) +
 				NameSimilarityPreNormalized(ndb.cleanB, ndb.tokensB, nwtt.cleanA, nwtt.tokensA)) / 2.0
 
-			score := direct
+			baseScore := direct
 			isSwapped := false
 			if swapped > direct {
-				score = swapped
+				baseScore = swapped
 				isSwapped = true
 			}
 
-			if score >= threshold {
+			// Composite score
+			compositeScore := baseScore + tableBonus + timeBonus
+			if compositeScore > 1.0 {
+				compositeScore = 1.0
+			}
+
+			// If exact table and time align, allow slightly more permissive OCR threshold (e.g. 0.50)
+			minReq := threshold
+			if hasTimeComparison && tableBonus > 0 && baseScore >= 0.50 {
+				minReq = 0.60
+			}
+
+			if compositeScore >= minReq {
 				candidates = append(candidates, matchPairCandidate{
 					dbIdx:     dIdx,
 					wttIdx:    wIdx,
-					score:     score,
+					score:     compositeScore,
 					isSwapped: isSwapped,
+					timeDelta: timeDeltaMin,
 				})
 			}
 		}
@@ -338,9 +463,10 @@ func AlignMatches(
 
 	assignedDB := make(map[int]bool, len(dbMatches))
 	assignedWTT := make(map[int]bool, len(wttMatches))
+	seenStreamMatch := make(map[string]int64) // youtube_id + "_" + wttID -> primary dbMatchID
 
 	for _, cand := range candidates {
-		if assignedDB[cand.dbIdx] || assignedWTT[cand.wttIdx] {
+		if assignedDB[cand.dbIdx] {
 			continue
 		}
 
@@ -348,22 +474,41 @@ func AlignMatches(
 		wttm := wttMatches[cand.wttIdx]
 		mc := wttm.MatchCard
 
+		// Intra-stream duplicate check:
+		// If another match in this same video already claimed this WTT match, mark as duplicate!
+		streamKey := fmt.Sprintf("%s_%d", dbm.YoutubeID, wttm.ID)
+		primaryID, isDup := seenStreamMatch[streamKey]
+
+		if !isDup && assignedWTT[cand.wttIdx] {
+			// WTT match was claimed by a DIFFERENT video, and this is NOT a duplicate within the same video
+			continue
+		}
+
 		assignedDB[cand.dbIdx] = true
-		assignedWTT[cand.wttIdx] = true
+		if !isDup {
+			assignedWTT[cand.wttIdx] = true
+			seenStreamMatch[streamKey] = dbm.ID
+		}
 
 		rec := MatchedRecord{
-			IsMatched:      true,
-			Confidence:     math.Round(cand.score*100) / 100,
-			TournamentName: tournamentName,
-			TournamentYear: tournamentYear,
-			WTTEventID:     wttEventID,
-			DBMatch:        &dbm,
-			WTTMatch:       &wttm,
-			WTTRound:       ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
-			WTTGender:      ExtractGender(wttm.SubEventType, wttm.DocumentCode),
-			WTTScore:       mc.OverallScores,
-			WTTGameScores:  mc.GameScores,
-			WTTMatchID:     wttm.ID,
+			IsMatched:        true,
+			IsDuplicate:      isDup,
+			Confidence:       math.Round(cand.score*100) / 100,
+			TimeDeltaMinutes: math.Round(cand.timeDelta*10) / 10,
+			TournamentName:   tournamentName,
+			TournamentYear:   tournamentYear,
+			WTTEventID:       wttEventID,
+			DBMatch:          &dbm,
+			WTTMatch:         &wttm,
+			WTTRound:         ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
+			WTTGender:        ExtractGender(wttm.SubEventType, wttm.DocumentCode),
+			WTTScore:         mc.OverallScores,
+			WTTGameScores:    mc.GameScores,
+			WTTMatchID:       wttm.ID,
+		}
+
+		if isDup {
+			rec.FailureReason = fmt.Sprintf("Intra-stream duplicate/continuation of match %d", primaryID)
 		}
 
 		if mc.MatchDateTime.StartDateUTC != "" {
@@ -392,6 +537,7 @@ func AlignMatches(
 
 	report.MatchedCount = len(report.Matches)
 
+	// Collect unmatched DB matches
 	for dIdx, dbm := range dbMatches {
 		if assignedDB[dIdx] {
 			continue
@@ -411,6 +557,7 @@ func AlignMatches(
 		report.UnmatchedDBCount++
 	}
 
+	// Collect unmatched WTT matches
 	for wIdx, wttm := range wttMatches {
 		if assignedWTT[wIdx] {
 			continue

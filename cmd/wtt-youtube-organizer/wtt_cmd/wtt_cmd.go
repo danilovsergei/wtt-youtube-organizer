@@ -259,6 +259,7 @@ func queryDBMatches(ctx context.Context, conn *pgx.Conn, tournamentName string, 
 			m.is_doubles,
 			COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'A'), '') AS team_a,
 			COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'B'), '') AS team_b,
+			v.stream_start_utc,
 			m.created_at
 		FROM matches m
 		JOIN tournaments t ON m.tournament_id = t.id
@@ -291,6 +292,7 @@ func queryDBMatches(ctx context.Context, conn *pgx.Conn, tournamentName string, 
 			&m.IsDoubles,
 			&m.TeamA,
 			&m.TeamB,
+			&m.StreamStartUTC,
 			&m.CreatedAt,
 		)
 		if err != nil {
@@ -374,6 +376,7 @@ func newAuditAllCommand() *cobra.Command {
 					m.is_doubles,
 					COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'A'), '') AS team_a,
 					COALESCE((SELECT string_agg(p.name, ' & ' ORDER BY p.name) FROM match_participants mp JOIN players p ON mp.player_id = p.id WHERE mp.match_id = m.id AND mp.side = 'B'), '') AS team_b,
+					v.stream_start_utc,
 					m.created_at
 				FROM matches m
 				JOIN tournaments t ON m.tournament_id = t.id
@@ -393,7 +396,7 @@ func newAuditAllCommand() *cobra.Command {
 					&m.ID, &m.TournamentID, &m.TournamentName, &m.TournamentYear,
 					&m.VideoID, &m.YoutubeID, &m.VideoTitle, &m.Day, &m.Session,
 					&m.VideoOffsetSeconds, &m.DurationSeconds, &m.IsDoubles,
-					&m.TeamA, &m.TeamB, &m.CreatedAt,
+					&m.TeamA, &m.TeamB, &m.StreamStartUTC, &m.CreatedAt,
 				); err != nil {
 					return err
 				}

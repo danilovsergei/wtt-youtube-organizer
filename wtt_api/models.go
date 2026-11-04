@@ -84,15 +84,19 @@ type DBMatchRecord struct {
 	VideoOffsetSeconds int       `json:"video_offset_seconds"`
 	DurationSeconds    int       `json:"duration_seconds"`
 	IsDoubles          bool      `json:"is_doubles"`
-	TeamA              string    `json:"team_a"` // OCR names from DB
-	TeamB              string    `json:"team_b"` // OCR names from DB
-	CreatedAt          time.Time `json:"created_at"`
+	TeamA              string     `json:"team_a"` // OCR names from DB
+	TeamB              string     `json:"team_b"` // OCR names from DB
+	StreamStartUTC     *time.Time `json:"stream_start_utc,omitempty"`
+	Table              string     `json:"table,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 // MatchedRecord represents the merged view of a DB match and its corresponding WTT official result.
 type MatchedRecord struct {
 	IsMatched        bool       `json:"is_matched"`
+	IsDuplicate      bool       `json:"is_duplicate,omitempty"`
 	Confidence       float64    `json:"confidence"`
+	TimeDeltaMinutes float64    `json:"time_delta_minutes,omitempty"`
 	FailureReason    string     `json:"failure_reason,omitempty"`
 	TournamentName   string     `json:"tournament_name"`
 	TournamentYear   int        `json:"tournament_year"`
