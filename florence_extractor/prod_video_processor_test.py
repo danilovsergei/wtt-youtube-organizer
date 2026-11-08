@@ -205,3 +205,9 @@ class TestErrorClassification(unittest.TestCase):
         code, cat = ProdWttVideoProcessor.classify_youtube_error(err)
         self.assertEqual(code, "UNKNOWN_ERROR")
         self.assertEqual(cat, "retryable")
+
+    def test_inference_prompt_requires_both_player_rows(self):
+        with open("prod_video_processor.py") as f:
+            content = f.read()
+        self.assertIn("CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows", content)
+        self.assertIn("If only one player row is visible, if the scoreboard is partially cut off", content)

@@ -239,6 +239,8 @@ class ScoreExtractor:
             return ScoreResult(success=False, error=f"No scoreboard detected. Variance: {variance:.1f}, Edges: {edge_density:.4f}")
             
         INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image.
+CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows, along with their respective set and game scores.
+If only one player row is visible, if the scoreboard is partially cut off, or if no scoreboard is visible in the image, output an empty JSON object: {}
 WARNING: Do not autocorrect or normalize spelling. Foreign names frequently contain unusual double consonants.
 You MUST transcribe the literal pixels exactly as printed, character-by-character.
 To prevent spelling errors, transcribe the player names by inserting a pipe '|' between EVERY SINGLE CHARACTER (e.g., M|O|H|A|M|M|E|D). Do not group letters into words.
@@ -251,7 +253,7 @@ Output a valid JSON object matching this schema:
   "row_2_sets": integer,
   "row_2_points": integer
 }
-If NO scoreboard is visible in the image, output an empty JSON object: {}"""
+If only one player row or no scoreboard is visible, output an empty JSON object: {}"""
 
         conversation = [{
             "role": "user",
