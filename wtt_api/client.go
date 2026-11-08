@@ -359,10 +359,6 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 					cardCount++
 				}
 			}
-			// If archive is complete and populated with competitor cards, return it
-			if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
-				return archivedMatches, nil
-			}
 		}
 	}
 
@@ -370,6 +366,9 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
 	if liveErr == nil && len(liveMatches) > cardCount {
 		return liveMatches, nil
+	}
+	if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
+		return archivedMatches, nil
 	}
 	if cardCount > 0 {
 		return archivedMatches, nil
