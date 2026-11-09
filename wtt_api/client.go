@@ -345,60 +345,65 @@ func (c *WTTClient) FindEventIDByDate(ctx context.Context, query string, targetD
 	return c.FindEventIDByQuery(ctx, query, targetDate.Year())
 }
 
-// FetchOfficialResults retrieves the official match records for a given WTT event ID.
-// Seamlessly handles active events via CMS Live API, falling back to archived results and live schedule feeds.
-func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
-	// 1. Try CMS Live API (returns all completed & in-progress matches across all days with full cards)
-	liveAPIURL := fmt.Sprintf(wttLiveAPIURLFmt, eventID)
-	if c.baseURL != "" {
-		liveAPIURL = fmt.Sprintf("%s/live_api_%d.json", c.baseURL, eventID)
-	}
-
-	liveData, liveErr := c.fetchAndDecompress(ctx, liveAPIURL)
-	if liveErr == nil && len(liveData) > 0 {
-		var liveAPIMatches []WTTOfficialMatch
-		if jErr := json.Unmarshal(liveData, &liveAPIMatches); jErr == nil && len(liveAPIMatches) > 0 {
-			validCards := 0
-			for _, m := range liveAPIMatches {
-				if len(m.MatchCard.Competitors) >= 2 {
-					validCards++
-				}
-			}
-			if validCards > 0 {
-				return liveAPIMatches, nil
+func countValidNamedMatches(matches []WTTOfficialMatch) int {
+	count := 0
+	for _, m := range matches {
+		if len(m.MatchCard.Competitors) >= 2 {
+			c1 := strings.TrimSpace(m.MatchCard.Competitors[0].CompetitorName)
+			c2 := strings.TrimSpace(m.MatchCard.Competitors[1].CompetitorName)
+			if c1 != "" && c2 != "" && !strings.EqualFold(c1, "TBD") && !strings.EqualFold(c2, "TBD") {
+				count++
 			}
 		}
 	}
+	return count
+}
 
-	// 2. Try the archived results CDN endpoint (for finished tournaments)
+// FetchOfficialResults retrieves the official match records for a given WTT event ID.
+// Prefers complete archived draws from CDN, falling back to CMS Live API and live schedules for in-progress events.
+func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
+	// 1. Fetch archived results from CDN (standard source of truth for finished tournaments)
 	url := fmt.Sprintf(wttOfficialURLFmt, eventID)
 	if c.baseURL != "" {
 		url = fmt.Sprintf("%s/official_%d.json", c.baseURL, eventID)
 	}
 
-	cardCount := 0
 	var archivedMatches []WTTOfficialMatch
 	data, err := c.fetchAndDecompress(ctx, url)
 	if err == nil {
-		if jErr := json.Unmarshal(data, &archivedMatches); jErr == nil && len(archivedMatches) > 0 {
-			for _, m := range archivedMatches {
-				if len(m.MatchCard.Competitors) >= 2 {
-					cardCount++
-				}
-			}
-			if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
-				return archivedMatches, nil
-			}
-		}
+		_ = json.Unmarshal(data, &archivedMatches)
+	}
+	archivedNamed := countValidNamedMatches(archivedMatches)
+
+	// If archive has a complete draw (e.g. > 10 named matches), return it immediately
+	if archivedNamed > 10 {
+		return archivedMatches, nil
+	}
+
+	// 2. Try CMS Live API (for in-progress/active tournaments where cold archive has not been published yet)
+	liveAPIURL := fmt.Sprintf(wttLiveAPIURLFmt, eventID)
+	if c.baseURL != "" {
+		liveAPIURL = fmt.Sprintf("%s/live_api_%d.json", c.baseURL, eventID)
+	}
+
+	var liveAPIMatches []WTTOfficialMatch
+	liveData, liveErr := c.fetchAndDecompress(ctx, liveAPIURL)
+	if liveErr == nil && len(liveData) > 0 {
+		_ = json.Unmarshal(liveData, &liveAPIMatches)
+	}
+	liveNamed := countValidNamedMatches(liveAPIMatches)
+
+	if liveNamed > archivedNamed {
+		return liveAPIMatches, nil
+	}
+	if archivedNamed > 0 {
+		return archivedMatches, nil
 	}
 
 	// 3. Fallback to live schedule feeds
 	liveMatches, schedErr := c.fetchLiveScheduleMatches(ctx, eventID)
-	if schedErr == nil && len(liveMatches) > cardCount {
+	if schedErr == nil && len(liveMatches) > 0 {
 		return liveMatches, nil
-	}
-	if cardCount > 0 {
-		return archivedMatches, nil
 	}
 
 	if err != nil {
