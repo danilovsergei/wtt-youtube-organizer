@@ -240,6 +240,7 @@ class ScoreExtractor:
             
         INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image.
 CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows, along with their respective set and game scores.
+Ignore any tournament stage or round header banner (e.g. 'BOYS\' SINGLES', 'WOMEN\'S SINGLES', 'R32', 'FINAL'). A player row ALWAYS contains a player name accompanied by two separate score numbers (sets and points). Never transcribe a round banner as a player.
 If only one player row is visible, if the scoreboard is partially cut off, or if no scoreboard is visible in the image, output an empty JSON object: {}
 WARNING: Do not autocorrect or normalize spelling. Foreign names frequently contain unusual double consonants.
 You MUST transcribe the literal pixels exactly as printed, character-by-character.

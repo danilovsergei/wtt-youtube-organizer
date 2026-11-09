@@ -210,4 +210,5 @@ class TestErrorClassification(unittest.TestCase):
         with open("prod_video_processor.py") as f:
             content = f.read()
         self.assertIn("CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows", content)
+        self.assertIn("Ignore any tournament stage or round header banner", content)
         self.assertIn("If only one player row is visible, if the scoreboard is partially cut off", content)
