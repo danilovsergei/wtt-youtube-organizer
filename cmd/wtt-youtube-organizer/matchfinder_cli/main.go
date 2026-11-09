@@ -640,6 +640,9 @@ func processQueueVideos(queuePath string, containerArgs []string) error {
 // Processes videos oldest-first: successful videos are removed from queue,
 // failed videos (docker error) are kept in queue for retry and processing continues.
 func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string, processFilter string, concurrency ...int) error {
+	// Clean up any stale containers from previous runs once before launching workers
+	killStaleMatchFinderContainers()
+
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		return fmt.Errorf("failed to load queue: %w", err)
@@ -986,7 +989,6 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 }
 
 func runDockerContainer(absOutputJSON string, containerArgs []string) error {
-	killStaleMatchFinderContainers()
 
 	outputDir := filepath.Dir(absOutputJSON)
 	outputFilename := filepath.Base(absOutputJSON)
