@@ -220,7 +220,7 @@ func AddNewStreamsWithCutoff(queuePath string, cutoffVideoID string, fetcher Str
 			continue
 		}
 
-		if strings.Contains(lowerTitle, "spanish") {
+		if strings.Contains(lowerTitle, "spanish") || strings.Contains(lowerTitle, "esp comms") {
 			logPrintf("Skipping video %s (title contains 'spanish': '%s')\n", entry.VideoID, entry.VideoTitle)
 			continue
 		}

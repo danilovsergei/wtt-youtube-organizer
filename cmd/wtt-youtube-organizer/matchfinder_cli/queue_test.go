@@ -1296,6 +1296,7 @@ func TestAddNewStreams_SkipsSpanishCommentaryVideos(t *testing.T) {
 		returnEntries: []QueueEntry{
 			{VideoID: "SP1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals (Spanish Commentary)"}, // Should skip
 			{VideoID: "SP2", VideoTitle: "LIVE! | T1 | Day 3 | WTT Contender Tunis 2026 | Session 2 (spanish commentary)"}, // Should skip
+			{VideoID: "ESP1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Star Contender São José Dos Campos 2026 | Finals(ESP Comms)"}, // Should skip
 			{VideoID: "ENG1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals"},                        // Should keep
 			{VideoID: "ENG2", VideoTitle: "LIVE! | T1 | Day 3 | WTT Champions Frankfurt 2026 | Session 1"},                 // Should keep
 		},

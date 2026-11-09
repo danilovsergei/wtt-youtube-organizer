@@ -663,7 +663,7 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 			unwantedRemoved++
 			continue
 		}
-		if strings.Contains(lowerTitle, "spanish") {
+		if strings.Contains(lowerTitle, "spanish") || strings.Contains(lowerTitle, "esp comms") {
 			logPrintf("Skipping and removing video %s (%s) - Title contains 'spanish'\n", entry.VideoTitle, entry.VideoID)
 			unwantedRemoved++
 			continue
