@@ -650,18 +650,24 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		return nil
 	}
 
-	// 1. Initial cleanup of PARA videos in queue
+	// 1. Initial cleanup of PARA and Spanish commentary videos in queue
 	var initialCleaned []QueueEntry
-	paraRemoved := 0
+	unwantedRemoved := 0
 	for _, entry := range queue {
+		lowerTitle := strings.ToLower(entry.VideoTitle)
 		if paraWordRegex.MatchString(entry.VideoTitle) {
 			logPrintf("Skipping and removing video %s (%s) - Title contains 'PARA'\n", entry.VideoTitle, entry.VideoID)
-			paraRemoved++
+			unwantedRemoved++
+			continue
+		}
+		if strings.Contains(lowerTitle, "spanish") {
+			logPrintf("Skipping and removing video %s (%s) - Title contains 'spanish'\n", entry.VideoTitle, entry.VideoID)
+			unwantedRemoved++
 			continue
 		}
 		initialCleaned = append(initialCleaned, entry)
 	}
-	if paraRemoved > 0 {
+	if unwantedRemoved > 0 {
 		queue = initialCleaned
 		_ = SaveQueue(queuePath, queue)
 	}

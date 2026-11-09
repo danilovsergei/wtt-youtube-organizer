@@ -1285,3 +1285,80 @@ func TestProcessQueue_ParallelWorkers_WithFailure(t *testing.T) {
 		t.Errorf("expected RETRY to be in queue, got %s", remaining[0].VideoID)
 	}
 }
+
+// --- Tests for Filtering Spanish Commentary Videos ---
+
+func TestAddNewStreams_SkipsSpanishCommentaryVideos(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	fetcher := &mockStreamFetcher{
+		returnEntries: []QueueEntry{
+			{VideoID: "SP1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals (Spanish Commentary)"}, // Should skip
+			{VideoID: "SP2", VideoTitle: "LIVE! | T1 | Day 3 | WTT Contender Tunis 2026 | Session 2 (spanish commentary)"}, // Should skip
+			{VideoID: "ENG1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals"},                        // Should keep
+			{VideoID: "ENG2", VideoTitle: "LIVE! | T1 | Day 3 | WTT Champions Frankfurt 2026 | Session 1"},                 // Should keep
+		},
+	}
+
+	count, err := AddNewStreams(queuePath, "dummy_id", fetcher, "", nil)
+	if err != nil {
+		t.Fatalf("AddNewStreams failed: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Expected 2 videos to be added, got %d", count)
+	}
+
+	queue, _ := LoadQueue(queuePath)
+	if len(queue) != 2 {
+		t.Fatalf("Expected 2 videos in queue, got %d", len(queue))
+	}
+
+	expectedIDs := []string{"ENG1", "ENG2"}
+	assertIDs(t, queue, expectedIDs)
+}
+
+func TestProcessQueue_SkipsAndRemovesSpanishVideos(t *testing.T) {
+	tmpDir := t.TempDir()
+	queuePath := filepath.Join(tmpDir, "test_queue.json")
+
+	entries := []QueueEntry{
+		{VideoID: "ENG1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals"},
+		{VideoID: "SP1", VideoTitle: "LIVE! | T1 | Day 4 | WTT Contender Tunis 2026 | Finals (Spanish Commentary)"}, // Should skip & remove
+		{VideoID: "ENG2", VideoTitle: "LIVE! | T2 | Day 2 | WTT Champions Frankfurt 2026"},
+	}
+	SaveQueue(queuePath, entries)
+
+	var processedIDs []string
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, args []string) error { return nil },
+		importJSON: func(jsonFilePath string) error {
+			for _, id := range []string{"ENG1", "SP1", "ENG2"} {
+				if strings.Contains(jsonFilePath, "matches-"+id+"-") {
+					processedIDs = append(processedIDs, id)
+				}
+			}
+			return nil
+		},
+	}
+
+	err := processQueueVideosWithDeps(queuePath, deps, []string{}, "")
+	if err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	// Only ENG2 and ENG1 should have been processed
+	if len(processedIDs) != 2 {
+		t.Fatalf("Expected 2 videos processed, got %d: %v", len(processedIDs), processedIDs)
+	}
+	if processedIDs[0] != "ENG2" || processedIDs[1] != "ENG1" {
+		t.Errorf("Expected videos ENG2 and ENG1 to be processed, got %v", processedIDs)
+	}
+
+	// Verify that Spanish video SP1 was removed from queue on disk
+	remaining, _ := LoadQueue(queuePath)
+	if len(remaining) != 0 {
+		t.Fatalf("Expected 0 videos left in queue after processing, got %d: %v", len(remaining), remaining)
+	}
+}

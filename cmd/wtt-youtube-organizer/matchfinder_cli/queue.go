@@ -220,6 +220,11 @@ func AddNewStreamsWithCutoff(queuePath string, cutoffVideoID string, fetcher Str
 			continue
 		}
 
+		if strings.Contains(lowerTitle, "spanish") {
+			logPrintf("Skipping video %s (title contains 'spanish': '%s')\n", entry.VideoID, entry.VideoTitle)
+			continue
+		}
+
 		if filterTitle != "" && !strings.Contains(entry.VideoTitle, filterTitle) {
 			logPrintf("Filtering out video %s (does not match add_new_streams_filter '%s')\n", entry.VideoID, filterTitle)
 			continue

@@ -23,6 +23,7 @@ const (
 	wttDropdownURL    = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_event_subevent_dropdown_list.json"
 	wttAllEventsURL   = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_all_events_only_name.json"
 	wttOfficialURLFmt = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitearchivedresults/%d/officialresult/officialresult.json"
+	wttLiveAPIURLFmt  = "https://wtt-website-api-vm-frontdoor-hhaec5epbhdyfugz.a01.azurefd.net/liveeventsapi/api/cms/GetOfficialResult?EventId=%d&include_match_card=true"
 )
 
 // WTTClient fetches data from the official WTT Azure CDN endpoints.
@@ -64,6 +65,9 @@ func (c *WTTClient) fetchAndDecompress(ctx context.Context, targetURL string) ([
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Origin", "https://worldtabletennis.com")
+	req.Header.Set("Referer", "https://worldtabletennis.com/")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 
 	resp, err := c.httpClient.Do(req)
@@ -342,8 +346,31 @@ func (c *WTTClient) FindEventIDByDate(ctx context.Context, query string, targetD
 }
 
 // FetchOfficialResults retrieves the official match records for a given WTT event ID.
-// Seamlessly falls back to live in-progress schedule and top-10 cache for active tournaments.
+// Seamlessly handles active events via CMS Live API, falling back to archived results and live schedule feeds.
 func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
+	// 1. Try CMS Live API (returns all completed & in-progress matches across all days with full cards)
+	liveAPIURL := fmt.Sprintf(wttLiveAPIURLFmt, eventID)
+	if c.baseURL != "" {
+		liveAPIURL = fmt.Sprintf("%s/live_api_%d.json", c.baseURL, eventID)
+	}
+
+	liveData, liveErr := c.fetchAndDecompress(ctx, liveAPIURL)
+	if liveErr == nil && len(liveData) > 0 {
+		var liveAPIMatches []WTTOfficialMatch
+		if jErr := json.Unmarshal(liveData, &liveAPIMatches); jErr == nil && len(liveAPIMatches) > 0 {
+			validCards := 0
+			for _, m := range liveAPIMatches {
+				if len(m.MatchCard.Competitors) >= 2 {
+					validCards++
+				}
+			}
+			if validCards > 0 {
+				return liveAPIMatches, nil
+			}
+		}
+	}
+
+	// 2. Try the archived results CDN endpoint (for finished tournaments)
 	url := fmt.Sprintf(wttOfficialURLFmt, eventID)
 	if c.baseURL != "" {
 		url = fmt.Sprintf("%s/official_%d.json", c.baseURL, eventID)
@@ -359,16 +386,16 @@ func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WT
 					cardCount++
 				}
 			}
+			if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
+				return archivedMatches, nil
+			}
 		}
 	}
 
-	// Active/In-Progress live fallback (e.g. Frankfurt 2026, Gaia 2026)
-	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
-	if liveErr == nil && len(liveMatches) > cardCount {
+	// 3. Fallback to live schedule feeds
+	liveMatches, schedErr := c.fetchLiveScheduleMatches(ctx, eventID)
+	if schedErr == nil && len(liveMatches) > cardCount {
 		return liveMatches, nil
-	}
-	if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
-		return archivedMatches, nil
 	}
 	if cardCount > 0 {
 		return archivedMatches, nil
