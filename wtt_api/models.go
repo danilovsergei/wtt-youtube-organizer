@@ -122,6 +122,8 @@ type MatchedRecord struct {
 
 	// WTT Official Match Details
 	WTTRound           string `json:"wtt_round,omitempty"`
+	StageOrder         int    `json:"stage_order"`
+	IsBroadcastMatch   bool   `json:"is_broadcast_match,omitempty"`
 	WTTGender          string `json:"wtt_gender,omitempty"`
 	WTTScore           string `json:"wtt_score,omitempty"`
 	WTTGameScores      string `json:"wtt_game_scores,omitempty"`

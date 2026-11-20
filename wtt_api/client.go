@@ -23,6 +23,7 @@ const (
 	wttDropdownURL    = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_event_subevent_dropdown_list.json"
 	wttAllEventsURL   = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitestaticapifiles/general/wtt_all_events_only_name.json"
 	wttOfficialURLFmt = "https://wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net/websitearchivedresults/%d/officialresult/officialresult.json"
+	wttLiveAPIURLFmt  = "https://wtt-website-api-vm-frontdoor-hhaec5epbhdyfugz.a01.azurefd.net/liveeventsapi/api/cms/GetOfficialResult?EventId=%d&include_match_card=true"
 )
 
 // WTTClient fetches data from the official WTT Azure CDN endpoints.
@@ -64,6 +65,9 @@ func (c *WTTClient) fetchAndDecompress(ctx context.Context, targetURL string) ([
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Origin", "https://worldtabletennis.com")
+	req.Header.Set("Referer", "https://worldtabletennis.com/")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 
 	resp, err := c.httpClient.Do(req)
@@ -341,38 +345,65 @@ func (c *WTTClient) FindEventIDByDate(ctx context.Context, query string, targetD
 	return c.FindEventIDByQuery(ctx, query, targetDate.Year())
 }
 
+func countValidNamedMatches(matches []WTTOfficialMatch) int {
+	count := 0
+	for _, m := range matches {
+		if len(m.MatchCard.Competitors) >= 2 {
+			c1 := strings.TrimSpace(m.MatchCard.Competitors[0].CompetitorName)
+			c2 := strings.TrimSpace(m.MatchCard.Competitors[1].CompetitorName)
+			if c1 != "" && c2 != "" && !strings.EqualFold(c1, "TBD") && !strings.EqualFold(c2, "TBD") {
+				count++
+			}
+		}
+	}
+	return count
+}
+
 // FetchOfficialResults retrieves the official match records for a given WTT event ID.
-// Seamlessly falls back to live in-progress schedule and top-10 cache for active tournaments.
+// Prefers complete archived draws from CDN, falling back to CMS Live API and live schedules for in-progress events.
 func (c *WTTClient) FetchOfficialResults(ctx context.Context, eventID int) ([]WTTOfficialMatch, error) {
+	// 1. Fetch archived results from CDN (standard source of truth for finished tournaments)
 	url := fmt.Sprintf(wttOfficialURLFmt, eventID)
 	if c.baseURL != "" {
 		url = fmt.Sprintf("%s/official_%d.json", c.baseURL, eventID)
 	}
 
-	cardCount := 0
 	var archivedMatches []WTTOfficialMatch
 	data, err := c.fetchAndDecompress(ctx, url)
 	if err == nil {
-		if jErr := json.Unmarshal(data, &archivedMatches); jErr == nil && len(archivedMatches) > 0 {
-			for _, m := range archivedMatches {
-				if len(m.MatchCard.Competitors) >= 2 {
-					cardCount++
-				}
-			}
-			// If archive is complete and populated with competitor cards, return it
-			if cardCount > 10 && cardCount >= len(archivedMatches)/2 {
-				return archivedMatches, nil
-			}
-		}
+		_ = json.Unmarshal(data, &archivedMatches)
+	}
+	archivedNamed := countValidNamedMatches(archivedMatches)
+
+	// If archive has a complete draw (e.g. > 10 named matches), return it immediately
+	if archivedNamed > 10 {
+		return archivedMatches, nil
 	}
 
-	// Active/In-Progress live fallback (e.g. Frankfurt 2026, Gaia 2026)
-	liveMatches, liveErr := c.fetchLiveScheduleMatches(ctx, eventID)
-	if liveErr == nil && len(liveMatches) > cardCount {
-		return liveMatches, nil
+	// 2. Try CMS Live API (for in-progress/active tournaments where cold archive has not been published yet)
+	liveAPIURL := fmt.Sprintf(wttLiveAPIURLFmt, eventID)
+	if c.baseURL != "" {
+		liveAPIURL = fmt.Sprintf("%s/live_api_%d.json", c.baseURL, eventID)
 	}
-	if cardCount > 0 {
+
+	var liveAPIMatches []WTTOfficialMatch
+	liveData, liveErr := c.fetchAndDecompress(ctx, liveAPIURL)
+	if liveErr == nil && len(liveData) > 0 {
+		_ = json.Unmarshal(liveData, &liveAPIMatches)
+	}
+	liveNamed := countValidNamedMatches(liveAPIMatches)
+
+	if liveNamed > archivedNamed {
+		return liveAPIMatches, nil
+	}
+	if archivedNamed > 0 {
 		return archivedMatches, nil
+	}
+
+	// 3. Fallback to live schedule feeds
+	liveMatches, schedErr := c.fetchLiveScheduleMatches(ctx, eventID)
+	if schedErr == nil && len(liveMatches) > 0 {
+		return liveMatches, nil
 	}
 
 	if err != nil {
