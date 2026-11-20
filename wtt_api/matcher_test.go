@@ -648,3 +648,170 @@ func TestAlignMatches_TimeBonusElevatesNearThresholdMatch(t *testing.T) {
 		t.Errorf("expected match 602 to remain unmatched without time bonus")
 	}
 }
+
+func TestNameSimilarity_ConcatenatedCompoundSurnames(t *testing.T) {
+	// Tests that compound/concatenated French or compound names match official spaced names
+	score := NameSimilarity("ANTOINEMICHARD", "ANTOINE MICHARD Maxime")
+	if score < 0.75 {
+		t.Errorf("Expected concatenated 'ANTOINEMICHARD' to match 'ANTOINE MICHARD Maxime' with score >= 0.75, got %.3f", score)
+	}
+
+	scorePairA := NameSimilarity("FASO & C OCAL", "FASO Danilo/OCAL Gorkem")
+	scorePairB := NameSimilarity("DORCESCU & ANTOINEMICHARD", "ANTOINE MICHARD Maxime/DORCESCU Denis")
+	avg := (scorePairA + scorePairB) / 2.0
+	if avg < 0.75 {
+		t.Errorf("Expected full doubles match to align with avg >= 0.75, got %.3f", avg)
+	}
+}
+
+func TestStageExtractionAndOrdering(t *testing.T) {
+	cases := []struct {
+		code     string
+		desc     string
+		expRound string
+		expOrder int
+	}{
+		{"TTEMSINGLES-----------FNL-000100----------", "Men's Singles Final", "Final", 8},
+		{"TTEWSINGLES-----------SFNL000100----------", "Women's Semifinal", "Semi-Final", 7},
+		{"TTEMSINGLES-----------QFNL000100----------", "Men's Quarterfinal", "Quarter-Final", 6},
+		{"TTEMDOUBLES-----------8FNL000100----------", "Men's Doubles Round of 16", "Round of 16", 5},
+		{"TTEMSINGLES-----------R32-001600----------", "Men's Singles Round of 32", "Round of 32", 4},
+		{"TTEMSINGLES-----------R64-000100----------", "Men's Singles Round of 64", "Round of 64", 3},
+		{"TTEMSINGLES-----------R128-000100---------", "Round of 128", "Round of 128", 2},
+		{"TTEMSINGLES-----------RND1000100----------", "Qualifying Round 1", "Qualifying", 1},
+		{"TTEWSINGLES--------U11GP01000300----------", "U11 Group Stage", "U11 Group Stage", 1},
+		{"TTEMSINGLES--------U19FNL-000100----------", "U19 Boys Final", "U19 Final", 8},
+		{"TTEWSINGLES--------U15FNL-000100----------", "U15 Girls Final", "U15 Final", 8},
+		{"TTEWSINGLES--------U13SFNL000100----------", "U13 Girls Semifinal", "U13 Semi-Final", 7},
+	}
+
+	for _, c := range cases {
+		rnd := ExtractRoundFromDocumentCode(c.code, c.desc)
+		if rnd != c.expRound {
+			t.Errorf("ExtractRoundFromDocumentCode(%q, %q) = %q, expected %q", c.code, c.desc, rnd, c.expRound)
+		}
+		ord := GetStageOrder(rnd)
+		if ord != c.expOrder {
+			t.Errorf("GetStageOrder(%q) = %d, expected %d", rnd, ord, c.expOrder)
+		}
+	}
+}
+
+func TestInferStageForUnmatched_SiblingStreamContext(t *testing.T) {
+	// Unmatched match shares video_id 500 with a matched Round of 32 match
+	unmatchedDB := &DBMatchRecord{
+		ID:                 999,
+		VideoID:            500,
+		VideoTitle:         "LIVE! | T3 | Day 4 | Europe Smash - Sweden 2026 | Session 1",
+		Day:                "Day 4",
+		VideoOffsetSeconds: 8971,
+	}
+
+	matches := []MatchedRecord{
+		{
+			IsMatched: true,
+			DBMatch: &DBMatchRecord{
+				ID:      101,
+				VideoID: 500,
+			},
+			WTTRound:   "Round of 32",
+			StageOrder: 4,
+		},
+	}
+
+	stage, order := InferStageForUnmatched(unmatchedDB, matches)
+	if stage != "Round of 32" || order != 4 {
+		t.Errorf("Expected inferred stage 'Round of 32' with order 4 from stream sibling, got %q (order %d)", stage, order)
+	}
+}
+
+func TestInferStageForUnmatched_TitleAndDayFallback(t *testing.T) {
+	cases := []struct {
+		title    string
+		day      string
+		expRound string
+		expOrder int
+	}{
+		{"LIVE! | Day 7 | Finals", "Day 7 Finals", "Final", 8},
+		{"LIVE! | Day 6 | Semifinals", "Day 6 Semifinals", "Semi-Final", 7},
+		{"LIVE! | Day 5 | Quarterfinals", "Day 5 Quarterfinals", "Quarter-Final", 6},
+		{"LIVE! | Day 4 | Round of 16", "Day 4", "Round of 16", 5},
+		{"LIVE! | T1 | Day 4 | Session 1", "Day 4", "Round of 32", 4},
+		{"LIVE! | T1 | Q Day 1 | Session 1", "Q Day 1", "Qualifying", 1},
+	}
+
+	for _, c := range cases {
+		dbm := &DBMatchRecord{
+			ID:         123,
+			VideoTitle: c.title,
+			Day:        c.day,
+		}
+		stage, order := InferStageForUnmatched(dbm, nil)
+		if stage != c.expRound || order != c.expOrder {
+			t.Errorf("InferStageForUnmatched(%q, %q) = (%q, %d), expected (%q, %d)", c.title, c.day, stage, order, c.expRound, c.expOrder)
+		}
+	}
+}
+
+func TestMatchVideoToWTTEvent(t *testing.T) {
+	mockEntries := []WTTEventDropdownEntry{
+		{EventID: 3256, EventName: "WTT Star Contender Muscat 2026"},
+		{EventID: 3252, EventName: "WTT Champions Frankfurt 2026"},
+		{EventID: 3330, EventName: "WTT Youth Contender Gangneung 2026"},
+		{EventID: 3234, EventName: "Singapore Smash 2026 Presented by Satellite Chemical"},
+		{EventID: 3249, EventName: "China Smash 2026 Presented by ..."},
+	}
+
+	tests := []struct {
+		title      string
+		uploadYear int
+		wantID     int
+		wantName   string
+		wantYear   int
+		wantFound  bool
+	}{
+		{"LIVE! | T1 | Q Day 1 | WTT Star Contender Muscat | Session 1", 2026, 3256, "WTT Star Contender Muscat", 2026, true},
+		{"LIVE! | Day 4 | Infinity Arena I WTT Champions Frankfurt 2026 | Session 2", 2026, 3252, "WTT Champions Frankfurt", 2026, true},
+		{"LIVE! | T2 | Day 4 | WTT Youth Contender Gangneung 2026 | Session 1", 2026, 3330, "WTT Youth Contender Gangneung", 2026, true},
+		{"LIVE! | T1 | Day 5 | Singapore Smash 2026 Presented by ... | Session 2", 2026, 3234, "Singapore Smash", 2026, true},
+		{"Unknown Title Without Match", 2026, 0, "", 0, false},
+	}
+
+	for _, tc := range tests {
+		gotID, gotName, gotYear, gotFound := MatchVideoToWTTEvent(mockEntries, tc.title, tc.uploadYear)
+		if gotFound != tc.wantFound {
+			t.Errorf("MatchVideoToWTTEvent(%q) found=%v, want %v", tc.title, gotFound, tc.wantFound)
+		}
+		if gotFound {
+			if gotID != tc.wantID {
+				t.Errorf("MatchVideoToWTTEvent(%q) ID=%d, want %d", tc.title, gotID, tc.wantID)
+			}
+			if gotName != tc.wantName {
+				t.Errorf("MatchVideoToWTTEvent(%q) Name=%q, want %q", tc.title, gotName, tc.wantName)
+			}
+			if gotYear != tc.wantYear {
+				t.Errorf("MatchVideoToWTTEvent(%q) Year=%d, want %d", tc.title, gotYear, tc.wantYear)
+			}
+		}
+	}
+}
+
+func TestExtractDayFromTitle(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"LIVE! | T1 | Q Day 1 | WTT Star Contender Muscat | Session 1", "Q Day 1"},
+		{"LIVE! | Day 4 | Infinity Arena I WTT Champions Frankfurt 2026 | Session 2", "Day 4"},
+		{"LIVE! | Day 7 | Finals | China Smash 2026", "Day 7"},
+		{"LIVE! | Finals | Session 1", "Finals"},
+		{"No Day Marker In Title", "Day 1"},
+	}
+
+	for _, tc := range tests {
+		got := ExtractDayFromTitle(tc.title)
+		if got != tc.want {
+			t.Errorf("ExtractDayFromTitle(%q) = %q, want %q", tc.title, got, tc.want)
+		}
+	}
+}

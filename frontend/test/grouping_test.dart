@@ -122,3 +122,97 @@ void main() {
   });
 }
 
+
+  testWidgets('Groups matches by canonical stage and stageOrder, positioning Final at top and rendering Broadcast Match chip', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final stageMatches = [
+      Match(
+        id: 'stage_f',
+        title: 'Final Match',
+        tournamentId: 't1',
+        date: '2026-08-16',
+        time: '18:00',
+        imageUrl: '',
+        tag: 'Singles',
+        day: 'Day 7',
+        stage: 'Final',
+        stageOrder: 8,
+        effectiveTimestamp: DateTime.parse('2026-08-16T18:00:00Z'),
+      ),
+      Match(
+        id: 'stage_sf',
+        title: 'Semifinal Match',
+        tournamentId: 't1',
+        date: '2026-08-15',
+        time: '18:00',
+        imageUrl: '',
+        tag: 'Singles',
+        day: 'Day 6',
+        stage: 'Semi-Final',
+        stageOrder: 7,
+        effectiveTimestamp: DateTime.parse('2026-08-15T18:00:00Z'),
+      ),
+      Match(
+        id: 'stage_qf',
+        title: 'Quarterfinal Match',
+        tournamentId: 't1',
+        date: '2026-08-14',
+        time: '18:00',
+        imageUrl: '',
+        tag: 'Singles',
+        day: 'Day 5',
+        stage: 'Quarter-Final',
+        stageOrder: 6,
+        effectiveTimestamp: DateTime.parse('2026-08-14T18:00:00Z'),
+      ),
+      Match(
+        id: 'stage_r32',
+        title: 'Broadcast Unmatched Match',
+        tournamentId: 't1',
+        date: '2026-08-13',
+        time: '18:00',
+        imageUrl: '',
+        tag: 'Singles',
+        day: 'Day 4',
+        stage: 'Round of 32',
+        stageOrder: 4,
+        isBroadcastMatch: true,
+        effectiveTimestamp: DateTime.parse('2026-08-13T18:00:00Z'),
+      ),
+    ];
+
+    filterController.setDebugData(mockTournaments, stageMatches);
+
+    await tester.pumpWidget(const WttApp());
+    await tester.pump();
+
+    // Select tournament
+    final tournamentFinder = find.text('WTT Champions Test').first;
+    expect(tournamentFinder, findsOneWidget);
+    await tester.tap(tournamentFinder);
+    await tester.pump();
+
+    // Verify all stage group headers are displayed
+    expect(find.text('Final'), findsOneWidget);
+    expect(find.text('Semi-Final'), findsOneWidget);
+    expect(find.text('Quarter-Final'), findsOneWidget);
+    expect(find.text('Round of 32'), findsOneWidget);
+
+    // Verify ordering by vertical positions (stage_order descending: 8 -> 7 -> 6 -> 4)
+    final dyFinal = tester.getTopLeft(find.text('Final')).dy;
+    final dySemi = tester.getTopLeft(find.text('Semi-Final')).dy;
+    final dyQuarter = tester.getTopLeft(find.text('Quarter-Final')).dy;
+    final dyR32 = tester.getTopLeft(find.text('Round of 32')).dy;
+
+    expect(dyFinal < dySemi, isTrue, reason: 'Final (order 8) must appear above Semi-Final (order 7)');
+    expect(dySemi < dyQuarter, isTrue, reason: 'Semi-Final (order 7) must appear above Quarter-Final (order 6)');
+    expect(dyQuarter < dyR32, isTrue, reason: 'Quarter-Final (order 6) must appear above Round of 32 (order 4)');
+
+    // Verify that the Broadcast Match badge is rendered for the inferred match
+    expect(find.text('Broadcast Match'), findsOneWidget);
+  });

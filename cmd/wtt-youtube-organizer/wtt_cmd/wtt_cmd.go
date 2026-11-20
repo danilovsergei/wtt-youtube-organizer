@@ -134,6 +134,7 @@ func newGenerateReportCommand() *cobra.Command {
 	var eventID int
 	var outputPath string
 	var threshold float64
+	var writeDB bool
 
 	cmd := &cobra.Command{
 		Use:   "generate-report",
@@ -209,6 +210,15 @@ func newGenerateReportCommand() *cobra.Command {
 				return fmt.Errorf("failed to write audit report to %s: %w", outputPath, err)
 			}
 
+			if writeDB {
+				fmt.Println("Writing matched WTT data and stages back to database...")
+				count, pErr := persistMatches(ctx, conn, report.Matches)
+				if pErr != nil {
+					return fmt.Errorf("failed to write back to database: %w", pErr)
+				}
+				fmt.Printf("✅ Successfully updated %d matches in database!\n", count)
+			}
+
 			// Print summary table
 			fmt.Println("\n" + strings.Repeat("=", 60))
 			fmt.Println("             WTT MATCH ALIGNMENT AUDIT SUMMARY")
@@ -237,6 +247,7 @@ func newGenerateReportCommand() *cobra.Command {
 	cmd.Flags().IntVarP(&eventID, "event-id", "e", 0, "WTT Event ID (optional; auto-resolved if omitted)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Path to write output audit JSON file")
 	cmd.Flags().Float64VarP(&threshold, "threshold", "s", 0.70, "Minimum similarity score threshold (0.0 - 1.0, default 0.70)")
+	cmd.Flags().BoolVar(&writeDB, "write-db", false, "Write matched WTT results and resolved stages back to database")
 
 	_ = cmd.MarkFlagRequired("tournament-name")
 	return cmd
@@ -307,6 +318,7 @@ func queryDBMatches(ctx context.Context, conn *pgx.Conn, tournamentName string, 
 func newAuditAllCommand() *cobra.Command {
 	var outputPath string
 	var threshold float64
+	var writeDB bool
 
 	cmd := &cobra.Command{
 		Use:   "audit-all",
@@ -324,7 +336,7 @@ func newAuditAllCommand() *cobra.Command {
 				return fmt.Errorf("DATABASE_URL environment variable is required")
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 			defer cancel()
 
 			fmt.Println("Connecting to Supabase...")
@@ -498,6 +510,15 @@ func newAuditAllCommand() *cobra.Command {
 				totalMatchedMatches += tourneyReport.MatchedCount
 				totalUnmatchedDBMatches += tourneyReport.UnmatchedDBCount
 
+				if writeDB {
+					updated, pErr := persistMatches(ctx, conn, tourneyReport.Matches)
+					if pErr != nil {
+						fmt.Printf("  WARNING: Failed to persist matches to DB: %v\n", pErr)
+					} else {
+						fmt.Printf("  ✅ Persisted %d matches to DB\n", updated)
+					}
+				}
+
 				tEntry := wtt_api.TournamentAuditEntry{
 					IsTournamentMatched:   true,
 					DBTournamentID:        t.id,
@@ -557,5 +578,80 @@ func newAuditAllCommand() *cobra.Command {
 
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "/home/geonix/Build/wtt_full_database_mapping_audit.json", "Output master audit JSON path")
 	cmd.Flags().Float64VarP(&threshold, "threshold", "s", 0.70, "Minimum similarity score threshold (0.0 - 1.0, default 0.70)")
+	cmd.Flags().BoolVar(&writeDB, "write-db", false, "Write matched WTT results and resolved stages back to database")
 	return cmd
+}
+
+func persistMatches(ctx context.Context, conn *pgx.Conn, matches []wtt_api.MatchedRecord) (int, error) {
+	batch := &pgx.Batch{}
+	count := 0
+
+	for _, m := range matches {
+		if m.DBMatch == nil || m.IsDuplicate {
+			continue
+		}
+
+		var wttMatchID *int64
+		if m.WTTMatchID > 0 {
+			wttMatchID = &m.WTTMatchID
+		}
+
+		var startTime *time.Time
+		if m.WTTMatchStartUTC != "" {
+			if t, err := time.Parse("02/01/2006 15:04:05", m.WTTMatchStartUTC); err == nil {
+				startTime = &t
+			} else if t, err := time.Parse(time.RFC3339, m.WTTMatchStartUTC); err == nil {
+				startTime = &t
+			}
+		}
+
+		stage := m.WTTRound
+		if stage == "" {
+			stage = "Round Match"
+		}
+		stageOrder := m.StageOrder
+		if stageOrder <= 0 {
+			stageOrder = 1
+		}
+
+		batch.Queue(`
+			UPDATE matches SET
+				wtt_match_id = $1,
+				wtt_round = $2,
+				stage_order = $3,
+				is_broadcast_match = $4,
+				wtt_gender = $5,
+				wtt_score = $6,
+				wtt_game_scores = $7,
+				wtt_match_start_utc = $8
+			WHERE id = $9;
+		`,
+			wttMatchID,
+			stage,
+			stageOrder,
+			m.IsBroadcastMatch,
+			m.WTTGender,
+			m.WTTScore,
+			m.WTTGameScores,
+			startTime,
+			m.DBMatch.ID,
+		)
+		count++
+	}
+
+	if count == 0 {
+		return 0, nil
+	}
+
+	br := conn.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for i := 0; i < count; i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return i, fmt.Errorf("batch exec failed at %d: %w", i, err)
+		}
+	}
+
+	return count, nil
 }

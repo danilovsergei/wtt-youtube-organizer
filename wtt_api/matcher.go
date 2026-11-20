@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -114,7 +115,21 @@ func LevenshteinDistance(s1, s2 string) int {
 	return dp[n][m]
 }
 
+func filterInitials(tokens []string) []string {
+	var filtered []string
+	for _, t := range tokens {
+		if len([]rune(t)) > 1 {
+			filtered = append(filtered, t)
+		}
+	}
+	if len(filtered) == 0 {
+		return tokens
+	}
+	return filtered
+}
+
 func tokenSimilarity(tokens1, tokens2 []string) float64 {
+	tokens1 = filterInitials(tokens1)
 	if len(tokens1) == 0 || len(tokens2) == 0 {
 		return 0.0
 	}
@@ -128,6 +143,14 @@ func tokenSimilarity(tokens1, tokens2 []string) float64 {
 			}
 			dist := LevenshteinDistance(t1, t2)
 			score := 1.0 - (float64(dist) / maxLen)
+
+			// Compound/concatenated token support (e.g. "ANTOINEMICHARD" contains "ANTOINE" and "MICHARD")
+			if (len(t2) >= 4 && strings.Contains(t1, t2)) || (len(t1) >= 4 && strings.Contains(t2, t1)) {
+				if 1.0 > score {
+					score = 1.0
+				}
+			}
+
 			if score > maxTScore {
 				maxTScore = score
 			}
@@ -219,51 +242,174 @@ func PairSimilarity(dbA, dbB, wttA, wttB string) (float64, bool) {
 	return swapped, true
 }
 
+func extractAgePrefix(docCode, subEventDesc string) string {
+	combined := strings.ToUpper(docCode + " " + subEventDesc)
+	for _, age := range []string{"U19", "U17", "U15", "U13", "U11"} {
+		if strings.Contains(combined, age) {
+			return age + " "
+		}
+	}
+	return ""
+}
+
 func ExtractRoundFromDocumentCode(docCode, subEventDesc string) string {
 	doc := strings.ToUpper(docCode)
-	if strings.Contains(doc, "FNL-000100") || strings.Contains(doc, "-FNL-") {
-		return "Final"
+	agePrefix := extractAgePrefix(docCode, subEventDesc)
+
+	if strings.Contains(doc, "FNL-000100") || strings.Contains(doc, "-FNL-") || strings.Contains(doc, "---FNL") {
+		return agePrefix + "Final"
 	}
-	if strings.Contains(doc, "-SFNL-") {
-		return "Semi-Final"
+	if strings.Contains(doc, "-SFNL-") || strings.Contains(doc, "---SFNL") {
+		return agePrefix + "Semi-Final"
 	}
-	if strings.Contains(doc, "-QFNL-") {
-		return "Quarter-Final"
+	if strings.Contains(doc, "-QFNL-") || strings.Contains(doc, "---QFNL") {
+		return agePrefix + "Quarter-Final"
 	}
-	if strings.Contains(doc, "-R16-") {
-		return "Round of 16"
+	if strings.Contains(doc, "-R16-") || strings.Contains(doc, "-8FNL-") || strings.Contains(doc, "---8FNL") {
+		return agePrefix + "Round of 16"
 	}
-	if strings.Contains(doc, "-R32-") {
-		return "Round of 32"
+	if strings.Contains(doc, "-R32-") || strings.Contains(doc, "---R32") {
+		return agePrefix + "Round of 32"
 	}
-	if strings.Contains(doc, "-R64-") {
-		return "Round of 64"
+	if strings.Contains(doc, "-R64-") || strings.Contains(doc, "---R64") {
+		return agePrefix + "Round of 64"
 	}
-	if strings.Contains(doc, "-R128-") {
-		return "Round of 128"
+	if strings.Contains(doc, "-R128-") || strings.Contains(doc, "---R128") {
+		return agePrefix + "Round of 128"
 	}
-	if strings.Contains(doc, "-QUAL-") {
-		return "Qualifying"
+	if strings.Contains(doc, "-QUAL-") || strings.Contains(doc, "-RND1-") || strings.Contains(doc, "-RND2-") || strings.Contains(doc, "-RND3-") || strings.Contains(doc, "---RND") {
+		return agePrefix + "Qualifying"
+	}
+	if strings.Contains(doc, "-GP") || strings.Contains(doc, "-GROUP") {
+		return agePrefix + "Group Stage"
 	}
 
 	desc := strings.ToLower(subEventDesc)
 	if strings.Contains(desc, "final") && !strings.Contains(desc, "semi") && !strings.Contains(desc, "quarter") {
-		return "Final"
+		return agePrefix + "Final"
 	}
 	if strings.Contains(desc, "semi-final") || strings.Contains(desc, "semifinal") {
-		return "Semi-Final"
+		return agePrefix + "Semi-Final"
 	}
 	if strings.Contains(desc, "quarter-final") || strings.Contains(desc, "quarterfinal") {
-		return "Quarter-Final"
+		return agePrefix + "Quarter-Final"
 	}
-	if strings.Contains(desc, "round of 16") {
-		return "Round of 16"
+	if strings.Contains(desc, "round of 16") || strings.Contains(desc, "r16") {
+		return agePrefix + "Round of 16"
 	}
-	if strings.Contains(desc, "round of 32") {
-		return "Round of 32"
+	if strings.Contains(desc, "round of 32") || strings.Contains(desc, "r32") {
+		return agePrefix + "Round of 32"
+	}
+	if strings.Contains(desc, "round of 64") || strings.Contains(desc, "r64") {
+		return agePrefix + "Round of 64"
+	}
+	if strings.Contains(desc, "round of 128") || strings.Contains(desc, "r128") {
+		return agePrefix + "Round of 128"
+	}
+	if strings.Contains(desc, "group") {
+		return agePrefix + "Group Stage"
+	}
+	if strings.Contains(desc, "qualifying") || strings.Contains(desc, "preliminary") {
+		return agePrefix + "Qualifying"
 	}
 
-	return "Round Match"
+	return agePrefix + "Round Match"
+}
+
+// GetStageOrder maps standard stage names to deterministic bracket sorting integers (1..8)
+func GetStageOrder(stage string) int {
+	s := strings.ToLower(stage)
+	if strings.Contains(s, "final") && !strings.Contains(s, "semi") && !strings.Contains(s, "quarter") {
+		return 8
+	}
+	if strings.Contains(s, "semi") {
+		return 7
+	}
+	if strings.Contains(s, "quarter") {
+		return 6
+	}
+	if strings.Contains(s, "16") {
+		return 5
+	}
+	if strings.Contains(s, "32") {
+		return 4
+	}
+	if strings.Contains(s, "64") {
+		return 3
+	}
+	if strings.Contains(s, "128") {
+		return 2
+	}
+	if strings.Contains(s, "group") || strings.Contains(s, "qualifying") || strings.Contains(s, "prelim") {
+		return 1
+	}
+	return 1
+}
+
+// InferStageForUnmatched infers stage name and order for unmatched DB matches using stream sibling context and title/day fallback
+func InferStageForUnmatched(dbm *DBMatchRecord, allMatches []MatchedRecord) (string, int) {
+	if dbm == nil {
+		return "Round Match", 1
+	}
+
+	// 1. Sibling matches sharing the exact same video_id (court stream)
+	for _, m := range allMatches {
+		if m.DBMatch != nil && m.DBMatch.VideoID == dbm.VideoID && m.WTTRound != "" && m.IsMatched {
+			return m.WTTRound, GetStageOrder(m.WTTRound)
+		}
+	}
+
+	// 2. Title and day inspection
+	combined := strings.ToUpper(dbm.VideoTitle + " " + dbm.Day)
+	agePrefix := ""
+	for _, age := range []string{"U19", "U17", "U15", "U13", "U11"} {
+		if strings.Contains(combined, age) {
+			agePrefix = age + " "
+			break
+		}
+	}
+
+	titleAndDay := strings.ToLower(combined)
+	if strings.Contains(titleAndDay, "final") && !strings.Contains(titleAndDay, "semi") && !strings.Contains(titleAndDay, "quarter") {
+		return agePrefix + "Final", 8
+	}
+	if strings.Contains(titleAndDay, "semi") {
+		return agePrefix + "Semi-Final", 7
+	}
+	if strings.Contains(titleAndDay, "quarter") {
+		return agePrefix + "Quarter-Final", 6
+	}
+	if strings.Contains(titleAndDay, "r16") || strings.Contains(titleAndDay, "round of 16") || strings.Contains(titleAndDay, "8fnl") {
+		return agePrefix + "Round of 16", 5
+	}
+	if strings.Contains(titleAndDay, "r32") || strings.Contains(titleAndDay, "round of 32") {
+		return agePrefix + "Round of 32", 4
+	}
+	if strings.Contains(titleAndDay, "r64") || strings.Contains(titleAndDay, "round of 64") {
+		return agePrefix + "Round of 64", 3
+	}
+	if strings.Contains(titleAndDay, "qual") || strings.Contains(titleAndDay, "q day") {
+		return agePrefix + "Qualifying", 1
+	}
+
+	// 3. Fallback based on broadcast day number
+	if strings.Contains(titleAndDay, "day 7") {
+		return agePrefix + "Final", 8
+	}
+	if strings.Contains(titleAndDay, "day 6") {
+		return agePrefix + "Quarter-Final", 6
+	}
+	if strings.Contains(titleAndDay, "day 5") {
+		return agePrefix + "Round of 16", 5
+	}
+	if strings.Contains(titleAndDay, "day 4") {
+		return agePrefix + "Round of 32", 4
+	}
+	if strings.Contains(titleAndDay, "day 3") {
+		return agePrefix + "Round of 64", 3
+	}
+
+	return agePrefix + "Round Match", 1
 }
 
 func ExtractGender(subEventType, docCode string) string {
@@ -451,6 +597,8 @@ func AlignMatches(
 			DBMatch:          &dbm,
 			WTTMatch:         &wttm,
 			WTTRound:         ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
+			StageOrder:       GetStageOrder(ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription)),
+			IsBroadcastMatch: false,
 			WTTGender:        ExtractGender(wttm.SubEventType, wttm.DocumentCode),
 			WTTScore:         mc.OverallScores,
 			WTTGameScores:    mc.GameScores,
@@ -495,14 +643,18 @@ func AlignMatches(
 		if assignedDB[dIdx] {
 			continue
 		}
+		inferredRound, stageOrder := InferStageForUnmatched(&dbm, report.Matches)
 		unmatchedRec := MatchedRecord{
-			IsMatched:      false,
-			Confidence:     0.0,
-			FailureReason:  "No matching official WTT match found above confidence threshold",
-			TournamentName: tournamentName,
-			TournamentYear: tournamentYear,
-			WTTEventID:     wttEventID,
-			DBMatch:        &dbm,
+			IsMatched:        false,
+			IsBroadcastMatch: true,
+			Confidence:       0.0,
+			FailureReason:    "No matching official WTT match found above confidence threshold",
+			TournamentName:   tournamentName,
+			TournamentYear:   tournamentYear,
+			WTTEventID:       wttEventID,
+			DBMatch:          &dbm,
+			WTTRound:         inferredRound,
+			StageOrder:       stageOrder,
 		}
 		unmatchedRec.OCRPlayerNames.TeamA = dbm.TeamA
 		unmatchedRec.OCRPlayerNames.TeamB = dbm.TeamB
@@ -524,8 +676,10 @@ func AlignMatches(
 			TournamentYear: tournamentYear,
 			WTTEventID:     wttEventID,
 			WTTMatch:       &wttm,
-			WTTRound:       ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
-			WTTGender:      ExtractGender(wttm.SubEventType, wttm.DocumentCode),
+			WTTRound:         ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
+			StageOrder:       GetStageOrder(ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription)),
+			IsBroadcastMatch: false,
+			WTTGender:        ExtractGender(wttm.SubEventType, wttm.DocumentCode),
 			WTTScore:       mc.OverallScores,
 			WTTGameScores:  mc.GameScores,
 			WTTMatchID:     wttm.ID,
@@ -541,4 +695,71 @@ func AlignMatches(
 	}
 
 	return report
+}
+
+var (
+	wttYearRegex    = regexp.MustCompile(`\b(20\d\d)\b`)
+	wttSponsorRegex = regexp.MustCompile(`(?i)\s*(presented by|supported by|by)\s+.*$`)
+	wttDayRegex     = regexp.MustCompile(`(?i)\b(Q\s*Day\s*\d+|Day\s*\d+|Finals?|Semi-?finals?|Quarter-?finals?)\b`)
+)
+
+// MatchVideoToWTTEvent matches a raw YouTube video title and upload year against official WTT dropdown events.
+// It returns the official event ID, clean tournament name, official year, and whether a match was found.
+func MatchVideoToWTTEvent(entries []WTTEventDropdownEntry, title string, uploadYear int) (int, string, int, bool) {
+	normTitle := NormalizeTournamentName(title)
+
+	var bestEntry *WTTEventDropdownEntry
+	bestLen := 0
+	bestYear := uploadYear
+
+	for _, e := range entries {
+		// Clean event name from sponsors and dates
+		cleanOfficial := wttSponsorRegex.ReplaceAllString(e.EventName, "")
+		normEvent := NormalizeTournamentName(cleanOfficial)
+
+		// Extract year from official event name
+		eventYear := uploadYear
+		if m := wttYearRegex.FindString(normEvent); m != "" {
+			if y, err := strconv.Atoi(m); err == nil {
+				eventYear = y
+			}
+		}
+
+		if uploadYear > 0 && eventYear != uploadYear {
+			continue
+		}
+
+		// Strip year from event name to get the pure name (e.g. "singapore smash")
+		eventBase := strings.TrimSpace(wttYearRegex.ReplaceAllString(normEvent, ""))
+
+		if strings.Contains(normTitle, eventBase) {
+			if len(eventBase) > bestLen {
+				bestLen = len(eventBase)
+				entryCopy := e
+				bestEntry = &entryCopy
+				bestYear = eventYear
+			}
+		}
+	}
+
+	if bestEntry != nil {
+		cleanName := strings.TrimSpace(wttYearRegex.ReplaceAllString(wttSponsorRegex.ReplaceAllString(bestEntry.EventName, ""), ""))
+		return bestEntry.EventID, cleanName, bestYear, true
+	}
+	return 0, "", 0, false
+}
+
+// ExtractDayFromTitle extracts simple day indicators ("Q Day 1", "Day 4", "Finals") from a video title.
+func ExtractDayFromTitle(title string) string {
+	parts := strings.Split(title, "|")
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if m := wttDayRegex.FindString(trimmed); m != "" {
+			return m
+		}
+	}
+	if m := wttDayRegex.FindString(title); m != "" {
+		return m
+	}
+	return "Day 1"
 }

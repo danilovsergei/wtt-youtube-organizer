@@ -154,6 +154,9 @@ class Match {
   final String tag;
   final String views;
   final String day;
+  final String stage;
+  final int stageOrder;
+  final bool isBroadcastMatch;
   final DateTime? uploadDate;
   final String? youtubeId;
   final int? offsetSeconds;
@@ -170,6 +173,9 @@ class Match {
     required this.imageUrl,
     required this.tag,
     required this.day,
+    this.stage = '',
+    this.stageOrder = 1,
+    this.isBroadcastMatch = false,
     this.views = '',
     this.uploadDate,
     this.youtubeId,
@@ -355,6 +361,13 @@ class FilterController extends ChangeNotifier {
           imageUrl: imageUrl,
           tag: row['is_doubles'] == true ? 'Doubles' : 'Singles',
           day: day,
+          stage: (row['stage'] as String?)?.isNotEmpty == true
+              ? row['stage'] as String
+              : ((row['wtt_round'] as String?)?.isNotEmpty == true
+                  ? row['wtt_round'] as String
+                  : ''),
+          stageOrder: row['stage_order'] as int? ?? 1,
+          isBroadcastMatch: row['is_broadcast_match'] == true,
           views: '0',
           uploadDate: uploadDate,
           youtubeId: youtubeId,
@@ -429,6 +442,13 @@ class FilterController extends ChangeNotifier {
         imageUrl: imageUrl,
         tag: row['is_doubles'] == true ? 'Doubles' : 'Singles',
         day: day,
+        stage: (row['stage'] as String?)?.isNotEmpty == true
+            ? row['stage'] as String
+            : ((row['wtt_round'] as String?)?.isNotEmpty == true
+                ? row['wtt_round'] as String
+                : ''),
+        stageOrder: row['stage_order'] as int? ?? 1,
+        isBroadcastMatch: row['is_broadcast_match'] == true,
         views: '0',
         uploadDate: uploadDate,
         youtubeId: youtubeId,
@@ -823,6 +843,13 @@ class FilterController extends ChangeNotifier {
               : 'https://via.placeholder.com/320x180',
           tag: row['is_doubles'] == true ? 'Doubles' : 'Singles',
           day: (row['day'] as String?)?.isNotEmpty == true ? row['day'] as String : 'Unknown Day',
+          stage: (row['stage'] as String?)?.isNotEmpty == true
+              ? row['stage'] as String
+              : ((row['wtt_round'] as String?)?.isNotEmpty == true
+                  ? row['wtt_round'] as String
+                  : ''),
+          stageOrder: row['stage_order'] as int? ?? 1,
+          isBroadcastMatch: row['is_broadcast_match'] == true,
           views: '0',
           uploadDate: uploadDate,
           youtubeId: youtubeId,
@@ -2191,18 +2218,27 @@ class _SidebarState extends State<Sidebar> {
                                 ),
                               );
 
-                            // Group matches by day and session
+                            // Group matches by canonical stage (e.g. Final, Semi-Final, Quarter-Final, R16, R32)
                             final Map<String, List<Match>> matchesByDay = {};
                             for (var m in matches) {
-                              final groupKey = m.session != null ? '${m.day} - Round ${m.session}' : m.day;
+                              final groupKey = m.stage.isNotEmpty
+                                  ? m.stage
+                                  : (m.session != null ? '${m.day} - Round ${m.session}' : m.day);
                               matchesByDay.putIfAbsent(groupKey, () => []).add(m);
                             }
-                            
-                            // Sort groups by effectiveTimestamp (descending) then by session (descending)
+
+                            // Sort groups by stageOrder descending (Finals at top down to Group Stage / Qualifying), then by date
                             final sortedDays = matchesByDay.keys.toList()
                               ..sort((a, b) {
                                 final matchesA = matchesByDay[a]!;
                                 final matchesB = matchesByDay[b]!;
+
+                                final orderA = matchesA.map((m) => m.stageOrder).reduce((curr, next) => curr > next ? curr : next);
+                                final orderB = matchesB.map((m) => m.stageOrder).reduce((curr, next) => curr > next ? curr : next);
+
+                                if (orderA != orderB) {
+                                  return orderB.compareTo(orderA);
+                                }
 
                                 DateTime? getMaxDate(List<Match> mList) {
                                   final dates = mList
@@ -2224,12 +2260,12 @@ class _SidebarState extends State<Sidebar> {
                                 } else if (dateB == null && dateA != null) {
                                   dateCompare = -1;
                                 }
-                                
+
                                 if (dateCompare != 0) return dateCompare;
 
                                 final sessionA = matchesA.first.session ?? 0;
                                 final sessionB = matchesB.first.session ?? 0;
-                                
+
                                 return sessionB.compareTo(sessionA);
                               });
 
@@ -2932,6 +2968,23 @@ class MatchDetails extends StatelessWidget {
                       runSpacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        if (match.isBroadcastMatch)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF59E0B).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFFF59E0B), width: 1),
+                            ),
+                            child: const Text(
+                              'Broadcast Match',
+                              style: TextStyle(
+                                color: Color(0xFFF59E0B),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         if (match.views.isNotEmpty)
                           Row(
                             mainAxisSize: MainAxisSize.min,

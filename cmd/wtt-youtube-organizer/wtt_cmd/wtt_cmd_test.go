@@ -69,3 +69,25 @@ func TestAuditAllCommand_Flags(t *testing.T) {
 		t.Fatalf("expected --threshold flag on audit-all")
 	}
 }
+
+func TestGenerateReportCommand_WriteDBFlag(t *testing.T) {
+	cmd := newGenerateReportCommand()
+	writeFlag := cmd.Flag("write-db")
+	if writeFlag == nil {
+		t.Fatalf("expected --write-db flag on generate-report command")
+	}
+	if writeFlag.DefValue != "false" {
+		t.Errorf("expected default value 'false', got %s", writeFlag.DefValue)
+	}
+}
+
+func TestAuditAllCommand_WriteDBFlag(t *testing.T) {
+	cmd := newAuditAllCommand()
+	writeFlag := cmd.Flag("write-db")
+	if writeFlag == nil {
+		t.Fatalf("expected --write-db flag on audit-all command")
+	}
+	if writeFlag.DefValue != "false" {
+		t.Errorf("expected default value 'false', got %s", writeFlag.DefValue)
+	}
+}
