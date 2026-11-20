@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"wtt-youtube-organizer/wtt_api"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -61,6 +63,28 @@ func parseUploadDate(dateStr string) (time.Time, error) {
 //   - "LIVE! | Quarterfinals | Day 4 | WTT Star Contender Chennai 2026" → ("WTT Star Contender Chennai", 2026, "Day 4 Quarterfinals")
 //   - "LIVE! | WTT Champions Chongqing 2026 Presented by AITO | Day 5 | Quarterfinals I Session 1" → ("WTT Champions Chongqing", 2026, "Day 5 Quarterfinals I")
 func ParseTournamentFromTitle(title string) (string, int, string, error) {
+	return ResolveTournamentFromTitle(title, 0, nil)
+}
+
+// ResolveTournamentFromTitle resolves the canonical tournament name, year, and day.
+// If official WTT dropdown events are provided, it matches the video title and upload year directly
+// against the official WTT events catalog, guaranteeing consistent canonical names and years.
+func ResolveTournamentFromTitle(title string, uploadYear int, wttEvents []wtt_api.WTTEventDropdownEntry) (string, int, string, error) {
+	if uploadYear <= 0 {
+		uploadYear = time.Now().Year()
+	}
+
+	if len(wttEvents) > 0 {
+		if _, cleanName, eventYear, ok := wtt_api.MatchVideoToWTTEvent(wttEvents, title, uploadYear); ok {
+			day := wtt_api.ExtractDayFromTitle(title)
+			return cleanName, eventYear, day, nil
+		}
+	}
+
+	return parseTournamentFromTitleDirect(title, uploadYear)
+}
+
+func parseTournamentFromTitleDirect(title string, defaultYear int) (string, int, string, error) {
 	rawParts := strings.Split(title, "|")
 	parts := make([]string, 0, len(rawParts))
 	for _, p := range rawParts {
@@ -103,6 +127,20 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 		}
 		if titlePartIdx >= 0 {
 			break
+		}
+	}
+
+	if titlePartIdx < 0 {
+		// Second pass: If title has no explicit 4-digit year, look for WTT/Smash/Contender tournament name
+		// and fallback to current year
+		for i, part := range filteredParts {
+			upper := strings.ToUpper(part)
+			if strings.Contains(upper, "WTT") || strings.Contains(upper, "SMASH") || strings.Contains(upper, "CONTENDER") || strings.Contains(upper, "FEEDER") || strings.Contains(upper, "CHAMPIONS") {
+				tournamentName = strings.TrimSpace(part)
+				year = time.Now().Year()
+				titlePartIdx = i
+				break
+			}
 		}
 	}
 
@@ -168,19 +206,31 @@ func ParseTournamentFromTitle(title string) (string, int, string, error) {
 	return tournamentName, year, day, nil
 }
 
+var nonAlphaPlayerRe = regexp.MustCompile(`[^a-zA-Z\s\-']`)
+
+// sanitizePlayerName strips non-alphabet characters while preserving hyphens, apostrophes, and spaces.
+func sanitizePlayerName(name string) string {
+	name = nonAlphaPlayerRe.ReplaceAllString(name, " ")
+	return strings.Join(strings.Fields(name), " ")
+}
+
 // parsePlayerName parses a player name and returns a slice of player names.
 func parsePlayerName(name string) []string {
 	if strings.Contains(name, "/") {
 		parts := strings.Split(name, "/")
 		result := make([]string, 0, len(parts))
 		for _, p := range parts {
-			if trimmed := strings.TrimSpace(p); trimmed != "" {
-				result = append(result, trimmed)
+			if sanitized := sanitizePlayerName(p); sanitized != "" {
+				result = append(result, sanitized)
 			}
 		}
 		return result
 	}
-	return []string{strings.TrimSpace(name)}
+	sanitized := sanitizePlayerName(name)
+	if sanitized == "" {
+		return []string{}
+	}
+	return []string{sanitized}
 }
 
 // GetProcessedVideoIDs checks which of the given youtube_ids exist in the videos table.
@@ -331,7 +381,7 @@ func ImportMatchesFromJSON(jsonFilePath string) error {
 
 // ImportMatchesFromJSONWithConn reads a JSON file and imports all matches to the database
 // using the provided connection.
-func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFilePath string) error {
+func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFilePath string, clientOpts ...func(*wtt_api.WTTClient)) error {
 	data, err := os.ReadFile(jsonFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read JSON file: %w", err)
@@ -352,12 +402,21 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 
 	fmt.Printf("Found %d video(s) in JSON file\n", len(videos))
 
+	client := wtt_api.NewWTTClient(clientOpts...)
+	wttEvents, _ := client.FetchDropdownEvents(ctx)
+
 	for videoIdx, videoJSON := range videos {
 		fmt.Printf("\n[%d/%d] Processing video: %s\n", videoIdx+1, len(videos), videoJSON.VideoTitle)
 		fmt.Printf("Video ID: %s\n", videoJSON.VideoID)
 		fmt.Printf("Found %d matches\n", len(videoJSON.Matches))
 
-		tournamentName, tournamentYear, day, err := ParseTournamentFromTitle(videoJSON.VideoTitle)
+		uploadDate, err := parseUploadDate(videoJSON.UploadDate)
+		if err != nil {
+			fmt.Printf("Warning: %v, using current time\n", err)
+			uploadDate = time.Now()
+		}
+
+		tournamentName, tournamentYear, day, err := ResolveTournamentFromTitle(videoJSON.VideoTitle, uploadDate.Year(), wttEvents)
 		if err != nil {
 			return fmt.Errorf("failed to parse tournament from title: %w", err)
 		}
@@ -385,11 +444,6 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 			return fmt.Errorf("failed to query tournament: %w", err)
 		}
 
-		uploadDate, err := parseUploadDate(videoJSON.UploadDate)
-		if err != nil {
-			fmt.Printf("Warning: %v, using current time\n", err)
-			uploadDate = time.Now()
-		}
 		fmt.Printf("Upload Date: %s\n", uploadDate.Format("2006-01-02"))
 
 		var videoID int
@@ -480,8 +534,8 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 
 			var matchID int
 			err = tx.QueryRow(ctx, `
-				INSERT INTO matches (tournament_id, video_offset_seconds, duration_seconds, is_doubles, video_id)
-				VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO matches (tournament_id, video_offset_seconds, duration_seconds, is_doubles, video_id, wtt_round, stage_order, is_broadcast_match)
+				VALUES ($1, $2, $3, $4, $5, 'Round Match', 1, false)
 				RETURNING id`,
 				tournamentID, matchJSON.Timestamp, durationSeconds, isDoubles, videoID).Scan(&matchID)
 			if err != nil {
@@ -536,6 +590,11 @@ func ImportMatchesFromJSONWithConn(ctx context.Context, conn *pgx.Conn, jsonFile
 			return fmt.Errorf("failed to commit: %w", err)
 		}
 		fmt.Printf("Successfully added %d matches from video\n", len(videoJSON.Matches))
+
+		// Automatically align tournament matches with official WTT results and assign stages
+		if err := AlignTournamentWithWTT(ctx, conn, tournamentName, tournamentYear, clientOpts...); err != nil {
+			fmt.Printf("Notice: WTT alignment for %s (%d): %v\n", tournamentName, tournamentYear, err)
+		}
 	}
 
 	fmt.Printf("\n=== Summary ===\n")

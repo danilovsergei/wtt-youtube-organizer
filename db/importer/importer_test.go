@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS videos (
 	upload_date TIMESTAMPTZ NOT NULL,
 	title TEXT NOT NULL,
 	day TEXT,
-	processing_error TEXT
+	processing_error TEXT,
+	stream_start_utc TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS matches (
@@ -46,7 +47,15 @@ CREATE TABLE IF NOT EXISTS matches (
 	duration_seconds INTEGER,
 	is_doubles BOOLEAN NOT NULL DEFAULT false,
 	video_id BIGINT NOT NULL REFERENCES videos(id),
-	session INTEGER
+	session INTEGER,
+	wtt_match_id BIGINT,
+	wtt_round VARCHAR(255),
+	stage_order INTEGER DEFAULT 1,
+	is_broadcast_match BOOLEAN DEFAULT false,
+	wtt_gender VARCHAR(50),
+	wtt_score VARCHAR(50),
+	wtt_game_scores TEXT,
+	wtt_match_start_utc TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS match_participants (
@@ -831,5 +840,165 @@ func TestImport_CalculatesMatchDuration(t *testing.T) {
 
 	if count != 3 {
 		t.Fatalf("expected 3 matches, got %d", count)
+	}
+}
+
+func TestImport_AssignsStageAndStageOrder(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	video := VideoJSON{
+		VideoID:       "stage_test_vid",
+		VideoTitle:    "LIVE! | T1 | Day 4 | WTT Champions Montpellier 2026 | Quarterfinals",
+		UploadDate:    "1730000000",
+		VideoDuration: 3600,
+		Matches: []MatchJSON{
+			{Timestamp: 100, Player1: "Felix Lebrun", Player2: "Anders Lind"},
+		},
+	}
+
+	jsonPath := writeTestJSON(t, []VideoJSON{video})
+	if err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath); err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+
+	var wttRound string
+	var stageOrder int
+	err := conn.QueryRow(ctx, `
+		SELECT wtt_round, stage_order 
+		FROM matches 
+		WHERE video_id=(SELECT id FROM videos WHERE youtube_id=$1)`, "stage_test_vid").Scan(&wttRound, &stageOrder)
+	if err != nil {
+		t.Fatalf("failed to query match stage fields: %v", err)
+	}
+
+	if wttRound == "" {
+		t.Errorf("expected non-empty wtt_round, got empty")
+	}
+	if stageOrder < 1 {
+		t.Errorf("expected stage_order >= 1, got %d", stageOrder)
+	}
+}
+
+func TestSanitizePlayerName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"KUAI MAN {}_4", []string{"KUAI MAN"}},
+		{"1: POLCANOVA", []string{"POLCANOVA"}},
+		{"* NG", []string{"NG"}},
+		{"JANG WOO-JIN", []string{"JANG WOO-JIN"}},
+		{"O'CONNELL", []string{"O'CONNELL"}},
+		{"FELIX LEBRUN / ALEXIS LEBRUN", []string{"FELIX LEBRUN", "ALEXIS LEBRUN"}},
+		{"123", []string{}},
+	}
+	for _, tc := range tests {
+		got := parsePlayerName(tc.input)
+		if len(got) != len(tc.expected) {
+			t.Fatalf("parsePlayerName(%q) returned %d items, expected %d (%v)", tc.input, len(got), len(tc.expected), got)
+		}
+		for i := range got {
+			if got[i] != tc.expected[i] {
+				t.Errorf("parsePlayerName(%q)[%d] = %q, expected %q", tc.input, i, got[i], tc.expected[i])
+			}
+		}
+	}
+}
+
+// TestE2E_ImportSanitizesNonAlphabetPlayerNames verifies end-to-end that importing
+// match records with dirty OCR/LaTeX artifacts cleanly inserts sanitized player names
+// into Postgres and renders cleanly in database views.
+func TestE2E_ImportSanitizesNonAlphabetPlayerNames(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	video := VideoJSON{
+		VideoID:       "vid_dirty_names_1",
+		VideoTitle:    "LIVE! | T1 | Day 4 | WTT Champions Test 2026 | Session 2",
+		UploadDate:    "1794700800",
+		VideoDuration: 7200,
+		Matches: []MatchJSON{
+			{Timestamp: 600, Player1: "NINA MITTELHAM", Player2: "KUAI MAN {}_4"},
+			{Timestamp: 2400, Player1: "1: POLCANOVA", Player2: "* NG"},
+			{Timestamp: 4800, Player1: "JANG WOO-JIN", Player2: "O'CONNELL"},
+		},
+	}
+
+	jsonPath := writeTestJSON(t, []VideoJSON{video})
+	err := ImportMatchesFromJSONWithConn(ctx, conn, jsonPath)
+	if err != nil {
+		t.Fatalf("ImportMatchesFromJSONWithConn failed: %v", err)
+	}
+
+	// 1. Assert ZERO player rows contain non-alphabet characters (except hyphens and apostrophes)
+	rows, err := conn.Query(ctx, "SELECT id, name FROM players")
+	if err != nil {
+		t.Fatalf("failed to query players: %v", err)
+	}
+	defer rows.Close()
+
+	foundNames := make(map[string]bool)
+	for rows.Next() {
+		var pid int
+		var pname string
+		if err := rows.Scan(&pid, &pname); err != nil {
+			t.Fatalf("failed to scan player row: %v", err)
+		}
+		foundNames[pname] = true
+
+		if nonAlphaPlayerRe.MatchString(pname) {
+			t.Errorf("Player row in DB contains forbidden non-alphabet characters: ID %d -> %q", pid, pname)
+		}
+	}
+
+	// 2. Assert specific expected clean names
+	expectedClean := []string{
+		"NINA MITTELHAM",
+		"KUAI MAN",
+		"POLCANOVA",
+		"NG",
+		"JANG WOO-JIN",
+		"O'CONNELL",
+	}
+
+	for _, exp := range expectedClean {
+		if !foundNames[exp] {
+			t.Errorf("Expected clean player name %q in players table, but found: %v", exp, foundNames)
+		}
+	}
+
+	// 3. Assert forbidden raw strings are NOT in players table
+	forbiddenNames := []string{
+		"KUAI MAN {}_4",
+		"1: POLCANOVA",
+		"* NG",
+	}
+
+	for _, forb := range forbiddenNames {
+		if foundNames[forb] {
+			t.Errorf("Forbidden dirty name %q was found in players table!", forb)
+		}
+	}
+}
+
+func TestParseTournamentFromTitle_MissingYear(t *testing.T) {
+	title := "LIVE! | T1 | Q Day 1 | WTT Star Contender Muscat | Session 1"
+	tour, year, day, err := ParseTournamentFromTitle(title)
+	if err != nil {
+		t.Fatalf("unexpected error parsing title without year: %v", err)
+	}
+	if tour != "WTT Star Contender Muscat" {
+		t.Errorf("expected tournament 'WTT Star Contender Muscat', got %q", tour)
+	}
+	if year < 2020 {
+		t.Errorf("expected year >= 2020, got %d", year)
+	}
+	if day != "Q Day 1" {
+		t.Errorf("expected day 'Q Day 1', got %q", day)
 	}
 }
