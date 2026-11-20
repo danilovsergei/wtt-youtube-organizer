@@ -32,7 +32,7 @@ if [ -x "/home/geonix/Build/wtt-youtube-organizer/qwen_venv/bin/python3" ]; then
     PY_BIN="/home/geonix/Build/wtt-youtube-organizer/qwen_venv/bin/python3"
 fi
 
-run_with_watchdog "🧪 Running unit tests (match_start_finder, processor)..." $PY_BIN -m unittest prod_video_processor_test.py match_start_finder_test.py
+run_with_watchdog "🧪 Running unit tests (match_start_finder, processor, ocr_utils)..." $PY_BIN -m unittest prod_video_processor_test.py match_start_finder_test.py ocr_utils_test.py
 
 echo "=================================================="
 echo "✅ [ML EXTRACTOR SUITE] All ML unit tests passed!"

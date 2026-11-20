@@ -86,6 +86,9 @@ def parse_score(generated_text: str) -> ScoreResult:
 
                 # 3. Safety: collapse any impossible 3+ consecutive identical letters
                 cleaned = re.sub(r"([A-Z])\1{2,}", r"\1\1", cleaned)
+
+                # 4. Strip non-alphabet characters (keep letters, hyphens, apostrophes, and spaces)
+                cleaned = re.sub(r"[^A-Za-z\s\-']", " ", cleaned)
                 
                 cleaned_names.append(" ".join(cleaned.split()))
 
@@ -188,10 +191,37 @@ def normalize_text(text):
     return re.sub(r'[^A-Z0-9]', '', str(text).upper())
 
 
-def is_similar(str1, str2, threshold=0.92):
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """Compute the Levenshtein distance between two strings."""
+    if len(s1) < len(s2):
+        s1, s2 = s2, s1
+    if len(s2) == 0:
+        return len(s1)
+    prev = list(range(len(s2) + 1))
+    for i, c1 in enumerate(s1):
+        curr = [i + 1]
+        for j, c2 in enumerate(s2):
+            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (0 if c1 == c2 else 1)))
+        prev = curr
+    return prev[-1]
+
+
+def is_similar(str1, str2, threshold=0.88, max_distance=1):
+    """
+    Check if two strings represent the same player name despite OCR variance.
+    
+    Uses a hybrid approach:
+    1. Exact normalized match.
+    2. Absolute Levenshtein distance <= max_distance for strings of length >= 5.
+       (Safeguards 1-char OCR letter flips like 'M' <-> 'W' regardless of string length,
+       while preventing matching short 3-4 letter distinct names like 'LIN' and 'LIU').
+    3. Fallback SequenceMatcher ratio >= threshold for proportional similarity.
+    """
     norm1 = normalize_text(str1)
     norm2 = normalize_text(str2)
     if norm1 == norm2:
+        return True
+    if min(len(norm1), len(norm2)) >= 5 and levenshtein_distance(norm1, norm2) <= max_distance:
         return True
     ratio = difflib.SequenceMatcher(None, norm1, norm2).ratio()
     return ratio >= threshold
