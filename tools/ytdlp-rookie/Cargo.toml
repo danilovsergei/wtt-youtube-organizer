@@ -1,0 +1,11 @@
+[package]
+name = "ytdlp-rookie"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ytdlp-rookie"
+path = "src/main.rs"
+
+[dependencies]
+rookie = "0.5.6"

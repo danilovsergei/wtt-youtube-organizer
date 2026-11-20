@@ -169,39 +169,59 @@ func hasNvidiaDocker() bool {
 }
 
 func getCookiesPath(outputDir string) (string, error) {
-	if !getCookies {
-		return "", nil
-	}
-
-	cmdPath, err := exec.LookPath("ytdlp-rookie")
-	if err != nil {
-		// fallback to checking bin/ytdlp-rookie in current dir since users run it from the root of the project!
-		if _, err := os.Stat("bin/ytdlp-rookie"); err == nil {
-			cmdPath = "bin/ytdlp-rookie"
-		} else {
-			return "", fmt.Errorf("--get_cookies specified but ytdlp-rookie binary not found in PATH or bin/ytdlp-rookie")
-		}
-	}
-
 	if outputDir == "" {
 		outputDir = os.TempDir()
 	}
 	cookieFile := filepath.Join(outputDir, "yt_cookies.txt")
-	logPrintf("Extracting cookies using %s to %s...\n", cmdPath, cookieFile)
 
-	cmd := exec.Command(cmdPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to run ytdlp-rookie: %v\nOutput: %s", err, string(output))
+	// 1. Automatically run ytdlp-rookie if available to extract fresh, up-to-date cookies from browser
+	var cmdPath string
+	if p, err := exec.LookPath("ytdlp-rookie"); err == nil {
+		cmdPath = p
+	} else if exePath, err := os.Executable(); err == nil {
+		sibling := filepath.Join(filepath.Dir(exePath), "ytdlp-rookie")
+		if _, err := os.Stat(sibling); err == nil {
+			cmdPath = sibling
+		}
+	}
+	if cmdPath == "" {
+		if _, err := os.Stat("bin/ytdlp-rookie"); err == nil {
+			cmdPath = "bin/ytdlp-rookie"
+		}
 	}
 
-	if err := os.WriteFile(cookieFile, output, 0666); err != nil {
-		return "", fmt.Errorf("failed to write cookies to file: %w", err)
+	if cmdPath != "" {
+		cmd := exec.Command(cmdPath)
+		output, err := cmd.CombinedOutput()
+		if err == nil && len(output) > 0 && strings.Contains(string(output), "Netscape") {
+			cfgCookie := filepath.Join(config.GetProjectConfigDir(), "youtube_cookies.txt")
+			_ = os.WriteFile(cfgCookie, output, 0644)
+			if err := os.WriteFile(cookieFile, output, 0666); err == nil {
+				os.Chmod(cookieFile, 0777)
+				logPrintf("Extracted fresh YouTube cookies using %s\n", cmdPath)
+				return cookieFile, nil
+			}
+		} else if getCookies && err != nil {
+			return "", fmt.Errorf("failed to run ytdlp-rookie: %v\nOutput: %s", err, string(output))
+		}
+	} else if getCookies {
+		return "", fmt.Errorf("--get_cookies specified but ytdlp-rookie binary not found in PATH or bin/ytdlp-rookie")
 	}
-	os.Chmod(cookieFile, 0777) // Force the file mask immediately regardless of umask
 
-	logPrintln("Cookies extracted successfully.")
-	return cookieFile, nil
+	// 2. Fallback: Check if user has an existing cookies file in config directory
+	cfgCookie := filepath.Join(config.GetProjectConfigDir(), "youtube_cookies.txt")
+	if info, err := os.Stat(cfgCookie); err == nil && info.Size() > 0 {
+		data, err := os.ReadFile(cfgCookie)
+		if err == nil {
+			if err := os.WriteFile(cookieFile, data, 0666); err == nil {
+				os.Chmod(cookieFile, 0777)
+				logPrintf("Using existing YouTube cookies from %s\n", cfgCookie)
+				return cookieFile, nil
+			}
+		}
+	}
+
+	return "", nil
 }
 
 func initDockerVars(extraArgs []string) {
@@ -640,6 +660,9 @@ func processQueueVideos(queuePath string, containerArgs []string) error {
 // Processes videos oldest-first: successful videos are removed from queue,
 // failed videos (docker error) are kept in queue for retry and processing continues.
 func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extraArgs []string, processFilter string, concurrency ...int) error {
+	// Clean up any stale containers from previous runs once before launching workers
+	killStaleMatchFinderContainers()
+
 	queue, err := LoadQueue(queuePath)
 	if err != nil {
 		return fmt.Errorf("failed to load queue: %w", err)
@@ -650,18 +673,24 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 		return nil
 	}
 
-	// 1. Initial cleanup of PARA videos in queue
+	// 1. Initial cleanup of PARA and Spanish commentary videos in queue
 	var initialCleaned []QueueEntry
-	paraRemoved := 0
+	unwantedRemoved := 0
 	for _, entry := range queue {
+		lowerTitle := strings.ToLower(entry.VideoTitle)
 		if paraWordRegex.MatchString(entry.VideoTitle) {
 			logPrintf("Skipping and removing video %s (%s) - Title contains 'PARA'\n", entry.VideoTitle, entry.VideoID)
-			paraRemoved++
+			unwantedRemoved++
+			continue
+		}
+		if strings.Contains(lowerTitle, "spanish") || strings.Contains(lowerTitle, "esp comms") {
+			logPrintf("Skipping and removing video %s (%s) - Title contains 'spanish'\n", entry.VideoTitle, entry.VideoID)
+			unwantedRemoved++
 			continue
 		}
 		initialCleaned = append(initialCleaned, entry)
 	}
-	if paraRemoved > 0 {
+	if unwantedRemoved > 0 {
 		queue = initialCleaned
 		_ = SaveQueue(queuePath, queue)
 	}
@@ -980,7 +1009,6 @@ func runDockerContainerNoOutput(containerArgs []string) error {
 }
 
 func runDockerContainer(absOutputJSON string, containerArgs []string) error {
-	killStaleMatchFinderContainers()
 
 	outputDir := filepath.Dir(absOutputJSON)
 	outputFilename := filepath.Base(absOutputJSON)

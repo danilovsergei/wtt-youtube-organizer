@@ -73,6 +73,9 @@ ENV WTT_MODEL=$MODEL
 # Clean up wheels to keep image size down
 RUN rm -rf /tmp/wheels
 
+# Copy baked model weights directly into container image
+COPY models /app/models/
+
 # Copy application code
 COPY florence_extractor /app/florence_extractor/
 ENV PATH="/app/florence_extractor/docker/cuda/ffmpeg/bin:$PATH"

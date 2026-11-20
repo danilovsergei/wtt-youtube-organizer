@@ -10,6 +10,8 @@ import uuid
 import json
 from PIL import Image
 import cv2
+import urllib.request
+import urllib.error
 import torch
 from ocr_utils import parse_score, ScoreResult, normalize_text, is_similar, process_and_verify_scoreboard
 from wtt_video_processor import WttVideoProcessor
@@ -126,10 +128,14 @@ class ScoreExtractor:
         if self.model_name == "mineru":
             print(f'Loading MinerU 2.5-Pro (1.2B) model (PyTorch on {self.device})...')
             try:
-                model_id = "opendatalab/MinerU2.5-Pro-2605-1.2B"
-                local_cache = os.path.expanduser("~/.cache/modelscope/models/opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots/master")
-                if os.path.exists(local_cache):
-                    model_id = local_cache
+                # 1. Prefer self-contained baked model path inside Docker image
+                if os.path.isdir("/app/models/MinerU2.5-Pro"):
+                    model_id = "/app/models/MinerU2.5-Pro"
+                else:
+                    model_id = "opendatalab/MinerU2.5-Pro-2605-1.2B"
+                    local_cache = os.path.expanduser("~/.cache/modelscope/models/opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots/master")
+                    if os.path.exists(local_cache):
+                        model_id = local_cache
                     
                 lora_root = os.path.join(base_dir, "output", "mineru2.5-pro-1.2b-wtt-lora")
                 lora_dir = None
@@ -142,20 +148,28 @@ class ScoreExtractor:
                         checkpoints.sort(key=lambda x: os.path.getmtime(x))
                         lora_dir = checkpoints[-1]
 
+                # local_files_only=True bypasses online HuggingFace HEAD version checks
+                use_local_only = os.path.isdir(model_id) or os.getenv('HF_HUB_OFFLINE', '0') == '1'
                 base_model = Qwen2VLForConditionalGeneration.from_pretrained(
                     model_id,
                     torch_dtype=torch.bfloat16,
-                    device_map=self.device
+                    device_map=self.device,
+                    local_files_only=use_local_only
                 )
                 if lora_dir:
                     print(f"Loading MinerU LoRA adapter from {lora_dir}...")
-                    self.model = PeftModel.from_pretrained(base_model, lora_dir)
+                    self.model = PeftModel.from_pretrained(base_model, lora_dir, local_files_only=use_local_only)
                 else:
                     print("Using base MinerU model (no LoRA adapter found yet)...")
                     self.model = base_model
 
                 self.model.eval()
-                self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=112 * 28 * 28, max_pixels=768 * 28 * 28)
+                self.processor = AutoProcessor.from_pretrained(
+                    model_id,
+                    min_pixels=112 * 28 * 28,
+                    max_pixels=768 * 28 * 28,
+                    local_files_only=use_local_only
+                )
                 self._initialized = True
                 print('MinerU model loaded successfully.')
                 return True
@@ -239,6 +253,9 @@ class ScoreExtractor:
             return ScoreResult(success=False, error=f"No scoreboard detected. Variance: {variance:.1f}, Edges: {edge_density:.4f}")
             
         INFERENCE_PROMPT = """Examine this World Table Tennis (WTT) broadcast scoreboard image.
+CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows, along with their respective set and game scores.
+Ignore any tournament stage or round header banner (e.g. 'BOYS\' SINGLES', 'WOMEN\'S SINGLES', 'R32', 'FINAL'). A player row ALWAYS contains a player name accompanied by two separate score numbers (sets and points). Never transcribe a round banner as a player.
+If only one player row is visible, if the scoreboard is partially cut off, or if no scoreboard is visible in the image, output an empty JSON object: {}
 WARNING: Do not autocorrect or normalize spelling. Foreign names frequently contain unusual double consonants.
 You MUST transcribe the literal pixels exactly as printed, character-by-character.
 To prevent spelling errors, transcribe the player names by inserting a pipe '|' between EVERY SINGLE CHARACTER (e.g., M|O|H|A|M|M|E|D). Do not group letters into words.
@@ -251,7 +268,7 @@ Output a valid JSON object matching this schema:
   "row_2_sets": integer,
   "row_2_points": integer
 }
-If NO scoreboard is visible in the image, output an empty JSON object: {}"""
+If only one player row or no scoreboard is visible, output an empty JSON object: {}"""
 
         conversation = [{
             "role": "user",
@@ -292,8 +309,10 @@ If NO scoreboard is visible in the image, output an empty JSON object: {}"""
             cleaned_json_str = "{}"
 
         def clean_player_name(raw_name: str) -> str:
-            # Remove pipe characters and normalize any multiple spaces into a single space
+            # Remove pipe characters
             name = str(raw_name).replace("|", "")
+            # Strip all non-alphabet characters except hyphens, apostrophes, and spaces
+            name = re.sub(r"[^A-Za-z\s\-']", " ", name)
             return re.sub(r'\s+', ' ', name).strip()
 
         def is_valid_player_name(name: str) -> bool:
@@ -398,7 +417,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             'skip_download': True,
             'extractor_args': {
                 'youtubetab': ['approximate_date'],
-                'youtube': {'player_client': ['android', 'web']},
+                'youtube': {'player_client': ['tv', 'mweb', 'web']},
             },
             'remote_components': ['ejs:github'],
         }
@@ -425,6 +444,21 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         except Exception as e:
             err_str = str(e)
             print(f'Warning: Could not fetch video info: {err_str}')
+            # Fallback to official YouTube oEmbed API to bypass player bot challenge for title metadata
+            try:
+                clean_vid = youtube_url.rstrip('/').split('/')[-1].split('?')[0].replace('watchv=', '').replace('watch?v=', '')
+                req = urllib.request.Request(
+                    f'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={clean_vid}&format=json',
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    oembed_data = json.loads(resp.read().decode())
+                    oembed_title = oembed_data.get('title')
+                    if oembed_title:
+                        print(f'Successfully resolved title via oEmbed fallback: {oembed_title}')
+                        return (oembed_title, None)
+            except Exception:
+                pass
             self.last_fetch_error = err_str
             self.last_fetch_is_bot_blocked = self.is_bot_or_sign_in_error(err_str)
             return (None, None)
@@ -455,10 +489,13 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             print(f'Video already downloaded: {video_path}')
             return video_path
         ydl_opts = {
-            'format': 'bv*[height=480]/bv*[height=720]/bv*[height=1080]/bv*[height<=1080]',
+            'format': 'bv*[vcodec^=avc1][height<=480]/bv*[height<=480]/18/bv*/b',
             'outtmpl': video_path,
             'quiet': False,
             'no_warnings': False,
+            'extractor_args': {
+                'youtube': {'player_client': ['tv_samsung', 'tv']},
+            },
             'remote_components': ['ejs:github'],
             'retries': 10,
             'skip_unavailable_fragments': True,
@@ -546,12 +583,28 @@ class ProdWttVideoProcessor(WttVideoProcessor):
     def initialize_scoreboard_model(self) -> bool:
         return self.extractor.initialize()
 
-    def validate_video_exists(self, video_id: str) -> bool:
+    def validate_video_exists(self, video_id: str, cookies_file: Optional[str] = None) -> bool:
+        # 1. Fast, 100% reliable check via official YouTube oEmbed API
+        try:
+            req = urllib.request.Request(
+                f'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json',
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    return True
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 401, 403, 400):
+                return False
+        except Exception:
+            pass
+
+        # 2. Fallback to fetch_video_info
         url = f'https://www.youtube.com/watch?v={video_id}'
-        title, _ = self.fetch_video_info(url)
+        title, _ = self.fetch_video_info(url, cookies_file=cookies_file)
         return title is not None
 
-    def get_videos_after(self, after_video_id: str, batch_size: int = 200, max_batches: int = 10) -> Optional[List[dict]]:
+    def get_videos_after(self, after_video_id: str, batch_size: int = 200, max_batches: int = 10, cookies_file: Optional[str] = None) -> Optional[List[dict]]:
         """
         Get all completed streams newer than the specified video_id.
         Fetches playlist in batches, loading older videos if the
@@ -574,7 +627,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             print('Error: yt-dlp not installed. Run: pip install yt-dlp')
             return []
         print(f'Validating video ID: {after_video_id}...')
-        if not self.validate_video_exists(after_video_id):
+        if not self.validate_video_exists(after_video_id, cookies_file=cookies_file):
             code, category = self.classify_youtube_error(self.last_fetch_error or "")
             if self.last_fetch_is_bot_blocked or category == "bot_blocked":
                 print(
@@ -594,6 +647,8 @@ class ProdWttVideoProcessor(WttVideoProcessor):
                 f'Fetching playlist (up to {total_videos} videos, batch {batch_num}/{max_batches})...')
             ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist', 'playlistend': total_videos,
                         'extractor_args': {'youtubetab': {'approximate_date': ['']}}, 'remote_components': ['ejs:github']}
+            if cookies_file and os.path.exists(cookies_file):
+                ydl_opts['cookiefile'] = cookies_file
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(playlist_url, download=False)

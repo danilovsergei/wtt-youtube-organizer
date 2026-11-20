@@ -96,6 +96,19 @@ def main():
             shutil.copy2(os.path.join(local_wheels_dir, f),
                          os.path.join(build_context_dir, "wheels", f))
 
+    # Stage MinerU weights if available on host to bake them directly into the Docker image
+    models_stage = os.path.join(build_context_dir, "models")
+    os.makedirs(models_stage, exist_ok=True)
+    if args.model == "mineru":
+        cache_hub = os.path.expanduser("~/.config/wtt-youtube-organizer/cache/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B/snapshots")
+        if os.path.exists(cache_hub):
+            snaps = os.listdir(cache_hub)
+            if snaps:
+                src_snap = os.path.join(cache_hub, snaps[0])
+                dest_model = os.path.join(models_stage, "MinerU2.5-Pro")
+                print(f"📦 [STAGE] Baking MinerU base weights (2.2GB) into Docker context from {src_snap}...")
+                shutil.copytree(src_snap, dest_model, symlinks=False, dirs_exist_ok=True)
+
     app_src = os.path.join(root_dir, "florence_extractor")
     # Only copy the required checkpoint to save massive amounts of Docker build time and image size
     if args.model == "mineru":

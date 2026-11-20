@@ -782,7 +782,7 @@ def main():
     if args.process_all_matches_after:
         print(
             f"Fetching videos newer than {args.process_all_matches_after}...")
-        videos = processor.get_videos_after(args.process_all_matches_after)
+        videos = processor.get_videos_after(args.process_all_matches_after, cookies_file=args.cookies_file)
 
         if videos == "BOT_BLOCKED":
             print(f"YouTube requires bot confirmation or sign-in for video ID '{args.process_all_matches_after}'.")

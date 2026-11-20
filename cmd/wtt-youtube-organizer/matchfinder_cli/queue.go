@@ -101,9 +101,20 @@ func PrependToQueue(existingQueue []QueueEntry, newEntries []QueueEntry) []Queue
 	if len(newEntries) == 0 {
 		return existingQueue
 	}
+	seen := make(map[string]bool)
 	result := make([]QueueEntry, 0, len(newEntries)+len(existingQueue))
-	result = append(result, newEntries...)
-	result = append(result, existingQueue...)
+	for _, e := range newEntries {
+		if !seen[e.VideoID] {
+			seen[e.VideoID] = true
+			result = append(result, e)
+		}
+	}
+	for _, e := range existingQueue {
+		if !seen[e.VideoID] {
+			seen[e.VideoID] = true
+			result = append(result, e)
+		}
+	}
 	return result
 }
 
@@ -217,6 +228,11 @@ func AddNewStreamsWithCutoff(queuePath string, cutoffVideoID string, fetcher Str
 
 		if paraWordRegex.MatchString(entry.VideoTitle) {
 			logPrintf("Skipping video %s (title contains 'PARA': '%s')\n", entry.VideoID, entry.VideoTitle)
+			continue
+		}
+
+		if strings.Contains(lowerTitle, "spanish") || strings.Contains(lowerTitle, "esp comms") {
+			logPrintf("Skipping video %s (title contains 'spanish': '%s')\n", entry.VideoID, entry.VideoTitle)
 			continue
 		}
 
