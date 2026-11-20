@@ -2,9 +2,9 @@
 set -e
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$DIR/wtt-youtube-organizer/matchfinder_cli"
+REPO_ROOT="$( cd "$DIR/.." && pwd )"
 
-WATCHDOG_TIMEOUT="120s"
+WATCHDOG_TIMEOUT="180s"
 
 run_with_watchdog() {
     local label="$1"
@@ -23,14 +23,20 @@ run_with_watchdog() {
 }
 
 echo "=================================================="
-echo "🐹 [GO CLI SUITE] Running Go Verification"
+echo "🐹 [GO SUITE] Running Full Go & WTT Verification"
 echo "   (Independent Watchdog Timeout: $WATCHDOG_TIMEOUT)"
 echo "=================================================="
 
-run_with_watchdog "🔍 1/2: Running go vet..." go vet ./...
+cd "$REPO_ROOT"
 
-run_with_watchdog "🧪 2/2: Running Go unit tests..." go test -v -skip OpenVINO ./...
+run_with_watchdog "🔍 1/4: Running go vet across all packages..." go vet ./cmd/... ./wtt_api/... ./db/importer/...
+
+run_with_watchdog "🧪 2/4: Running Matchfinder CLI tests..." go test -v -skip OpenVINO ./cmd/wtt-youtube-organizer/matchfinder_cli/...
+
+run_with_watchdog "🧪 3/4: Running WTT API & Matcher tests..." go test -v ./wtt_api/...
+
+run_with_watchdog "🧪 4/4: Running Hermetic WTT Integration & Importer tests..." go test -v -run TestHermeticWTTBackendIntegration ./db/importer/...
 
 echo "=================================================="
-echo "✅ [GO CLI SUITE] All Go CLI checks passed!"
+echo "✅ [GO SUITE] All Go CLI, WTT API & Hermetic tests passed!"
 echo "=================================================="
