@@ -2,6 +2,7 @@ package serve_cmd
 
 import (
 	"context"
+	"github.com/grandcat/zeroconf"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -69,7 +70,23 @@ func getOrCreateInstanceID() string {
 
 // Start launches both the HTTP streaming server and the UDP discovery listener.
 func (s *Server) Start() error {
-	// 1. Start UDP Discovery Listener in background
+	// 1. Register Chromecast-standard mDNS (Multicast DNS on 224.0.0.251:5353)
+	mdnsServer, err := zeroconf.Register(
+		"WTT-Stream-Proxy",
+		"_wtt-proxy._tcp",
+		"local.",
+		s.httpPort,
+		[]string{"id=" + s.instanceID, "version=1.0"},
+		nil,
+	)
+	if err != nil {
+		fmt.Printf("⚠️ [mDNS] Failed to register mDNS service: %v\n", err)
+	} else {
+		defer mdnsServer.Shutdown()
+		fmt.Printf("📡 [mDNS] Registered service _wtt-proxy._tcp.local on port %d (Chromecast standard)\n", s.httpPort)
+	}
+
+	// 2. Start UDP Discovery Listener in background
 	go s.listenUDPDiscovery()
 
 	// 2. Start HTTP Proxy Server

@@ -50,6 +50,7 @@ dependencies:
   native_surface_view:
     path: packages/native_surface_view
   url_launcher: ^6.3.3
+  multicast_dns: ^0.3.3+1
 
 dev_dependencies:
   flutter_test:
