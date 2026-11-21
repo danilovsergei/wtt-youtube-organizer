@@ -245,4 +245,58 @@ class SettingsService {
       await tmpFile.rename(file.path);
     } catch (_) {}
   }
+
+  Future<bool> loadStreamProxyEnabled() async {
+    final data = await _readSettingsJson();
+    return (data['stream_proxy_enabled'] as bool?) ?? true;
+  }
+
+  Future<void> saveStreamProxyEnabled(bool enabled) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      final data = await _readSettingsJson();
+      data['stream_proxy_enabled'] = enabled;
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
+
+  Future<String?> loadStreamProxyHost() async {
+    final data = await _readSettingsJson();
+    return data['stream_proxy_host'] as String?;
+  }
+
+  Future<int> loadStreamProxyPort() async {
+    final data = await _readSettingsJson();
+    return (data['stream_proxy_port'] as int?) ?? 8080;
+  }
+
+  Future<String?> loadStreamProxyInstanceId() async {
+    final data = await _readSettingsJson();
+    return data['stream_proxy_instance_id'] as String?;
+  }
+
+  Future<void> saveStreamProxyConfig({
+    required String host,
+    required int port,
+    String? instanceId,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      final file = await _getSettingsFile();
+      if (file == null) return;
+      final data = await _readSettingsJson();
+      data['stream_proxy_host'] = host;
+      data['stream_proxy_port'] = port;
+      if (instanceId != null) {
+        data['stream_proxy_instance_id'] = instanceId;
+      }
+      final tmpFile = File('${file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(file.path);
+    } catch (_) {}
+  }
 }

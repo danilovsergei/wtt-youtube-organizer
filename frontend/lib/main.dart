@@ -58,6 +58,7 @@ Future<void> main([List<String>? args]) async {
   await filterController.loadSettings();
   await PlaybackProgressService.instance.loadProgress();
   await UserDatabaseSyncService.instance.initialize();
+  unawaited(ProxyDiscoveryService.instance.initialize());
   if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
     (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {
       debugPrint('Chaquopy yt-dlp auto-update: $status');
@@ -1039,6 +1040,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   static void openTvQuickMenu(BuildContext context) {
+    unawaited(ProxyDiscoveryService.instance.verifyOnHomeNetwork());
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E293B),

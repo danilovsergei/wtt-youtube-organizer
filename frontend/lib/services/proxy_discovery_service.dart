@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../video/ytdlp/ytdlp_models.dart';
+import 'log_service.dart';
+import 'settings_service.dart';
 
 class ProxyDiscoveryService extends ChangeNotifier {
   static final ProxyDiscoveryService instance = ProxyDiscoveryService._();
@@ -15,12 +17,49 @@ class ProxyDiscoveryService extends ChangeNotifier {
   String? _serverInstanceId;
   String? _serverHostname;
   bool _isVerifiedOnLAN = false;
+  bool _isInitializing = false;
 
   bool get isAutoDiscoveryEnabled => _isAutoDiscoveryEnabled;
   String? get serverHost => _serverHost;
   int get serverHttpPort => _serverHttpPort;
   String? get serverHostname => _serverHostname;
   bool get isVerifiedOnLAN => _isVerifiedOnLAN;
+
+  /// Initializes the service by reading saved config and probing the LAN.
+  Future<void> initialize() async {
+    if (kIsWeb || _isInitializing) return;
+    _isInitializing = true;
+
+    try {
+      _isAutoDiscoveryEnabled = await SettingsService.instance.loadStreamProxyEnabled();
+      _serverHost = await SettingsService.instance.loadStreamProxyHost();
+      _serverHttpPort = await SettingsService.instance.loadStreamProxyPort();
+      _serverInstanceId = await SettingsService.instance.loadStreamProxyInstanceId();
+
+      LogService.instance.log(
+        '[PROXY] Initialized: enabled=$_isAutoDiscoveryEnabled, cachedHost=$_serverHost:$_serverHttpPort, instance=$_serverInstanceId',
+      );
+
+      if (_isAutoDiscoveryEnabled) {
+        // Fast probe cached host first
+        if (_serverHost != null && _serverHost!.isNotEmpty) {
+          final isReachable = await verifyOnHomeNetwork(timeout: const Duration(milliseconds: 400));
+          if (isReachable) {
+            LogService.instance.log('[PROXY] Verified cached server $_serverHost:$_serverHttpPort on home LAN!');
+            return;
+          }
+        }
+
+        // If cached host failed or wasn't present, run discovery
+        LogService.instance.log('[PROXY] Cached host unavailable; starting UDP broadcast discovery...');
+        await discoverServer();
+      }
+    } catch (e) {
+      LogService.instance.log('[PROXY] Initialization error: $e');
+    } finally {
+      _isInitializing = false;
+    }
+  }
 
   @visibleForTesting
   void setServerForTest({
@@ -60,40 +99,74 @@ class ProxyDiscoveryService extends ChangeNotifier {
                 _serverInstanceId = data['instance_id'] as String?;
                 _serverHostname = data['hostname'] as String?;
                 _isVerifiedOnLAN = true;
+
+                LogService.instance.log(
+                  '[PROXY] Discovered proxy at $_serverHost:$_serverHttpPort ($_serverHostname, $_serverInstanceId)',
+                );
+
+                // Persist config for instant reconnection
+                SettingsService.instance.saveStreamProxyConfig(
+                  host: _serverHost!,
+                  port: _serverHttpPort,
+                  instanceId: _serverInstanceId,
+                );
+
                 notifyListeners();
                 if (!completer.isCompleted) {
                   completer.complete(true);
                 }
               }
-            } catch (_) {}
+            } catch (e) {
+              LogService.instance.log('[PROXY] Malformed discovery response: $e');
+            }
           }
         }
       });
 
+      // 1. Send to global broadcast 255.255.255.255
       socket.send(pingBytes, InternetAddress('255.255.255.255'), 8081);
+
+      // 2. Send to specific subnet broadcast addresses (fixes Flatpak / multi-interface routing)
+      try {
+        final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+        for (final iface in interfaces) {
+          for (final addr in iface.addresses) {
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              final subnetBrd = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+              socket.send(pingBytes, InternetAddress(subnetBrd), 8081);
+            }
+          }
+        }
+      } catch (e) {
+        LogService.instance.log('[PROXY] Subnet enumeration warning: $e');
+      }
 
       Timer(timeout, () {
         if (!completer.isCompleted) {
+          LogService.instance.log('[PROXY] UDP discovery timed out without response');
           completer.complete(false);
         }
         socket.close();
       });
 
-      return await completer.future;
+      final success = await completer.future;
+      return success;
     } catch (e) {
-      debugPrint('UDP discovery error: $e');
+      LogService.instance.log('[PROXY] UDP discovery socket error: $e');
       return false;
     }
   }
 
-  /// Ultra-fast LAN health probe (300ms timeout).
+  /// Ultra-fast LAN health probe (400ms timeout).
   /// Returns true only if we are currently on the home LAN with the server.
-  Future<bool> verifyOnHomeNetwork({Duration timeout = const Duration(milliseconds: 300)}) async {
+  Future<bool> verifyOnHomeNetwork({Duration timeout = const Duration(milliseconds: 400)}) async {
     if (kIsWeb) return false;
     if (_serverHost == null || _serverHost!.isEmpty) {
-      final discovered = await discoverServer(timeout: const Duration(milliseconds: 800));
+      final discovered = await discoverServer(timeout: const Duration(milliseconds: 1000));
       if (!discovered || _serverHost == null) {
         _isVerifiedOnLAN = false;
+        notifyListeners();
         return false;
       }
     }
@@ -108,7 +181,9 @@ class ProxyDiscoveryService extends ChangeNotifier {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['service'] == 'wtt-stream-proxy') {
           if (_serverInstanceId != null && data['instance_id'] != _serverInstanceId) {
+            LogService.instance.log('[PROXY] Server instance ID mismatch: expected $_serverInstanceId, got ${data['instance_id']}');
             _isVerifiedOnLAN = false;
+            notifyListeners();
             return false;
           }
           _serverInstanceId ??= data['instance_id'] as String?;
@@ -120,11 +195,14 @@ class ProxyDiscoveryService extends ChangeNotifier {
           return true;
         }
       }
-    } catch (_) {
+    } catch (e) {
       // Unreachable, timeout, or wrong network
     }
 
-    _isVerifiedOnLAN = false;
+    if (_isVerifiedOnLAN) {
+      _isVerifiedOnLAN = false;
+      notifyListeners();
+    }
     return false;
   }
 
@@ -137,7 +215,9 @@ class ProxyDiscoveryService extends ChangeNotifier {
   /// Fetches resolved stream metadata from the proxy.
   Future<VideoStreamMetadata> resolveFromProxy(String youtubeId) async {
     final url = Uri.parse('http://$_serverHost:$_serverHttpPort/api/resolve/$youtubeId');
-    final response = await http.get(url).timeout(const Duration(seconds: 4));
+    LogService.instance.log('[PROXY] Resolving stream via home proxy: $url');
+
+    final response = await http.get(url).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) {
       throw Exception('Proxy returned status ${response.statusCode}: ${response.body}');
     }
@@ -153,6 +233,8 @@ class ProxyDiscoveryService extends ChangeNotifier {
     final headersMap = (data['httpHeaders'] as Map<String, dynamic>?) ?? {};
     final httpHeaders = headersMap.map((k, v) => MapEntry(k, v.toString()));
 
+    LogService.instance.log('[PROXY] Successfully resolved ${videoStreams.length} streams via home proxy for $youtubeId');
+
     return VideoStreamMetadata(
       videoStreams: videoStreams,
       audioUrl: audioUrl,
@@ -162,6 +244,12 @@ class ProxyDiscoveryService extends ChangeNotifier {
 
   void setAutoDiscoveryEnabled(bool enabled) {
     _isAutoDiscoveryEnabled = enabled;
-    notifyListeners();
+    SettingsService.instance.saveStreamProxyEnabled(enabled);
+    if (enabled) {
+      verifyOnHomeNetwork();
+    } else {
+      _isVerifiedOnLAN = false;
+      notifyListeners();
+    }
   }
 }
