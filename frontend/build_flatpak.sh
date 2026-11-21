@@ -39,3 +39,4 @@ flatpak build-bundle repo wtt.flatpak io.github.danilovsergei.wtt
 echo "✅ Flatpak build complete! Installing locally for verification..."
 flatpak uninstall -y io.github.danilovsergei.wtt || true
 flatpak install --user -y wtt.flatpak
+cp wtt.flatpak ../bin/wtt.flatpak
