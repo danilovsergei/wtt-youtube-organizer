@@ -51,7 +51,7 @@ class ProxyDiscoveryService extends ChangeNotifier {
         }
 
         // If cached host failed or wasn't present, run discovery
-        LogService.instance.log('[PROXY] Cached host unavailable; starting UDP broadcast discovery...');
+        LogService.instance.log('[PROXY] Cached host unavailable; starting discovery...');
         await discoverServer();
       }
     } catch (e) {
@@ -76,9 +76,59 @@ class ProxyDiscoveryService extends ChangeNotifier {
     _isVerifiedOnLAN = verified;
   }
 
-  /// Performs a UDP broadcast to discover the WTT stream proxy on port 8081.
-  Future<bool> discoverServer({Duration timeout = const Duration(milliseconds: 1500)}) async {
+  /// Manually configure or override the server address.
+  Future<bool> setCustomServer(String host, int port) async {
+    final cleanHost = host.trim();
+    if (cleanHost.isEmpty) return false;
+
+    LogService.instance.log('[PROXY] Testing custom server: http://$cleanHost:$port/health');
+    try {
+      final url = Uri.parse('http://$cleanHost:$port/health');
+      final client = http.Client();
+      final response = await client.get(url).timeout(const Duration(milliseconds: 1500));
+      client.close();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['service'] == 'wtt-stream-proxy') {
+          _serverHost = cleanHost;
+          _serverHttpPort = port;
+          _serverInstanceId = data['instance_id'] as String?;
+          _serverHostname = data['hostname'] as String?;
+          _isVerifiedOnLAN = true;
+
+          await SettingsService.instance.saveStreamProxyConfig(
+            host: _serverHost!,
+            port: _serverHttpPort,
+            instanceId: _serverInstanceId,
+          );
+
+          LogService.instance.log('[PROXY] Successfully verified and saved custom server: $_serverHost:$_serverHttpPort');
+          notifyListeners();
+          return true;
+        }
+      }
+    } catch (e) {
+      LogService.instance.log('[PROXY] Failed to connect to custom server: $e');
+    }
+
+    return false;
+  }
+
+  /// Discovers the WTT stream proxy using UDP broadcast followed by fast subnet probing.
+  Future<bool> discoverServer({Duration timeout = const Duration(milliseconds: 1200)}) async {
     if (kIsWeb) return false;
+
+    // 1. Try UDP broadcast discovery
+    final udpFound = await _discoverViaUDP(timeout);
+    if (udpFound) return true;
+
+    // 2. If UDP was dropped by Wi-Fi router AP isolation, fallback to fast subnet HTTP probing
+    LogService.instance.log('[PROXY] UDP broadcast yielded no response, falling back to subnet HTTP scan...');
+    return await _probeSubnetFast();
+  }
+
+  Future<bool> _discoverViaUDP(Duration timeout) async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       socket.broadcastEnabled = true;
@@ -104,7 +154,6 @@ class ProxyDiscoveryService extends ChangeNotifier {
                   '[PROXY] Discovered proxy at $_serverHost:$_serverHttpPort ($_serverHostname, $_serverInstanceId)',
                 );
 
-                // Persist config for instant reconnection
                 SettingsService.instance.saveStreamProxyConfig(
                   host: _serverHost!,
                   port: _serverHttpPort,
@@ -123,10 +172,10 @@ class ProxyDiscoveryService extends ChangeNotifier {
         }
       });
 
-      // 1. Send to global broadcast 255.255.255.255
+      // Send to 255.255.255.255
       socket.send(pingBytes, InternetAddress('255.255.255.255'), 8081);
 
-      // 2. Send to specific subnet broadcast addresses (fixes Flatpak / multi-interface routing)
+      // Send to subnet broadcasts
       try {
         final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
         for (final iface in interfaces) {
@@ -138,32 +187,97 @@ class ProxyDiscoveryService extends ChangeNotifier {
             }
           }
         }
-      } catch (e) {
-        LogService.instance.log('[PROXY] Subnet enumeration warning: $e');
-      }
+      } catch (_) {}
 
       Timer(timeout, () {
         if (!completer.isCompleted) {
-          LogService.instance.log('[PROXY] UDP discovery timed out without response');
           completer.complete(false);
         }
         socket.close();
       });
 
-      final success = await completer.future;
-      return success;
+      return await completer.future;
     } catch (e) {
-      LogService.instance.log('[PROXY] UDP discovery socket error: $e');
+      LogService.instance.log('[PROXY] UDP socket error: $e');
       return false;
     }
   }
 
+  /// Fast parallel HTTP probing across candidate IPs (handles Wi-Fi AP isolation).
+  Future<bool> _probeSubnetFast() async {
+    final candidateHosts = <String>{
+      '192.168.31.49', // Geonix desktop
+      '192.168.31.2',  // OMV server
+      '127.0.0.1',
+    };
+
+    // Add local interface subnet IPs
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          final parts = addr.address.split('.');
+          if (parts.length == 4 && parts[0] == '192' && parts[1] == '168') {
+            final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+            for (int i = 1; i <= 60; i++) {
+              candidateHosts.add('$prefix.$i');
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    final client = http.Client();
+    final completer = Completer<bool>();
+
+    // Test ports 8080 and 8085
+    for (final host in candidateHosts) {
+      for (final port in [8080, 8085]) {
+        final url = Uri.parse('http://$host:$port/health');
+        client.get(url).timeout(const Duration(milliseconds: 350)).then((response) {
+          if (response.statusCode == 200 && !completer.isCompleted) {
+            try {
+              final data = jsonDecode(response.body) as Map<String, dynamic>;
+              if (data['service'] == 'wtt-stream-proxy') {
+                _serverHost = host;
+                _serverHttpPort = port;
+                _serverInstanceId = data['instance_id'] as String?;
+                _serverHostname = data['hostname'] as String?;
+                _isVerifiedOnLAN = true;
+
+                LogService.instance.log('[PROXY] Found server via HTTP subnet scan: $_serverHost:$_serverHttpPort ($_serverHostname)');
+
+                SettingsService.instance.saveStreamProxyConfig(
+                  host: _serverHost!,
+                  port: _serverHttpPort,
+                  instanceId: _serverInstanceId,
+                );
+
+                notifyListeners();
+                completer.complete(true);
+              }
+            } catch (_) {}
+          }
+        }).catchError((_) {});
+      }
+    }
+
+    Timer(const Duration(milliseconds: 800), () {
+      if (!completer.isCompleted) {
+        client.close();
+        completer.complete(false);
+      }
+    });
+
+    final success = await completer.future;
+    return success;
+  }
+
   /// Ultra-fast LAN health probe (400ms timeout).
-  /// Returns true only if we are currently on the home LAN with the server.
   Future<bool> verifyOnHomeNetwork({Duration timeout = const Duration(milliseconds: 400)}) async {
     if (kIsWeb) return false;
     if (_serverHost == null || _serverHost!.isEmpty) {
-      final discovered = await discoverServer(timeout: const Duration(milliseconds: 1000));
+      final discovered = await discoverServer();
       if (!discovered || _serverHost == null) {
         _isVerifiedOnLAN = false;
         notifyListeners();
@@ -181,7 +295,7 @@ class ProxyDiscoveryService extends ChangeNotifier {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['service'] == 'wtt-stream-proxy') {
           if (_serverInstanceId != null && data['instance_id'] != _serverInstanceId) {
-            LogService.instance.log('[PROXY] Server instance ID mismatch: expected $_serverInstanceId, got ${data['instance_id']}');
+            LogService.instance.log('[PROXY] Server instance ID mismatch');
             _isVerifiedOnLAN = false;
             notifyListeners();
             return false;
@@ -195,9 +309,7 @@ class ProxyDiscoveryService extends ChangeNotifier {
           return true;
         }
       }
-    } catch (e) {
-      // Unreachable, timeout, or wrong network
-    }
+    } catch (_) {}
 
     if (_isVerifiedOnLAN) {
       _isVerifiedOnLAN = false;
@@ -206,13 +318,11 @@ class ProxyDiscoveryService extends ChangeNotifier {
     return false;
   }
 
-  /// Checks if proxy should be used for playback.
   Future<bool> isProxyActiveAndAvailable() async {
     if (!_isAutoDiscoveryEnabled) return false;
     return await verifyOnHomeNetwork();
   }
 
-  /// Fetches resolved stream metadata from the proxy.
   Future<VideoStreamMetadata> resolveFromProxy(String youtubeId) async {
     final url = Uri.parse('http://$_serverHost:$_serverHttpPort/api/resolve/$youtubeId');
     LogService.instance.log('[PROXY] Resolving stream via home proxy: $url');

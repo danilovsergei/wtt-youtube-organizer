@@ -1039,6 +1039,102 @@ class _MainScreenState extends State<MainScreen> {
     return false;
   }
 
+  static void _showProxyConfigDialog(BuildContext context) {
+    final proxy = ProxyDiscoveryService.instance;
+    final hostController = TextEditingController(text: proxy.serverHost ?? '192.168.31.49');
+    final portController = TextEditingController(text: '${proxy.serverHttpPort}');
+    bool isTesting = false;
+    String? testResult;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            title: const Text('Home Streaming Proxy', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Stream videos via your local server to bypass YouTube bot challenges at home.',
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: hostController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Server IP / Host',
+                    labelStyle: TextStyle(color: Color(0xFF0D7FF2)),
+                    hintText: 'e.g. 192.168.31.49',
+                    hintStyle: TextStyle(color: Colors.grey),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF334155))),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF0D7FF2))),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: portController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'HTTP Port',
+                    labelStyle: TextStyle(color: Color(0xFF0D7FF2)),
+                    hintText: '8080',
+                    hintStyle: TextStyle(color: Colors.grey),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF334155))),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF0D7FF2))),
+                  ),
+                ),
+                if (testResult != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    testResult!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: testResult!.startsWith('Connected') ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D7FF2)),
+                onPressed: isTesting ? null : () async {
+                  setState(() {
+                    isTesting = true;
+                    testResult = 'Probing server...';
+                  });
+                  final port = int.tryParse(portController.text.trim()) ?? 8080;
+                  final success = await proxy.setCustomServer(hostController.text.trim(), port);
+                  setState(() {
+                    isTesting = false;
+                    testResult = success
+                        ? 'Connected successfully to ${proxy.serverHostname ?? hostController.text}!'
+                        : 'Connection failed. Verify server is running.';
+                  });
+                  if (success) {
+                    Future.delayed(const Duration(milliseconds: 600), () {
+                      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
+                    });
+                  }
+                },
+                child: Text(isTesting ? 'Testing...' : 'Test & Save', style: const TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   static void openTvQuickMenu(BuildContext context) {
     unawaited(ProxyDiscoveryService.instance.verifyOnHomeNetwork());
     showModalBottomSheet(
@@ -1259,7 +1355,7 @@ class _MainScreenState extends State<MainScreen> {
 
                     return TvFocusable(
                       onTap: () {
-                        proxy.setAutoDiscoveryEnabled(!isEnabled);
+                        _showProxyConfigDialog(context);
                       },
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       borderRadius: BorderRadius.circular(8),

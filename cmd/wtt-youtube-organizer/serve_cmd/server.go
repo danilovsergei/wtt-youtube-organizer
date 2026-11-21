@@ -271,6 +271,47 @@ func (s *Server) listenUDPDiscovery() {
 
 	fmt.Printf("📡 [DISCOVERY] UDP broadcast listener active on port %d\n", s.udpPort)
 
+	// Broadcast beacon every 3 seconds to active subnets
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		beacon := map[string]interface{}{
+			"service":     "wtt-stream-proxy",
+			"http_port":   s.httpPort,
+			"instance_id": s.instanceID,
+			"hostname":    s.hostname,
+		}
+		beaconBytes, _ := json.Marshal(beacon)
+
+		for range ticker.C {
+			_, _ = conn.WriteToUDP(beaconBytes, &net.UDPAddr{IP: net.ParseIP("255.255.255.255"), Port: s.udpPort})
+
+			ifaces, err := net.Interfaces()
+			if err == nil {
+				for _, iface := range ifaces {
+					if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+						continue
+					}
+					addrs, err := iface.Addrs()
+					if err == nil {
+						for _, addr := range addrs {
+							if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+								ip := ipnet.IP.To4()
+								mask := ipnet.Mask
+								broadcast := net.IP(make([]byte, 4))
+								for i := 0; i < 4; i++ {
+									broadcast[i] = ip[i] | ^mask[i]
+								}
+								_, _ = conn.WriteToUDP(beaconBytes, &net.UDPAddr{IP: broadcast, Port: s.udpPort})
+							}
+						}
+					}
+				}
+			}
+		}
+	}()
+
 	buf := make([]byte, 1024)
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
