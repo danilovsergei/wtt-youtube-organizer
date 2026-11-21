@@ -121,6 +121,7 @@ type MatchedRecord struct {
 	} `json:"wtt_countries"`
 
 	// WTT Official Match Details
+	IsDoubles          bool   `json:"is_doubles"`
 	WTTRound           string `json:"wtt_round,omitempty"`
 	StageOrder         int    `json:"stage_order"`
 	IsBroadcastMatch   bool   `json:"is_broadcast_match,omitempty"`

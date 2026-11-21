@@ -815,3 +815,59 @@ func TestExtractDayFromTitle(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractIsDoubles(t *testing.T) {
+	tests := []struct {
+		name         string
+		subEventType string
+		docCode      string
+		card         WTTMatchCard
+		wantDoubles  bool
+	}{
+		{
+			name:         "Mixed Doubles by subEventType",
+			subEventType: "Mixed Doubles",
+			docCode:      "TTXMDOUBLES-----------FNL-000100----------",
+			card:         WTTMatchCard{SubEventName: "Mixed Doubles"},
+			wantDoubles:  true,
+		},
+		{
+			name:         "Men Doubles by docCode",
+			subEventType: "Men Doubles",
+			docCode:      "TTEMDOUBLES-----------FNL-000100----------",
+			card:         WTTMatchCard{SubEventName: "Men's Doubles"},
+			wantDoubles:  true,
+		},
+		{
+			name:         "Women Singles is not doubles",
+			subEventType: "Women Singles",
+			docCode:      "TTWSINGLES-----------FNL-000100----------",
+			card:         WTTMatchCard{SubEventName: "Women's Singles"},
+			wantDoubles:  false,
+		},
+		{
+			name:         "CompetitorType D with 2 players",
+			subEventType: "",
+			docCode:      "",
+			card: WTTMatchCard{
+				Competitors: []WTTCompetitor{
+					{
+						CompetitorType: "D",
+						Players: []WTTPlayer{
+							{PlayerName: "Esteban DORR"},
+							{PlayerName: "Jia Nan YUAN"},
+						},
+					},
+				},
+			},
+			wantDoubles: true,
+		},
+	}
+
+	for _, tc := range tests {
+		got := ExtractIsDoubles(tc.subEventType, tc.docCode, tc.card)
+		if got != tc.wantDoubles {
+			t.Errorf("ExtractIsDoubles(%s) = %v, want %v", tc.name, got, tc.wantDoubles)
+		}
+	}
+}

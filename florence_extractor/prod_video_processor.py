@@ -311,8 +311,10 @@ If only one player row or no scoreboard is visible, output an empty JSON object:
         def clean_player_name(raw_name: str) -> str:
             # Remove pipe characters
             name = str(raw_name).replace("|", "")
-            # Strip all non-alphabet characters except hyphens, apostrophes, and spaces
-            name = re.sub(r"[^A-Za-z\s\-']", " ", name)
+            # Strip all non-alphabet characters except hyphens, apostrophes, forward slashes, and spaces
+            name = re.sub(r"[^A-Za-z\s\-'/]", " ", name)
+            # Normalize whitespace around slashes (e.g. "DORR / YUAN")
+            name = re.sub(r'\s*/\s*', ' / ', name)
             return re.sub(r'\s+', ' ', name).strip()
 
         def is_valid_player_name(name: str) -> bool:

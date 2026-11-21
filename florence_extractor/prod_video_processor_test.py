@@ -212,3 +212,16 @@ class TestErrorClassification(unittest.TestCase):
         self.assertIn("CRITICAL RULE: A valid scoreboard MUST clearly display BOTH competing player rows", content)
         self.assertIn("Ignore any tournament stage or round header banner", content)
         self.assertIn("If only one player row is visible, if the scoreboard is partially cut off", content)
+
+def test_clean_player_name_preserves_doubles_slash():
+    import re
+    def clean_player_name(raw_name: str) -> str:
+        name = str(raw_name).replace("|", "")
+        name = re.sub(r"[^A-Za-z\s\-'/]", " ", name)
+        name = re.sub(r'\s*/\s*', ' / ', name)
+        return re.sub(r'\s+', ' ', name).strip()
+
+    assert clean_player_name("D|O|R|R| |/| |Y|U|A|N") == "DORR / YUAN"
+    assert clean_player_name("T|O|G|A|M|I| |/| |O|D|O") == "TOGAMI / ODO"
+    assert clean_player_name("J|A|N|G| |W|O|O|-|J|I|N") == "JANG WOO-JIN"
+    assert clean_player_name("KUAI MAN {}_4") == "KUAI MAN"

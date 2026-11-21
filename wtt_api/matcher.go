@@ -412,6 +412,20 @@ func InferStageForUnmatched(dbm *DBMatchRecord, allMatches []MatchedRecord) (str
 	return agePrefix + "Round Match", 1
 }
 
+// ExtractIsDoubles determines if an official WTT match is a doubles match (Men's, Women's, or Mixed Doubles).
+func ExtractIsDoubles(subEventType, docCode string, matchCard WTTMatchCard) bool {
+	combined := strings.ToUpper(subEventType + " " + docCode + " " + matchCard.SubEventName + " " + matchCard.SubEventDescription)
+	if strings.Contains(combined, "DOUBLES") || strings.Contains(combined, "XDOUBLES") || strings.Contains(combined, "MDOUBLES") || strings.Contains(combined, "WDOUBLES") || strings.Contains(combined, "MIXED") {
+		return true
+	}
+	for _, comp := range matchCard.Competitors {
+		if len(comp.Players) > 1 || comp.CompetitorType == "D" {
+			return true
+		}
+	}
+	return false
+}
+
 func ExtractGender(subEventType, docCode string) string {
 	combined := strings.ToUpper(subEventType + " " + docCode)
 	if strings.Contains(combined, "MIXED") {
@@ -599,6 +613,7 @@ func AlignMatches(
 			WTTRound:         ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription),
 			StageOrder:       GetStageOrder(ExtractRoundFromDocumentCode(wttm.DocumentCode, mc.SubEventDescription)),
 			IsBroadcastMatch: false,
+			IsDoubles:        ExtractIsDoubles(wttm.SubEventType, wttm.DocumentCode, mc),
 			WTTGender:        ExtractGender(wttm.SubEventType, wttm.DocumentCode),
 			WTTScore:         mc.OverallScores,
 			WTTGameScores:    mc.GameScores,
@@ -655,6 +670,7 @@ func AlignMatches(
 			DBMatch:          &dbm,
 			WTTRound:         inferredRound,
 			StageOrder:       stageOrder,
+			IsDoubles:        dbm.IsDoubles,
 		}
 		unmatchedRec.OCRPlayerNames.TeamA = dbm.TeamA
 		unmatchedRec.OCRPlayerNames.TeamB = dbm.TeamB

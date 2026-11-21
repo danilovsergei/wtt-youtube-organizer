@@ -208,10 +208,14 @@ func parseTournamentFromTitleDirect(title string, defaultYear int) (string, int,
 
 var nonAlphaPlayerRe = regexp.MustCompile(`[^a-zA-Z\s\-']`)
 
-// sanitizePlayerName strips non-alphabet characters while preserving hyphens, apostrophes, and spaces.
-func sanitizePlayerName(name string) string {
+// SanitizePlayerName strips non-alphabet characters while preserving hyphens, apostrophes, and spaces.
+func SanitizePlayerName(name string) string {
 	name = nonAlphaPlayerRe.ReplaceAllString(name, " ")
 	return strings.Join(strings.Fields(name), " ")
+}
+
+func sanitizePlayerName(name string) string {
+	return SanitizePlayerName(name)
 }
 
 // parsePlayerName parses a player name and returns a slice of player names.

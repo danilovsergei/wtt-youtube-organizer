@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"wtt-youtube-organizer/db/importer"
 	"wtt-youtube-organizer/wtt_api"
 
 	"github.com/jackc/pgx/v5"
@@ -623,7 +624,8 @@ func persistMatches(ctx context.Context, conn *pgx.Conn, matches []wtt_api.Match
 				wtt_gender = $5,
 				wtt_score = $6,
 				wtt_game_scores = $7,
-				wtt_match_start_utc = $8
+				wtt_match_start_utc = $8,
+				is_doubles = CASE WHEN $10 = true THEN true ELSE is_doubles END
 			WHERE id = $9;
 		`,
 			wttMatchID,
@@ -635,8 +637,52 @@ func persistMatches(ctx context.Context, conn *pgx.Conn, matches []wtt_api.Match
 			m.WTTGameScores,
 			startTime,
 			m.DBMatch.ID,
+			m.IsDoubles,
 		)
 		count++
+
+		// If confirmed doubles match and official WTT competitors have 2 players each, update match_participants
+		if m.IsDoubles && m.WTTMatch != nil && len(m.WTTMatch.MatchCard.Competitors) >= 2 {
+			compA := m.WTTMatch.MatchCard.Competitors[0]
+			compB := m.WTTMatch.MatchCard.Competitors[1]
+			if len(compA.Players) >= 2 && len(compB.Players) >= 2 {
+				batch.Queue(`DELETE FROM match_participants WHERE match_id = $1;`, m.DBMatch.ID)
+				count++
+
+				for _, p := range compA.Players {
+					playerName := importer.SanitizePlayerName(p.PlayerName)
+					if playerName != "" {
+						batch.Queue(`
+							WITH p AS (
+								INSERT INTO players (name) VALUES ($1)
+								ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+								RETURNING id
+							)
+							INSERT INTO match_participants (match_id, player_id, side)
+							SELECT $2, id, 'A' FROM p
+							ON CONFLICT (match_id, player_id) DO UPDATE SET side = EXCLUDED.side;
+						`, playerName, m.DBMatch.ID)
+						count++
+					}
+				}
+				for _, p := range compB.Players {
+					playerName := importer.SanitizePlayerName(p.PlayerName)
+					if playerName != "" {
+						batch.Queue(`
+							WITH p AS (
+								INSERT INTO players (name) VALUES ($1)
+								ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+								RETURNING id
+							)
+							INSERT INTO match_participants (match_id, player_id, side)
+							SELECT $2, id, 'B' FROM p
+							ON CONFLICT (match_id, player_id) DO UPDATE SET side = EXCLUDED.side;
+						`, playerName, m.DBMatch.ID)
+						count++
+					}
+				}
+			}
+		}
 	}
 
 	if count == 0 {
