@@ -2,6 +2,7 @@ import 'dart:async';
 import 'services/settings_service.dart';
 import 'services/playback_progress_service.dart';
 import 'services/user_database_sync_service.dart';
+import 'services/proxy_discovery_service.dart';
 import 'widgets/diagnostics_screen.dart';
 import 'widgets/cloud_sync_screen.dart';
 import 'widgets/linked_devices_screen.dart';
@@ -1227,7 +1228,97 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // 3. Diagnostics & Logs
+                // 3. Home Streaming Proxy
+                ListenableBuilder(
+                  listenable: ProxyDiscoveryService.instance,
+                  builder: (context, _) {
+                    final proxy = ProxyDiscoveryService.instance;
+                    final isEnabled = proxy.isAutoDiscoveryEnabled;
+                    final isOnline = proxy.isVerifiedOnLAN;
+
+                    final Color statusColor;
+                    final Widget statusIcon;
+                    final String statusSubtitle;
+
+                    if (!isEnabled) {
+                      statusColor = Colors.grey[500]!;
+                      statusIcon = Icon(Icons.wifi_tethering_off, color: Colors.grey[400], size: 20);
+                      statusSubtitle = 'Disabled (using local player)';
+                    } else if (isOnline) {
+                      statusColor = const Color(0xFF10B981);
+                      statusIcon = const Icon(Icons.wifi_tethering, color: Color(0xFF10B981), size: 20);
+                      final host = proxy.serverHostname ?? proxy.serverHost ?? 'server';
+                      statusSubtitle = 'Connected to $host (${proxy.serverHost}:${proxy.serverHttpPort})';
+                    } else {
+                      statusColor = const Color(0xFFF59E0B);
+                      statusIcon = const Icon(Icons.wifi_tethering_error_rounded, color: Color(0xFFF59E0B), size: 20);
+                      statusSubtitle = 'Away from home LAN (using local player)';
+                    }
+
+                    return TvFocusable(
+                      onTap: () {
+                        proxy.setAutoDiscoveryEnabled(!isEnabled);
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Row(
+                        children: [
+                          statusIcon,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'Home Streaming Proxy',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: (isEnabled ? const Color(0xFF10B981) : Colors.grey[600]!).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: isEnabled ? const Color(0xFF10B981) : Colors.grey[600]!, width: 0.8),
+                                      ),
+                                      child: Text(
+                                        isEnabled ? 'AUTO' : 'OFF',
+                                        style: TextStyle(
+                                          color: isEnabled ? const Color(0xFF10B981) : Colors.grey[400],
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  statusSubtitle,
+                                  style: TextStyle(fontSize: 12, color: statusColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: isEnabled,
+                            onChanged: (val) => proxy.setAutoDiscoveryEnabled(val),
+                            activeColor: const Color(0xFF0D7FF2),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // 4. Diagnostics & Logs
                 TvFocusable(
                   onTap: () {
                     Navigator.of(sheetContext).pop();

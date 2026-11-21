@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'ytdlp_service.dart';
+import '../../services/proxy_discovery_service.dart';
 
 class LinuxYtDlpService implements YtDlpService {
   final String? customBinaryPath;
@@ -26,6 +27,15 @@ class LinuxYtDlpService implements YtDlpService {
 
   @override
   Future<VideoStreamMetadata> getVideoStreamMetadata(String youtubeId) async {
+    // 1. If home stream proxy is active and verified on home LAN, resolve via proxy!
+    if (await ProxyDiscoveryService.instance.isProxyActiveAndAvailable()) {
+      try {
+        return await ProxyDiscoveryService.instance.resolveFromProxy(youtubeId);
+      } catch (e) {
+        // Fallback silently to local yt-dlp
+      }
+    }
+
     final ytdlpPath = resolveBinaryPath();
 
     try {
