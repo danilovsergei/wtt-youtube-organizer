@@ -81,6 +81,10 @@ func SaveQueue(path string, queue []QueueEntry) error {
 		return fmt.Errorf("failed to create queue directory: %w", err)
 	}
 
+	if queue == nil {
+		queue = []QueueEntry{}
+	}
+
 	data, err := json.MarshalIndent(queue, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal queue: %w", err)
