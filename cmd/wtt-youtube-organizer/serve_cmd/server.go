@@ -187,7 +187,6 @@ func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManife
 
 	args := []string{
 		"--js-runtimes", fmt.Sprintf("deno:%s", denoPath),
-		"--extractor-args", "youtube:player_client=tv_samsung",
 		"-j",
 		"--no-warnings",
 	}
@@ -274,15 +273,21 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Select best video stream per height
+	// Select best video stream per height, strongly prioritizing HLS manifests (301, 300, 94, 93, 312)
 	heightMap := make(map[int]YtFormat)
 	for _, f := range m.Formats {
-		if f.VCodec != "none" && f.Height > 0 {
-			if existing, ok := heightMap[f.Height]; !ok {
+		if f.Height <= 0 || f.URL == "" || strings.HasPrefix(f.FormatID, "sb") {
+			continue
+		}
+		isHls := strings.Contains(f.Protocol, "m3u8") || strings.Contains(f.URL, "manifest.googlevideo.com")
+		existing, ok := heightMap[f.Height]
+		if !ok {
+			heightMap[f.Height] = f
+		} else {
+			existingIsHls := strings.Contains(existing.Protocol, "m3u8") || strings.Contains(existing.URL, "manifest.googlevideo.com")
+			if isHls && !existingIsHls {
 				heightMap[f.Height] = f
-			} else if f.FormatID == "312" || f.FormatID == "299" || f.FormatID == "18" {
-				heightMap[f.Height] = f
-			} else if existing.FormatID != "312" && existing.FormatID != "299" {
+			} else if isHls && existingIsHls && (f.FormatID == "301" || f.FormatID == "312") {
 				heightMap[f.Height] = f
 			}
 		}
@@ -297,15 +302,24 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	var videoStreams []resolveStreamItem
 	for _, h := range heights {
 		f := heightMap[h]
+		streamURL := f.URL
+		if !strings.Contains(f.URL, "manifest.googlevideo.com") && !strings.Contains(f.Protocol, "m3u8") {
+			streamURL = fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, f.FormatID)
+		}
 		videoStreams = append(videoStreams, resolveStreamItem{
 			Height: h,
-			URL:    fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, f.FormatID),
+			URL:    streamURL,
 		})
 	}
 
 	audioURL := ""
-	if bestAudio != nil {
-		audioURL = fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, bestAudio.FormatID)
+	topIsMuxedHls := len(heights) > 0 && heightMap[heights[0]].ACodec != "" && heightMap[heights[0]].ACodec != "none"
+	if !topIsMuxedHls && bestAudio != nil {
+		if strings.Contains(bestAudio.URL, "manifest.googlevideo.com") || strings.Contains(bestAudio.Protocol, "m3u8") {
+			audioURL = bestAudio.URL
+		} else {
+			audioURL = fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, bestAudio.FormatID)
+		}
 	}
 
 	resp := resolveResponse{
@@ -321,6 +335,7 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 
 // handleStream forwards the request to GoogleVideo with HTTP Range support.
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("📥 [STREAM-REQ] %s %s from %s, Range: %s, Headers: %v\n", r.Method, r.URL.String(), r.RemoteAddr, r.Header.Get("Range"), r.Header)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Range, Content-Type, Accept")
 	w.Header().Set("Accept-Ranges", "bytes")
@@ -400,10 +415,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 0}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
+		fmt.Printf("❌ [STREAM-ERR] Upstream do failed: %v\n", err)
 		http.Error(w, fmt.Sprintf("stream fetch failed: %v", err), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+	fmt.Printf("📤 [STREAM-RESP] Upstream status: %d for %s (Range: %s, Length: %s)\n", resp.StatusCode, cacheKey, resp.Header.Get("Content-Range"), resp.Header.Get("Content-Length"))
 
 	// Copy upstream headers
 	for _, key := range []string{"Content-Range", "Content-Length", "Content-Type", "Accept-Ranges"} {
