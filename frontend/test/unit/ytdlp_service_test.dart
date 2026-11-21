@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/video/ytdlp/ytdlp_service.dart';
 import 'package:flutter_app/video/ytdlp/linux_ytdlp.dart';
+import 'package:flutter_app/video/ytdlp/stream_policy.dart';
 import 'package:flutter_app/video/ytdlp/test_ytdlp.dart';
 
 void main() {
@@ -213,6 +214,70 @@ void main() {
       // Restore
       YtDlpService.instance = original;
       expect(YtDlpService.instance, isA<LinuxYtDlpService>());
+    });
+    test('StreamPolicy parses from JSON and defaults correctly', () {
+      final policyJson = {
+        'policy_version': 2,
+        'description': 'Test Policy',
+        'protocol_priority': ['hls', 'dash'],
+        'video_selection': {
+          'codec_priority': ['avc1', 'vp9'],
+          'blocked_itags': ['299', '137'],
+          'preferred_hls_vod_itags': ['301', '300'],
+        },
+        'audio_selection': {
+          'exclude_drc': true,
+          'when_video_is_hls': {
+            'if_internal_audio_none': {
+              'preferred_itags': ['234', '233'],
+            },
+          },
+        },
+      };
+
+      final policy = StreamPolicy.fromJson(policyJson);
+      expect(policy.version, 2);
+      expect(policy.description, 'Test Policy');
+      expect(policy.blockedItags, containsAll(['299', '137']));
+      expect(policy.preferredHlsVodItags, containsAll(['301', '300']));
+      expect(policy.liveAudioItags, containsAll(['234', '233']));
+      expect(policy.excludeDrc, isTrue);
+    });
+
+    test('REGRESSION GUARD: parseManifest with VOD multiplexed HLS format 301 disables redundant external audio', () {
+      final mockManifest = {
+        'formats': [
+          {
+            'format_id': '299',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'none',
+            'height': 1080,
+            'protocol': 'https',
+            'url': 'https://rr.googlevideo.com/videoplayback?itag=299',
+          },
+          {
+            'format_id': '301',
+            'vcodec': 'avc1.64002A',
+            'acodec': 'mp4a.40.2',
+            'height': 1080,
+            'protocol': 'm3u8_native',
+            'url': 'https://manifest.googlevideo.com/api/manifest/hls_playlist/format_301.m3u8',
+          },
+          {
+            'format_id': '140',
+            'acodec': 'mp4a.40.2',
+            'vcodec': 'none',
+            'abr': 128,
+            'url': 'https://audio.com/140.m4a',
+          },
+        ],
+      };
+
+      final metadata = LinuxYtDlpService.parseManifest(mockManifest);
+      // Format 301 must be chosen as top video
+      expect(metadata.videoStreams.first.url, contains('format_301.m3u8'));
+      // Format 301 has internal audio -> external audioUrl must be null!
+      expect(metadata.audioUrl, isNull);
     });
   });
 }

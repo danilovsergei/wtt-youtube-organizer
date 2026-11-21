@@ -3,6 +3,7 @@ import 'services/settings_service.dart';
 import 'services/playback_progress_service.dart';
 import 'services/user_database_sync_service.dart';
 import 'services/proxy_discovery_service.dart';
+import 'services/stream_policy_service.dart';
 import 'widgets/diagnostics_screen.dart';
 import 'widgets/cloud_sync_screen.dart';
 import 'widgets/linked_devices_screen.dart';
@@ -58,6 +59,7 @@ Future<void> main([List<String>? args]) async {
   await filterController.loadSettings();
   await PlaybackProgressService.instance.loadProgress();
   await UserDatabaseSyncService.instance.initialize();
+  unawaited(StreamPolicyService.instance.initialize());
   unawaited(ProxyDiscoveryService.instance.initialize());
   if (!kIsWeb && Platform.isAndroid && YtDlpService.instance is AndroidYtDlpService) {
     (YtDlpService.instance as AndroidYtDlpService).updateYtDlp().then((status) {

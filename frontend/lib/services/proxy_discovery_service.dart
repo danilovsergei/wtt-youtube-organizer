@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:multicast_dns/multicast_dns.dart';
 import '../video/ytdlp/ytdlp_models.dart';
+import '../video/ytdlp/linux_ytdlp.dart';
 import 'log_service.dart';
 import 'settings_service.dart';
 
@@ -290,8 +291,27 @@ class ProxyDiscoveryService extends ChangeNotifier {
   }
 
   Future<VideoStreamMetadata> resolveFromProxy(String youtubeId) async {
+    // 1. Primary: Fetch raw manifest pass-through and evaluate via Flutter's canonical StreamPolicy!
+    final manifestUrl = Uri.parse('http://$_serverHost:$_serverHttpPort/api/manifest/$youtubeId');
+    LogService.instance.log('[PROXY] Fetching raw manifest via home proxy: $manifestUrl');
+
+    try {
+      final response = await http.get(manifestUrl).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final rawManifest = jsonDecode(response.body) as Map<String, dynamic>;
+        LogService.instance.log('[PROXY] Successfully retrieved raw manifest for $youtubeId, evaluating via StreamPolicy...');
+        final metadata = LinuxYtDlpService.parseManifest(rawManifest);
+        if (metadata.videoStreams.isNotEmpty) {
+          return metadata;
+        }
+      }
+    } catch (e) {
+      LogService.instance.log('[PROXY] Warning fetching raw manifest from proxy: $e');
+    }
+
+    // 2. Fallback for older server versions: /api/resolve/
     final url = Uri.parse('http://$_serverHost:$_serverHttpPort/api/resolve/$youtubeId');
-    LogService.instance.log('[PROXY] Resolving stream via home proxy: $url');
+    LogService.instance.log('[PROXY] Fallback resolving stream via legacy endpoint: $url');
 
     final response = await http.get(url).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) {
@@ -309,7 +329,7 @@ class ProxyDiscoveryService extends ChangeNotifier {
     final headersMap = (data['httpHeaders'] as Map<String, dynamic>?) ?? {};
     final httpHeaders = headersMap.map((k, v) => MapEntry(k, v.toString()));
 
-    LogService.instance.log('[PROXY] Successfully resolved ${videoStreams.length} streams via home proxy for $youtubeId');
+    LogService.instance.log('[PROXY] Successfully resolved ${videoStreams.length} streams via legacy proxy for $youtubeId');
 
     return VideoStreamMetadata(
       videoStreams: videoStreams,

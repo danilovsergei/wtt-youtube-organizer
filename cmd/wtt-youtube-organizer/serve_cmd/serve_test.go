@@ -149,3 +149,22 @@ func TestServer_UDPDiscovery(t *testing.T) {
 		t.Errorf("expected instance_id %s, got %v", srv.instanceID, reply["instance_id"])
 	}
 }
+
+func TestServer_ManifestEndpoint(t *testing.T) {
+	srv := NewServer(8080, 8081, "")
+	srv.rawManifestCache["test123"] = &cachedManifest{
+		data:      []byte(`{"id":"test123","title":"Sample WTT Video","formats":[{"format_id":"301"}]}`),
+		expiresAt: time.Now().Add(time.Hour),
+	}
+
+	req := httptest.NewRequest("GET", "/api/manifest/test123", nil)
+	w := httptest.NewRecorder()
+	srv.handleManifest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"format_id":"301"`) {
+		t.Fatalf("expected raw manifest pass-through, got %s", w.Body.String())
+	}
+}

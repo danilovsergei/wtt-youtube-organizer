@@ -1,0 +1,44 @@
+{
+  "policy_version": 2,
+  "description": "Canonical WTT YouTube Stream Selection Policy",
+  "protocol_priority": [
+    "hls",
+    "dash",
+    "http"
+  ],
+  "video_selection": {
+    "codec_priority": [
+      "avc1",
+      "h264",
+      "vp9",
+      "vp09",
+      "av01"
+    ],
+    "blocked_itags": [
+      "299"
+    ],
+    "preferred_hls_vod_itags": ["301", "300", "94", "93"],
+    "preferred_hls_live_itags": ["312", "617"]
+  },
+  "audio_selection": {
+    "exclude_drc": true,
+    "when_video_is_hls": {
+      "if_internal_audio_present": "use_embedded",
+      "if_internal_audio_none": {
+        "attach_external": true,
+        "prefer_protocol": "hls",
+        "preferred_itags": ["234", "233"]
+      }
+    },
+    "when_video_is_dash": {
+      "attach_external": true,
+      "prefer_protocol": "dash",
+      "preferred_itags": ["140", "251"],
+      "sort_by": "abr_descending"
+    }
+  },
+  "playback_headers": {
+    "Referer": "https://www.youtube.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  }
+}

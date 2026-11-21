@@ -25,6 +25,11 @@ type cachedStream struct {
 	expiresAt time.Time
 }
 
+type cachedManifest struct {
+	data      []byte
+	expiresAt time.Time
+}
+
 type YtFormat struct {
 	FormatID string  `json:"format_id"`
 	URL      string  `json:"url"`
@@ -49,6 +54,7 @@ type Server struct {
 
 	cacheMu sync.RWMutex
 	cache   map[string]*cachedStream
+	rawManifestCache map[string]*cachedManifest
 	manifestFn func(ctx context.Context, videoID string) (*YtManifest, error)
 }
 
@@ -65,7 +71,8 @@ func NewServer(httpPort, udpPort int, cookiesPath string) *Server {
 		cookiesPath: cookiesPath,
 		instanceID:  getOrCreateInstanceID(),
 		hostname:    hostname,
-		cache:       make(map[string]*cachedStream),
+		cache:            make(map[string]*cachedStream),
+		rawManifestCache: make(map[string]*cachedManifest),
 	}
 }
 
@@ -109,6 +116,7 @@ func (s *Server) Start() error {
 	// 3. Start HTTP Proxy Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/api/manifest/", s.handleManifest)
 	mux.HandleFunc("/api/resolve/", s.handleResolve)
 	mux.HandleFunc("/stream/", s.handleStream)
 
@@ -153,23 +161,36 @@ func resolveBinary(name string, fallbacks []string) string {
 	return name
 }
 
-func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManifest, error) {
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	videoID := strings.TrimPrefix(r.URL.Path, "/api/manifest/")
+	videoID = strings.TrimSpace(videoID)
+	if videoID == "" {
+		http.Error(w, `{"error":"missing video_id"}`, http.StatusBadRequest)
+		return
+	}
+
+	data, err := s.extractRawManifest(r.Context(), videoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"failed to extract manifest: %v"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (s *Server) extractRawManifest(ctx context.Context, videoID string) ([]byte, error) {
+	s.cacheMu.RLock()
+	cached, ok := s.rawManifestCache[videoID]
+	s.cacheMu.RUnlock()
+	if ok && time.Now().Before(cached.expiresAt) {
+		return cached.data, nil
+	}
+
 	home, _ := os.UserHomeDir()
-	ytdlpPath := resolveBinary("yt-dlp", []string{
-		filepath.Join(home, "bin", "yt-dlp"),
-		filepath.Join(home, ".local", "bin", "yt-dlp"),
-		"/usr/local/bin/yt-dlp",
-		"/usr/bin/yt-dlp",
-	})
-
-	denoPath := resolveBinary("deno", []string{
-		filepath.Join(home, "bin", "deno"),
-		filepath.Join(home, ".local", "bin", "deno"),
-		"/usr/local/bin/deno",
-		"/usr/bin/deno",
-	})
-
-	// Ensure fresh cookies via ytdlp-rookie if cookies are older than 15 mins
 	if s.cookiesPath != "" {
 		rookiePath := resolveBinary("ytdlp-rookie", []string{
 			filepath.Join(home, "bin", "ytdlp-rookie"),
@@ -184,6 +205,20 @@ func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManife
 			}
 		}
 	}
+
+	ytdlpPath := resolveBinary("yt-dlp", []string{
+		filepath.Join(home, "bin", "yt-dlp"),
+		filepath.Join(home, ".local", "bin", "yt-dlp"),
+		"/usr/local/bin/yt-dlp",
+		"/usr/bin/yt-dlp",
+	})
+
+	denoPath := resolveBinary("deno", []string{
+		filepath.Join(home, "bin", "deno"),
+		filepath.Join(home, ".local", "bin", "deno"),
+		"/usr/local/bin/deno",
+		"/usr/bin/deno",
+	})
 
 	args := []string{
 		"--js-runtimes", fmt.Sprintf("deno:%s", denoPath),
@@ -205,11 +240,25 @@ func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManife
 		return nil, fmt.Errorf("yt-dlp error: %w", err)
 	}
 
+	s.cacheMu.Lock()
+	s.rawManifestCache[videoID] = &cachedManifest{
+		data:      out,
+		expiresAt: time.Now().Add(5 * time.Hour),
+	}
+	s.cacheMu.Unlock()
+
+	return out, nil
+}
+
+func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManifest, error) {
+	data, err := s.extractRawManifest(ctx, videoID)
+	if err != nil {
+		return nil, err
+	}
 	var m YtManifest
-	if err := json.Unmarshal(out, &m); err != nil {
+	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("json unmarshal error: %w", err)
 	}
-
 	return &m, nil
 }
 

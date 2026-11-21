@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'ytdlp_service.dart';
+import 'stream_policy.dart';
+import '../../services/stream_policy_service.dart';
 import '../../services/proxy_discovery_service.dart';
 
 class LinuxYtDlpService implements YtDlpService {
@@ -92,37 +94,55 @@ class LinuxYtDlpService implements YtDlpService {
   }
 
   /// Pure parsing logic: separated from Process.run for unit testability!
-  static VideoStreamMetadata parseManifest(Map<String, dynamic> manifest) {
+  static VideoStreamMetadata parseManifest(Map<String, dynamic> manifest, {StreamPolicy? policy}) {
+    final activePolicy = policy ?? StreamPolicyService.instance.activePolicy;
     final formats = (manifest['formats'] as List<dynamic>?) ?? [];
 
     bool isHlsFormat(Map<String, dynamic> f) {
       final p = (f['protocol'] ?? '').toString().toLowerCase();
       final url = (f['url'] ?? '').toString().toLowerCase();
       final fid = (f['format_id'] ?? '').toString();
-      return p.contains('m3u8') || url.contains('m3u8') || url.contains('hls') || fid == '312' || fid == '617';
+      return p.contains('m3u8') ||
+          url.contains('m3u8') ||
+          url.contains('hls') ||
+          url.contains('manifest.googlevideo.com') ||
+          activePolicy.preferredHlsLiveItags.contains(fid) ||
+          activePolicy.preferredHlsVodItags.contains(fid);
     }
 
-    // Include all playable formats (HLS manifests and DASH streams)
-    final videoFormats = formats.where((f) =>
-      f is Map<String, dynamic> &&
-      f['vcodec'] != 'none' &&
-      f['height'] != null
-    ).cast<Map<String, dynamic>>().toList();
+    // 1. Filter out blocked itags from policy (e.g. format 299)
+    var playableFormats = formats.where((f) {
+      if (f is! Map<String, dynamic>) return false;
+      final fid = f['format_id']?.toString() ?? '';
+      return !activePolicy.blockedItags.contains(fid);
+    }).cast<Map<String, dynamic>>().toList();
 
-    // Extract audio streams (including HLS and DASH, avoiding DRC variants)
-    var audioFormats = formats.where((f) =>
-      f is Map<String, dynamic> &&
-      f['acodec'] != 'none' &&
-      f['vcodec'] == 'none' &&
-      !f['format_id'].toString().contains('drc')
-    ).cast<Map<String, dynamic>>().toList();
+    // Fallback if all video formats were filtered out
+    if (playableFormats.where((f) => f['vcodec'] != 'none' && f['height'] != null).isEmpty) {
+      playableFormats = formats.where((f) => f is Map<String, dynamic>).cast<Map<String, dynamic>>().toList();
+    }
+
+    // Include all playable video formats
+    final videoFormats = playableFormats.where((f) =>
+      f['vcodec'] != 'none' &&
+      f['height'] != null &&
+      !f['format_id'].toString().startsWith('sb')
+    ).toList();
+
+    // Extract audio streams (filtering DRC if policy requests it)
+    var audioFormats = playableFormats.where((f) {
+      final isAudio = f['acodec'] != 'none' && f['vcodec'] == 'none';
+      if (!isAudio) return false;
+      if (activePolicy.excludeDrc && f['format_id'].toString().contains('drc')) {
+        return false;
+      }
+      return true;
+    }).toList();
 
     if (audioFormats.isEmpty) {
-      audioFormats = formats.where((f) =>
-        f is Map<String, dynamic> &&
-        f['acodec'] != 'none' &&
-        f['vcodec'] == 'none'
-      ).cast<Map<String, dynamic>>().toList();
+      audioFormats = playableFormats.where((f) =>
+        f['acodec'] != 'none' && f['vcodec'] == 'none'
+      ).toList();
     }
 
     if (videoFormats.isEmpty) {
@@ -131,18 +151,17 @@ class LinuxYtDlpService implements YtDlpService {
 
     int codecPriority(String vcodec) {
       final v = vcodec.toLowerCase();
-      if (v.startsWith('avc') || v.startsWith('h264')) return 1; // H.264: 100% universal hardware acceleration
-      if (v.startsWith('vp9') || v.startsWith('vp09')) return 2; // VP9: Hardware accelerated on Android TV
-      if (v.startsWith('hev') || v.startsWith('h265')) return 3; // HEVC: Hardware accelerated
-      if (v.startsWith('av01') || v.startsWith('av1')) return 4; // AV1: Software-only on almost all projectors -> severe glitching
-      return 5;
+      for (int i = 0; i < activePolicy.codecPriority.length; i++) {
+        final pref = activePolicy.codecPriority[i];
+        if (v.startsWith(pref)) return i + 1;
+      }
+      return activePolicy.codecPriority.length + 1;
     }
 
-    // Sort video by height descending, then by hardware codec capability (AVC > VP9 > HEVC > AV1)
     // Sort video by:
     // 1. Height descending (1080p, 720p, etc.)
-    // 2. Prefer HLS (e.g. format 312) to bypass IP-pinning and 403 Forbidden errors
-    // 3. Prefer AVC (H.264) over VP9/HEVC/AV1 for universal HW decoding
+    // 2. Protocol priority from policy (HLS over DASH to bypass IP-pinning and 403 Forbidden)
+    // 3. Codec priority from policy (AVC > VP9 > HEVC > AV1)
     videoFormats.sort((a, b) {
       final hA = (a['height'] ?? 0) as int;
       final hB = (b['height'] ?? 0) as int;
@@ -152,6 +171,13 @@ class LinuxYtDlpService implements YtDlpService {
       final isHlsB = isHlsFormat(b);
       if (isHlsA && !isHlsB) return -1;
       if (!isHlsA && isHlsB) return 1;
+
+      final fidA = a['format_id']?.toString() ?? '';
+      final fidB = b['format_id']?.toString() ?? '';
+      final isPrefVodA = activePolicy.preferredHlsVodItags.contains(fidA);
+      final isPrefVodB = activePolicy.preferredHlsVodItags.contains(fidB);
+      if (isPrefVodA && !isPrefVodB) return -1;
+      if (!isPrefVodA && isPrefVodB) return 1;
 
       final vA = (a['vcodec'] ?? '').toString();
       final vB = (b['vcodec'] ?? '').toString();
@@ -164,17 +190,18 @@ class LinuxYtDlpService implements YtDlpService {
       return tbrB.compareTo(tbrA);
     });
 
-    // Determine if the selected video stream is HLS
-    final topVideoIsHls = videoFormats.isNotEmpty && isHlsFormat(videoFormats.first);
+    final topVideo = videoFormats.first;
+    final topVideoIsHls = isHlsFormat(topVideo);
+    final topVideoHasInternalAudio = topVideo['acodec'] != null &&
+        topVideo['acodec'] != 'none' &&
+        topVideo['acodec'].toString().isNotEmpty;
 
-    // Sort audio streams:
-    // If video is HLS (format 312), prioritize matching HLS audio (format 234)
-    // to bypass IP-pinning, cipher throttling, and 403 Forbidden errors!
+    // Sort audio streams according to policy:
     if (audioFormats.isNotEmpty) {
       audioFormats.sort((a, b) {
         if (topVideoIsHls) {
-          final isHlsA = isHlsFormat(a);
-          final isHlsB = isHlsFormat(b);
+          final isHlsA = isHlsFormat(a) || activePolicy.liveAudioItags.contains(a['format_id']?.toString());
+          final isHlsB = isHlsFormat(b) || activePolicy.liveAudioItags.contains(b['format_id']?.toString());
           if (isHlsA && !isHlsB) return -1;
           if (!isHlsA && isHlsB) return 1;
         }
@@ -203,24 +230,34 @@ class LinuxYtDlpService implements YtDlpService {
       }
     }
 
-    final bestAudioFormat = audioFormats.isNotEmpty ? audioFormats.first : null;
-    final bestAudio = (bestAudioFormat != null && (bestAudioFormat['url'] as String? ?? '').isNotEmpty)
-        ? bestAudioFormat['url'] as String
-        : null;
+    // Determine audio track URL according to policy:
+    // If top video is HLS and already has internal audio (e.g. VOD 301/300),
+    // skip attaching external audio!
+    String? bestAudio;
+    if (topVideoIsHls && topVideoHasInternalAudio) {
+      bestAudio = null;
+    } else {
+      final bestAudioFormat = audioFormats.isNotEmpty ? audioFormats.first : null;
+      bestAudio = (bestAudioFormat != null && (bestAudioFormat['url'] as String? ?? '').isNotEmpty)
+          ? bestAudioFormat['url'] as String
+          : null;
+    }
 
-    final mediaHeaders = <String, String>{
-      'Referer': 'https://www.youtube.com/',
-    };
+    final mediaHeaders = Map<String, String>.from(activePolicy.playbackHeaders);
+    final bestAudioFormat = audioFormats.isNotEmpty ? audioFormats.first : null;
     if (bestAudioFormat != null && bestAudioFormat['http_headers'] != null) {
       final h = bestAudioFormat['http_headers'] as Map<String, dynamic>;
       if (h['User-Agent'] != null) {
         mediaHeaders['User-Agent'] = h['User-Agent'].toString();
       }
     }
-    if (!mediaHeaders.containsKey('User-Agent') &&
-        manifest['http_headers'] != null &&
-        manifest['http_headers']['User-Agent'] != null) {
+    if (manifest['http_headers'] != null && manifest['http_headers']['User-Agent'] != null) {
       mediaHeaders['User-Agent'] = manifest['http_headers']['User-Agent']!.toString();
+    } else if (videoFormats.first['http_headers'] != null) {
+      final h = videoFormats.first['http_headers'] as Map<String, dynamic>;
+      if (h['User-Agent'] != null) {
+        mediaHeaders['User-Agent'] = h['User-Agent'].toString();
+      }
     }
 
     return VideoStreamMetadata(
