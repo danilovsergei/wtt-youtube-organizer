@@ -2,7 +2,6 @@ package serve_cmd
 
 import (
 	"context"
-	"github.com/grandcat/zeroconf"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,14 +12,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grandcat/zeroconf"
 )
 
 type cachedStream struct {
 	directURL string
 	expiresAt time.Time
+}
+
+type YtFormat struct {
+	FormatID string  `json:"format_id"`
+	URL      string  `json:"url"`
+	VCodec   string  `json:"vcodec"`
+	ACodec   string  `json:"acodec"`
+	Height   int     `json:"height"`
+	ABR      float64 `json:"abr"`
+	Protocol string  `json:"protocol"`
+}
+
+type YtManifest struct {
+	Formats []YtFormat `json:"formats"`
 }
 
 // Server provides the HTTP media streaming proxy and UDP discovery service.
@@ -33,6 +49,7 @@ type Server struct {
 
 	cacheMu sync.RWMutex
 	cache   map[string]*cachedStream
+	manifestFn func(ctx context.Context, videoID string) (*YtManifest, error)
 }
 
 // NewServer initializes a new Server instance.
@@ -68,7 +85,7 @@ func getOrCreateInstanceID() string {
 	return newID
 }
 
-// Start launches both the HTTP streaming server and the UDP discovery listener.
+// Start launches both the HTTP streaming server, mDNS registration, and UDP discovery.
 func (s *Server) Start() error {
 	// 1. Register Chromecast-standard mDNS (Multicast DNS on 224.0.0.251:5353)
 	mdnsServer, err := zeroconf.Register(
@@ -89,7 +106,7 @@ func (s *Server) Start() error {
 	// 2. Start UDP Discovery Listener in background
 	go s.listenUDPDiscovery()
 
-	// 2. Start HTTP Proxy Server
+	// 3. Start HTTP Proxy Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/resolve/", s.handleResolve)
@@ -124,6 +141,62 @@ type resolveResponse struct {
 	HttpHeaders  map[string]string   `json:"httpHeaders"`
 }
 
+func resolveBinary(name string, fallbacks []string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	for _, f := range fallbacks {
+		if _, err := os.Stat(f); err == nil {
+			return f
+		}
+	}
+	return name
+}
+
+func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManifest, error) {
+	home, _ := os.UserHomeDir()
+	ytdlpPath := resolveBinary("yt-dlp", []string{
+		filepath.Join(home, "bin", "yt-dlp"),
+		filepath.Join(home, ".local", "bin", "yt-dlp"),
+		"/usr/local/bin/yt-dlp",
+		"/usr/bin/yt-dlp",
+	})
+
+	denoPath := resolveBinary("deno", []string{
+		filepath.Join(home, "bin", "deno"),
+		filepath.Join(home, ".local", "bin", "deno"),
+		"/usr/local/bin/deno",
+		"/usr/bin/deno",
+	})
+
+	args := []string{
+		"--js-runtimes", fmt.Sprintf("deno:%s", denoPath),
+		"-j",
+		"--no-warnings",
+	}
+
+	if s.cookiesPath != "" {
+		if _, err := os.Stat(s.cookiesPath); err == nil {
+			args = append(args, "--cookies", s.cookiesPath)
+		}
+	}
+
+	args = append(args, fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID))
+
+	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("yt-dlp error: %w", err)
+	}
+
+	var m YtManifest
+	if err := json.Unmarshal(out, &m); err != nil {
+		return nil, fmt.Errorf("json unmarshal error: %w", err)
+	}
+
+	return &m, nil
+}
+
 // handleResolve uses yt-dlp to extract available formats and returns proxy stream URLs.
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -133,6 +206,18 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	videoID = strings.TrimSpace(videoID)
 	if videoID == "" {
 		http.Error(w, `{"error":"missing video_id"}`, http.StatusBadRequest)
+		return
+	}
+
+	var m *YtManifest
+	var err error
+	if s.manifestFn != nil {
+		m, err = s.manifestFn(r.Context(), videoID)
+	} else {
+		m, err = s.extractManifest(r.Context(), videoID)
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"failed to resolve manifest: %v"}`, err), http.StatusBadGateway)
 		return
 	}
 
@@ -146,15 +231,69 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, host)
 
-	// Available standard video formats we proxy: 1080p (312/299/137), 720p (136/22), 480p (135/18), 360p (134)
+	// Cache all formats by itag
+	s.cacheMu.Lock()
+	for _, f := range m.Formats {
+		if f.URL != "" && f.FormatID != "" {
+			s.cache[videoID+":"+f.FormatID] = &cachedStream{
+				directURL: f.URL,
+				expiresAt: time.Now().Add(5 * time.Hour),
+			}
+		}
+	}
+	s.cacheMu.Unlock()
+
+	// Select best audio (HLS 234 if present, else DASH 140 / 251)
+	var bestAudio *YtFormat
+	for i, f := range m.Formats {
+		if f.VCodec == "none" && f.ACodec != "none" && !strings.Contains(f.FormatID, "drc") {
+			if bestAudio == nil {
+				bestAudio = &m.Formats[i]
+			} else if f.FormatID == "234" {
+				bestAudio = &m.Formats[i]
+			} else if bestAudio.FormatID != "234" && f.ABR > bestAudio.ABR {
+				bestAudio = &m.Formats[i]
+			}
+		}
+	}
+
+	// Select best video stream per height
+	heightMap := make(map[int]YtFormat)
+	for _, f := range m.Formats {
+		if f.VCodec != "none" && f.Height > 0 {
+			if existing, ok := heightMap[f.Height]; !ok {
+				heightMap[f.Height] = f
+			} else if f.FormatID == "312" || f.FormatID == "299" || f.FormatID == "18" {
+				heightMap[f.Height] = f
+			} else if existing.FormatID != "312" && existing.FormatID != "299" {
+				heightMap[f.Height] = f
+			}
+		}
+	}
+
+	var heights []int
+	for h := range heightMap {
+		heights = append(heights, h)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(heights)))
+
+	var videoStreams []resolveStreamItem
+	for _, h := range heights {
+		f := heightMap[h]
+		videoStreams = append(videoStreams, resolveStreamItem{
+			Height: h,
+			URL:    fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, f.FormatID),
+		})
+	}
+
+	audioURL := ""
+	if bestAudio != nil {
+		audioURL = fmt.Sprintf("%s/stream/%s?itag=%s", baseURL, videoID, bestAudio.FormatID)
+	}
+
 	resp := resolveResponse{
-		VideoStreams: []resolveStreamItem{
-			{Height: 1080, URL: fmt.Sprintf("%s/stream/%s?format=312/299/137/bv*[height<=1080]", baseURL, videoID)},
-			{Height: 720, URL: fmt.Sprintf("%s/stream/%s?format=136/22/bv*[height<=720]", baseURL, videoID)},
-			{Height: 480, URL: fmt.Sprintf("%s/stream/%s?format=135/18/bv*[height<=480]", baseURL, videoID)},
-			{Height: 360, URL: fmt.Sprintf("%s/stream/%s?format=134/bv*[height<=360]", baseURL, videoID)},
-		},
-		AudioURL: fmt.Sprintf("%s/stream/%s?format=234/140/251/ba", baseURL, videoID),
+		VideoStreams: videoStreams,
+		AudioURL:     audioURL,
 		HttpHeaders: map[string]string{
 			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 		},
@@ -181,14 +320,51 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = "18/bv*/b"
+	itag := r.URL.Query().Get("itag")
+	if itag == "" {
+		itag = r.URL.Query().Get("format")
 	}
 
-	directURL, err := s.resolveDirectURL(r.Context(), videoID, format)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to resolve stream: %v", err), http.StatusBadGateway)
+	// Look up direct URL in memory cache
+	cacheKey := fmt.Sprintf("%s:%s", videoID, itag)
+	s.cacheMu.RLock()
+	item, found := s.cache[cacheKey]
+	s.cacheMu.RUnlock()
+
+	var directURL string
+	if found && time.Now().Before(item.expiresAt) {
+		directURL = item.directURL
+	} else {
+		// Populate cache from manifest
+		var m *YtManifest
+	var err error
+	if s.manifestFn != nil {
+		m, err = s.manifestFn(r.Context(), videoID)
+	} else {
+		m, err = s.extractManifest(r.Context(), videoID)
+	}
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to extract manifest: %v", err), http.StatusBadGateway)
+			return
+		}
+
+		s.cacheMu.Lock()
+		for _, f := range m.Formats {
+			if f.URL != "" && f.FormatID != "" {
+				s.cache[videoID+":"+f.FormatID] = &cachedStream{
+					directURL: f.URL,
+					expiresAt: time.Now().Add(5 * time.Hour),
+				}
+				if f.FormatID == itag {
+					directURL = f.URL
+				}
+			}
+		}
+		s.cacheMu.Unlock()
+	}
+
+	if directURL == "" {
+		http.Error(w, fmt.Sprintf("stream format %s not found", itag), http.StatusNotFound)
 		return
 	}
 
@@ -221,55 +397,6 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 
 	_, _ = io.Copy(w, resp.Body)
-}
-
-func (s *Server) resolveDirectURL(ctx context.Context, videoID, format string) (string, error) {
-	cacheKey := fmt.Sprintf("%s:%s", videoID, format)
-
-	s.cacheMu.RLock()
-	item, found := s.cache[cacheKey]
-	s.cacheMu.RUnlock()
-
-	if found && time.Now().Before(item.expiresAt) {
-		return item.directURL, nil
-	}
-
-	// Resolve using yt-dlp on the server with cookies
-	args := []string{
-		"-g",
-		"-f", format,
-		"--no-warnings",
-	}
-
-	if s.cookiesPath != "" {
-		if _, err := os.Stat(s.cookiesPath); err == nil {
-			args = append(args, "--cookies", s.cookiesPath)
-		}
-	}
-
-	args = append(args, fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID))
-
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("yt-dlp error: %w", err)
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		return "", fmt.Errorf("empty stream URL from yt-dlp")
-	}
-
-	directURL := lines[0]
-
-	s.cacheMu.Lock()
-	s.cache[cacheKey] = &cachedStream{
-		directURL: directURL,
-		expiresAt: time.Now().Add(4 * time.Hour),
-	}
-	s.cacheMu.Unlock()
-
-	return directURL, nil
 }
 
 // listenUDPDiscovery responds to broadcast discovery requests on the LAN.

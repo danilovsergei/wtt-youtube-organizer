@@ -1,6 +1,7 @@
 package serve_cmd
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -40,6 +41,17 @@ func TestServer_HealthEndpoint(t *testing.T) {
 
 func TestServer_ResolveEndpoint(t *testing.T) {
 	srv := NewServer(8080, 8081, "")
+	srv.manifestFn = func(ctx context.Context, videoID string) (*YtManifest, error) {
+		return &YtManifest{
+			Formats: []YtFormat{
+				{FormatID: "299", Height: 1080, VCodec: "avc1", ACodec: "none", URL: "https://googlevideo.com/299"},
+				{FormatID: "136", Height: 720, VCodec: "avc1", ACodec: "none", URL: "https://googlevideo.com/136"},
+				{FormatID: "135", Height: 480, VCodec: "avc1", ACodec: "none", URL: "https://googlevideo.com/135"},
+				{FormatID: "134", Height: 360, VCodec: "avc1", ACodec: "none", URL: "https://googlevideo.com/134"},
+				{FormatID: "140", ABR: 128, VCodec: "none", ACodec: "mp4a", URL: "https://googlevideo.com/140"},
+			},
+		}, nil
+	}
 	req := httptest.NewRequest("GET", "/api/resolve/tfAOXHia7tI", nil)
 	req.Host = "192.168.1.50:8080"
 	w := httptest.NewRecorder()
