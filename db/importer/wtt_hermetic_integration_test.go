@@ -396,3 +396,177 @@ func TestHermeticWTTBackendIntegration(t *testing.T) {
 		t.Errorf("Expected unmatched youth match to have is_broadcast_match=true, got false")
 	}
 }
+
+// TestHermeticWTTBackendIntegration_DoublesMisclassificationRegression guards against
+// regressions where doubles matches (e.g. DORR YUAN vs TOGAMI ODO) imported as singles
+// fail to update is_doubles to true and fail to link all 4 official players upon WTT alignment.
+func TestHermeticWTTBackendIntegration_DoublesMisclassificationRegression(t *testing.T) {
+	conn, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// 1. Mock WTT Backend Server
+	mockDropdown := []wtt_api.WTTEventDropdownEntry{
+		{
+			EventID:      7001,
+			EventName:    "WTT Star Contender Doubles Test 2026",
+			SubEventType: "Mixed Doubles",
+		},
+	}
+	dropdownBytes, _ := json.Marshal(mockDropdown)
+
+	mockOfficial7001 := []wtt_api.WTTOfficialMatch{
+		{
+			ID:           700101,
+			DocumentCode: "TTXMDOUBLES-----------FNL-000100----------",
+			SubEventType: "Mixed Doubles",
+			MatchCard: wtt_api.WTTMatchCard{
+				DocumentCode:        "TTXMDOUBLES-----------FNL-000100----------",
+				SubEventName:        "Mixed Doubles",
+				SubEventDescription: "Mixed Doubles - Final",
+				OverallScores:       "3-2",
+				GameScores:          "11-8, 9-11, 11-9, 8-11, 11-7",
+				MatchDateTime: wtt_api.WTTMatchDateTime{
+					StartDateUTC: "2026-11-21T18:00:00Z",
+				},
+				Competitors: []wtt_api.WTTCompetitor{
+					{
+						CompetitorType: "D",
+						CompetitorName: "DORR Esteban / YUAN Jia Nan",
+						CompetitorOrg:  "FRA",
+						Players: []wtt_api.WTTPlayer{
+							{PlayerName: "DORR Esteban"},
+							{PlayerName: "YUAN Jia Nan"},
+						},
+					},
+					{
+						CompetitorType: "D",
+						CompetitorName: "TOGAMI Shunsuke / ODO Satsuki",
+						CompetitorOrg:  "JPN",
+						Players: []wtt_api.WTTPlayer{
+							{PlayerName: "TOGAMI Shunsuke"},
+							{PlayerName: "ODO Satsuki"},
+						},
+					},
+				},
+			},
+		},
+	}
+	officialBytes, _ := json.Marshal(mockOfficial7001)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "br")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/dropdown.json":
+			w.Write(compressBr(dropdownBytes))
+		case "/official_7001.json":
+			w.Write(compressBr(officialBytes))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	// 2. Seed Database with tournament, video, and a match incorrectly imported as singles
+	var tournID int
+	err := conn.QueryRow(ctx, `
+		INSERT INTO tournaments (name, year)
+		VALUES ('WTT Star Contender Doubles Test', 2026)
+		RETURNING id`).Scan(&tournID)
+	if err != nil {
+		t.Fatalf("failed to seed tournament: %v", err)
+	}
+
+	var videoID int
+	err = conn.QueryRow(ctx, `
+		INSERT INTO videos (youtube_id, title, upload_date, day)
+		VALUES ('test_doubles_video', 'LIVE! | T1 | Day 4 | WTT Star Contender Doubles Test | Finals', '2026-11-21T12:00:00Z', 'Day 4 Finals')
+		RETURNING id`).Scan(&videoID)
+	if err != nil {
+		t.Fatalf("failed to seed video: %v", err)
+	}
+
+	// Match seeded with is_doubles = false and single dummy player per side
+	var matchID int
+	err = conn.QueryRow(ctx, `
+		INSERT INTO matches (tournament_id, video_id, video_offset_seconds, is_doubles, wtt_round, stage_order)
+		VALUES ($1, $2, 1000, false, 'Round Match', 1)
+		RETURNING id`, tournID, videoID).Scan(&matchID)
+	if err != nil {
+		t.Fatalf("failed to seed match: %v", err)
+	}
+
+	// Seed dummy single player names
+	var pDummyA, pDummyB int
+	_ = conn.QueryRow(ctx, `INSERT INTO players (name) VALUES ('DORR YUAN') RETURNING id`).Scan(&pDummyA)
+	_ = conn.QueryRow(ctx, `INSERT INTO players (name) VALUES ('TOGAMI ODO') RETURNING id`).Scan(&pDummyB)
+
+	_, _ = conn.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, 'A')`, matchID, pDummyA)
+	_, _ = conn.Exec(ctx, `INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, 'B')`, matchID, pDummyB)
+
+	// 3. Execute AlignTournamentWithWTT
+	err = AlignTournamentWithWTT(ctx, conn, "WTT Star Contender Doubles Test", 2026, wtt_api.WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("AlignTournamentWithWTT failed: %v", err)
+	}
+
+	// 4. Assertions: Match must now be is_doubles = true, stage = 'Final', stage_order = 8, wtt_gender = 'Mixed'
+	var isDoubles bool
+	var wttRound, wttGender string
+	var stageOrder int
+	err = conn.QueryRow(ctx, `
+		SELECT is_doubles, wtt_round, stage_order, wtt_gender
+		FROM matches
+		WHERE id = $1`, matchID).Scan(&isDoubles, &wttRound, &stageOrder, &wttGender)
+	if err != nil {
+		t.Fatalf("failed to query updated match: %v", err)
+	}
+
+	if !isDoubles {
+		t.Errorf("CRITICAL REGRESSION: Expected match to be updated to is_doubles=true, got false")
+	}
+	if wttRound != "Final" {
+		t.Errorf("Expected wtt_round='Final', got %q", wttRound)
+	}
+	if stageOrder != 8 {
+		t.Errorf("Expected stage_order=8, got %d", stageOrder)
+	}
+	if wttGender != "Mixed" {
+		t.Errorf("Expected wtt_gender='Mixed', got %q", wttGender)
+	}
+
+	// 5. Assertions: match_participants must now have 4 official players (not dummy players)
+	rows, err := conn.Query(ctx, `
+		SELECT p.name, mp.side
+		FROM match_participants mp
+		JOIN players p ON mp.player_id = p.id
+		WHERE mp.match_id = $1
+		ORDER BY p.name`, matchID)
+	if err != nil {
+		t.Fatalf("failed to query match_participants: %v", err)
+	}
+	defer rows.Close()
+
+	var linkedPlayers []string
+	for rows.Next() {
+		var name, side string
+		if err := rows.Scan(&name, &side); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		linkedPlayers = append(linkedPlayers, name)
+	}
+
+	if len(linkedPlayers) != 4 {
+		t.Fatalf("CRITICAL REGRESSION: Expected exactly 4 players linked in doubles, got %d: %v", len(linkedPlayers), linkedPlayers)
+	}
+
+	expectedNames := []string{"DORR Esteban", "ODO Satsuki", "TOGAMI Shunsuke", "YUAN Jia Nan"}
+	for i, exp := range expectedNames {
+		if linkedPlayers[i] != exp {
+			t.Errorf("Expected player %q at index %d, got %q", exp, i, linkedPlayers[i])
+		}
+	}
+}

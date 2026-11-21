@@ -871,3 +871,71 @@ func TestExtractIsDoubles(t *testing.T) {
 		}
 	}
 }
+
+func TestMatcher_SetsIsDoubles_ForDoublesMatch(t *testing.T) {
+	// Verifies that AlignMatches marks IsDoubles=true when official WTT match is doubles,
+	// even if the database match was initially imported with is_doubles=false.
+	dbMatches := []DBMatchRecord{
+		{
+			ID:             1001,
+			TournamentName: "WTT Star Contender Test",
+			TournamentYear: 2026,
+			TeamA:          "DORR YUAN",
+			TeamB:          "TOGAMI ODO",
+			IsDoubles:      false, // Initially marked as false by title/OCR import
+			VideoTitle:     "LIVE! | T1 | Day 4 | WTT Star Contender Test | Finals",
+			Day:            "Day 4 Finals",
+		},
+	}
+
+	wttMatches := []WTTOfficialMatch{
+		{
+			ID:           9001,
+			DocumentCode: "TTXMDOUBLES-----------FNL-000100----------",
+			SubEventType: "Mixed Doubles",
+			MatchCard: WTTMatchCard{
+				DocumentCode:        "TTXMDOUBLES-----------FNL-000100----------",
+				SubEventName:        "Mixed Doubles",
+				SubEventDescription: "Mixed Doubles - Final",
+				OverallScores:       "3-2",
+				Competitors: []WTTCompetitor{
+					{
+						CompetitorType: "D",
+						CompetitorName: "DORR Esteban / YUAN Jia Nan",
+						Players: []WTTPlayer{
+							{PlayerName: "DORR Esteban"},
+							{PlayerName: "YUAN Jia Nan"},
+						},
+					},
+					{
+						CompetitorType: "D",
+						CompetitorName: "TOGAMI Shunsuke / ODO Satsuki",
+						Players: []WTTPlayer{
+							{PlayerName: "TOGAMI Shunsuke"},
+							{PlayerName: "ODO Satsuki"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	report := AlignMatches("WTT Star Contender Test", 2026, 999, dbMatches, wttMatches, 0.70)
+	if report.MatchedCount != 1 {
+		t.Fatalf("Expected 1 matched record, got %d", report.MatchedCount)
+	}
+
+	rec := report.Matches[0]
+	if !rec.IsDoubles {
+		t.Errorf("CRITICAL REGRESSION: Expected MatchedRecord.IsDoubles=true, got false")
+	}
+	if rec.WTTGender != "Mixed" {
+		t.Errorf("Expected WTTGender='Mixed', got %q", rec.WTTGender)
+	}
+	if rec.WTTRound != "Final" {
+		t.Errorf("Expected WTTRound='Final', got %q", rec.WTTRound)
+	}
+	if rec.StageOrder != 8 {
+		t.Errorf("Expected StageOrder=8, got %d", rec.StageOrder)
+	}
+}

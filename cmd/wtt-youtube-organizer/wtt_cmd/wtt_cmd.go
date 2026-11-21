@@ -652,33 +652,29 @@ func persistMatches(ctx context.Context, conn *pgx.Conn, matches []wtt_api.Match
 				for _, p := range compA.Players {
 					playerName := importer.SanitizePlayerName(p.PlayerName)
 					if playerName != "" {
-						batch.Queue(`
-							WITH p AS (
-								INSERT INTO players (name) VALUES ($1)
-								ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-								RETURNING id
-							)
-							INSERT INTO match_participants (match_id, player_id, side)
-							SELECT $2, id, 'A' FROM p
-							ON CONFLICT (match_id, player_id) DO UPDATE SET side = EXCLUDED.side;
-						`, playerName, m.DBMatch.ID)
-						count++
+						var playerID int
+						err := conn.QueryRow(ctx, "SELECT id FROM players WHERE name = $1", playerName).Scan(&playerID)
+						if err == pgx.ErrNoRows {
+							_ = conn.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", playerName).Scan(&playerID)
+						}
+						if playerID > 0 {
+							batch.Queue(`INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, 'A') ON CONFLICT DO NOTHING;`, m.DBMatch.ID, playerID)
+							count++
+						}
 					}
 				}
 				for _, p := range compB.Players {
 					playerName := importer.SanitizePlayerName(p.PlayerName)
 					if playerName != "" {
-						batch.Queue(`
-							WITH p AS (
-								INSERT INTO players (name) VALUES ($1)
-								ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-								RETURNING id
-							)
-							INSERT INTO match_participants (match_id, player_id, side)
-							SELECT $2, id, 'B' FROM p
-							ON CONFLICT (match_id, player_id) DO UPDATE SET side = EXCLUDED.side;
-						`, playerName, m.DBMatch.ID)
-						count++
+						var playerID int
+						err := conn.QueryRow(ctx, "SELECT id FROM players WHERE name = $1", playerName).Scan(&playerID)
+						if err == pgx.ErrNoRows {
+							_ = conn.QueryRow(ctx, "INSERT INTO players (name) VALUES ($1) RETURNING id", playerName).Scan(&playerID)
+						}
+						if playerID > 0 {
+							batch.Queue(`INSERT INTO match_participants (match_id, player_id, side) VALUES ($1, $2, 'B') ON CONFLICT DO NOTHING;`, m.DBMatch.ID, playerID)
+							count++
+						}
 					}
 				}
 			}
