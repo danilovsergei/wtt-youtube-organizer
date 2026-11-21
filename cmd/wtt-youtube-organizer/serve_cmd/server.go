@@ -169,8 +169,25 @@ func (s *Server) extractManifest(ctx context.Context, videoID string) (*YtManife
 		"/usr/bin/deno",
 	})
 
+	// Ensure fresh cookies via ytdlp-rookie if cookies are older than 15 mins
+	if s.cookiesPath != "" {
+		rookiePath := resolveBinary("ytdlp-rookie", []string{
+			filepath.Join(home, "bin", "ytdlp-rookie"),
+			filepath.Join(home, "Build", "wtt-youtube-organizer", "bin", "ytdlp-rookie"),
+		})
+		if info, err := os.Stat(s.cookiesPath); err != nil || time.Since(info.ModTime()) > 15*time.Minute {
+			if _, err := os.Stat(rookiePath); err == nil {
+				if out, err := exec.Command(rookiePath).Output(); err == nil && len(out) > 0 {
+					_ = os.MkdirAll(filepath.Dir(s.cookiesPath), 0755)
+					_ = os.WriteFile(s.cookiesPath, out, 0644)
+				}
+			}
+		}
+	}
+
 	args := []string{
 		"--js-runtimes", fmt.Sprintf("deno:%s", denoPath),
+		"--extractor-args", "youtube:player_client=tv_samsung",
 		"-j",
 		"--no-warnings",
 	}
