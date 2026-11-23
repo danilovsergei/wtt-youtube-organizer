@@ -240,16 +240,3 @@ def test_get_bottom_percent_ittf_teams_versus_wtt():
     assert get_bottom_percent(video_title="Day 2 Session 2", tournament_name="ITTF World Youth Teams") == 0.20
 
 
-def test_is_valid_player_name_rejects_single_letters_and_team_scores():
-    from prod_video_processor import ScoreExtractor
-    extractor = ScoreExtractor()
-    # Test through raw parse logic
-    import json
-    invalid_cases = [
-        ('{"row_1_name": "M|I|S|U|Z|U| |T|A|K|E|Y|A", "row_2_name": "O", "row_1_sets": 1, "row_1_points": 5, "row_2_sets": 0, "row_2_points": 4}', "O"),
-        ('{"row_1_name": "C|U|I| |Z|I|J|U|N", "row_2_name": "T|P|E| |O|-| |C|H|N", "row_1_sets": 0, "row_1_points": 0, "row_2_sets": 0, "row_2_points": 0}', "TPE O- CHN"),
-        ('{"row_1_name": "D|U| |H|A|N|J|I|N|G", "row_2_name": "K|O|R| |O|-| |O| |C|H|N", "row_1_sets": 0, "row_1_points": 0, "row_2_sets": 0, "row_2_points": 0}', "KOR O- O CHN"),
-    ]
-    for raw_json, bad_name in invalid_cases:
-        res = extractor._parse_qwen_json(raw_json)
-        assert not res.success, f"Expected {bad_name} to be rejected as invalid player name"

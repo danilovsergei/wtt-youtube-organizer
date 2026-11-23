@@ -342,13 +342,6 @@ If only one player row or no scoreboard is visible, output an empty JSON object:
             name = clean_player_name(name).upper()
             if not name:
                 return False
-            # Player names must have at least 3 alphabetical characters (rejects single/two letter noise like 'O')
-            clean_alpha = re.sub(r'[^A-Z]', '', name)
-            if len(clean_alpha) < 3:
-                return False
-            # Reject country team score lines like 'TPE O- CHN', 'CHN - JPN', 'FRA O- OIND'
-            if re.search(r'\b(CHN|JPN|TPE|KOR|FRA|GER|USA|IND|TUR|EGY|NZL|POL|IRI|AUS|BRA|HKG|SWE)\b.*(\-|\bO\b)', name):
-                return False
             if len(name) > 35:
                 return False
             max_words = 8 if "/" in name else 4
