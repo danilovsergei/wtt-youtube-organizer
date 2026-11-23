@@ -2,6 +2,7 @@ package matchfinder_cli
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,5 +86,54 @@ func TestGetCookiesPathFailsWhenNotInPath(t *testing.T) {
 	expectedErrorMsg := "--get_cookies specified but ytdlp-rookie binary not found"
 	if !strings.Contains(err.Error(), expectedErrorMsg) {
 		t.Errorf("Expected error to contain %q, but got: %v", expectedErrorMsg, err)
+	}
+}
+
+func TestProcessQueueVideos_PassesVideoTitleToContainerArgs(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "queue-test-")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	queueFile := filepath.Join(tmpDir, "test_queue.json")
+	queueEntries := []QueueEntry{
+		{
+			VideoID:    "TEST_VIDEO_1",
+			VideoTitle: "ITTF World Youth Championships Teams Final",
+			UploadDate: "1763900000",
+		},
+	}
+	if err := SaveQueue(queueFile, queueEntries); err != nil {
+		t.Fatalf("failed to save queue: %v", err)
+	}
+
+	var capturedArgs []string
+	deps := queueProcessorDeps{
+		runDocker: func(outputFile string, containerArgs []string) error {
+			capturedArgs = containerArgs
+			_ = os.WriteFile(outputFile, []byte(`{"matches":[]}`), 0644)
+			return nil
+		},
+		importJSON: func(jsonFilePath string) error {
+			return nil
+		},
+	}
+
+	if err := processQueueVideosWithDeps(queueFile, deps, nil, ""); err != nil {
+		t.Fatalf("processQueueVideosWithDeps failed: %v", err)
+	}
+
+	hasTitleArg := false
+	expectedTitle := "--video_title=ITTF World Youth Championships Teams Final"
+	for _, arg := range capturedArgs {
+		if arg == expectedTitle {
+			hasTitleArg = true
+			break
+		}
+	}
+
+	if !hasTitleArg {
+		t.Errorf("expected containerArgs to contain %q, but got %v", expectedTitle, capturedArgs)
 	}
 }

@@ -784,6 +784,9 @@ func processQueueVideosWithDeps(queuePath string, deps queueProcessorDeps, extra
 				containerArgs := []string{
 					"--youtube_video=" + youtubeURL,
 				}
+				if entry.VideoTitle != "" {
+					containerArgs = append(containerArgs, "--video_title="+entry.VideoTitle)
+				}
 				if cudaDeviceID >= 0 && !strings.Contains(strings.Join(containerArgs, " "), "--cuda_device_id") {
 					containerArgs = append(containerArgs, "--cuda_device_id", strconv.Itoa(cudaDeviceID))
 					if devName := getCudaDeviceName(cudaDeviceID); devName != "" {

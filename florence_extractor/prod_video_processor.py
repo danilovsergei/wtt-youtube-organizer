@@ -411,6 +411,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
         self.model_name = (model_name or os.environ.get("WTT_MODEL", "qwen")).lower()
         self.extractor = ScoreExtractor(backend=backend, device=device, model_name=self.model_name)
         self.cropped_dir = cropped_dir
+        self.video_title = ""
         self.last_fetch_error = None
         self.last_fetch_is_bot_blocked = False
 
