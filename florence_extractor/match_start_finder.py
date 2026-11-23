@@ -877,6 +877,8 @@ def main():
             print(f"Resolved execution device: {device}{dev_name_print}")
             if hasattr(processor, 'cropped_dir'):
                 processor.cropped_dir = crop_dir
+            if hasattr(processor, 'video_title'):
+                processor.video_title = video_title
             finder = MatchStartFinder(
                 video_path=video_path,
                 output_dir=args.output,
@@ -1107,6 +1109,8 @@ def main():
 
     if hasattr(processor, 'cropped_dir'):
         processor.cropped_dir = crop_dir
+    if hasattr(processor, 'video_title'):
+        processor.video_title = video_title
     finder = MatchStartFinder(
         video_path=video_path, output_dir=args.output, processor=processor
     )

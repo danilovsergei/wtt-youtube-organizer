@@ -225,3 +225,31 @@ def test_clean_player_name_preserves_doubles_slash():
     assert clean_player_name("T|O|G|A|M|I| |/| |O|D|O") == "TOGAMI / ODO"
     assert clean_player_name("J|A|N|G| |W|O|O|-|J|I|N") == "JANG WOO-JIN"
     assert clean_player_name("KUAI MAN {}_4") == "KUAI MAN"
+
+
+def test_get_bottom_percent_ittf_teams_versus_wtt():
+    from prod_video_processor import get_bottom_percent
+    # Standard WTT events stay at default 0.14
+    assert get_bottom_percent("WTT Star Contender Muscat 2026 Finals") == 0.14
+    assert get_bottom_percent("Singapore Smash 2026 Day 5") == 0.14
+    assert get_bottom_percent("WTT Champions Frankfurt 2026 R16") == 0.14
+    
+    # ITTF Team events expand to 0.20 to capture 3-row layout without slicing top player
+    assert get_bottom_percent("LIVE! | T1 | Day 3 | ITTF World Youth Championships Istanbul 2026 | GU19 Teams Final") == 0.20
+    assert get_bottom_percent("ITTF World Team Championships Busan 2026 Men's Team Final") == 0.20
+    assert get_bottom_percent(video_title="Day 2 Session 2", tournament_name="ITTF World Youth Teams") == 0.20
+
+
+def test_is_valid_player_name_rejects_single_letters_and_team_scores():
+    from prod_video_processor import ScoreExtractor
+    extractor = ScoreExtractor()
+    # Test through raw parse logic
+    import json
+    invalid_cases = [
+        ('{"row_1_name": "M|I|S|U|Z|U| |T|A|K|E|Y|A", "row_2_name": "O", "row_1_sets": 1, "row_1_points": 5, "row_2_sets": 0, "row_2_points": 4}', "O"),
+        ('{"row_1_name": "C|U|I| |Z|I|J|U|N", "row_2_name": "T|P|E| |O|-| |C|H|N", "row_1_sets": 0, "row_1_points": 0, "row_2_sets": 0, "row_2_points": 0}', "TPE O- CHN"),
+        ('{"row_1_name": "D|U| |H|A|N|J|I|N|G", "row_2_name": "K|O|R| |O|-| |O| |C|H|N", "row_1_sets": 0, "row_1_points": 0, "row_2_sets": 0, "row_2_points": 0}', "KOR O- O CHN"),
+    ]
+    for raw_json, bad_name in invalid_cases:
+        res = extractor._parse_qwen_json(raw_json)
+        assert not res.success, f"Expected {bad_name} to be rejected as invalid player name"

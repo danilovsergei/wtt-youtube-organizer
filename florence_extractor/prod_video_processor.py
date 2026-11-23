@@ -20,6 +20,26 @@ from wtt_video_processor import WttVideoProcessor
 BOTTOM_PERCENT = 0.14
 LEFT_PERCENT = 0.40
 
+def get_bottom_percent(video_title: str = "", tournament_name: str = "") -> float:
+    """Dynamically determine crop height based on tournament type.
+    
+    ITTF Team Championship scoreboards feature a 3-row layout:
+    [Player 1]
+    [Player 2]
+    [Team Match Score Banner: e.g. CHN 1 - 1 JPN]
+    
+    This banner pushes the entire scoreboard upwards by ~20 pixels, requiring
+    an expanded 0.20 crop height to avoid slicing off the top player.
+    All standard WTT tournaments strictly retain the default 0.14 crop height.
+    """
+    t = (video_title or "").upper()
+    tour = (tournament_name or "").upper()
+    is_ittf = "ITTF" in t or "ITTF" in tour
+    is_team = "TEAM" in t or "TEAMS" in t
+    if is_ittf and is_team:
+        return 0.20
+    return 0.14
+
 
 def format_timestamp(seconds: float) -> str:
     """Convert seconds to HH:MM:SS format."""
@@ -54,14 +74,15 @@ def _global_extract_frame(video_path: str, timestamp_seconds: float, output_path
         return False
 
 
-def crop_image(image_path: str) -> Optional[Image.Image]:
+def crop_image(image_path: str, bottom_percent: Optional[float] = None) -> Optional[Image.Image]:
     """Crop the score region from an image (bottom-left corner)."""
     try:
         img = cv2.imread(image_path)
         if img is None:
             return None
         h, w = img.shape[:2]
-        y_start = int(h * (1 - BOTTOM_PERCENT))
+        bp = bottom_percent if bottom_percent is not None else BOTTOM_PERCENT
+        y_start = int(h * (1 - bp))
         x_end = int(w * LEFT_PERCENT)
         cropped = img[y_start:h, 0:x_end]
         cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
@@ -321,6 +342,13 @@ If only one player row or no scoreboard is visible, output an empty JSON object:
             name = clean_player_name(name).upper()
             if not name:
                 return False
+            # Player names must have at least 3 alphabetical characters (rejects single/two letter noise like 'O')
+            clean_alpha = re.sub(r'[^A-Z]', '', name)
+            if len(clean_alpha) < 3:
+                return False
+            # Reject country team score lines like 'TPE O- CHN', 'CHN - JPN', 'FRA O- OIND'
+            if re.search(r'\b(CHN|JPN|TPE|KOR|FRA|GER|USA|IND|TUR|EGY|NZL|POL|IRI|AUS|BRA|HKG|SWE)\b.*(\-|\bO\b)', name):
+                return False
             if len(name) > 35:
                 return False
             max_words = 8 if "/" in name else 4
@@ -563,7 +591,8 @@ class ProdWttVideoProcessor(WttVideoProcessor):
 
     def get_scoreboard(self, image_path: str, actual_timestamp: float = 0.0) -> Tuple[ScoreResult, str]:
         import os
-        cropped = crop_image(image_path)
+        bp = get_bottom_percent(getattr(self, 'video_title', ''))
+        cropped = crop_image(image_path, bottom_percent=bp)
         cropped_path = ''
         if cropped is None:
             return (ScoreResult(success=False, error='Image cropping failed'), '')
