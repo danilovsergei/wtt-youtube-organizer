@@ -643,6 +643,15 @@ class MatchStartFinder:
             if players_match_straight or players_match_swapped:
                 return True
 
+            # If at least ONE player matches or is similar, and the detected starts are within
+            # the same broadcast session (<45m), consider it duplicate
+            one_player_same = (is_similar(match.player1, existing.player1) or
+                               is_similar(match.player2, existing.player2) or
+                               is_similar(match.player1, existing.player2) or
+                               is_similar(match.player2, existing.player1))
+            if one_player_same and abs(existing.timestamp_seconds - match.timestamp_seconds) < 2700:
+                return True
+
             # Duplicate if too close in time
             if abs(existing.timestamp_seconds - match.timestamp_seconds) < MIN_BREAK_DURATION:
                 return True
@@ -655,8 +664,20 @@ class MatchStartFinder:
         players_match_swapped = (is_similar(prev.player1, curr.player2) and
                                  is_similar(prev.player2, curr.player1))
 
-        # Players changed if they don't match straight or swapped
-        return not (players_match_straight or players_match_swapped)
+        if players_match_straight or players_match_swapped:
+            return False
+
+        # User rule: If at least ONE player matches or is similar, check if this is an ongoing match with OCR variance
+        one_player_same = (is_similar(prev.player1, curr.player1) or
+                           is_similar(prev.player2, curr.player2) or
+                           is_similar(prev.player1, curr.player2) or
+                           is_similar(prev.player2, curr.player1))
+        if one_player_same:
+            # If the score was not reset (ongoing sets/games), consider it the same match
+            if not self._score_reset_detected(prev, curr):
+                return False
+
+        return True
 
     def _score_reset_detected(self, prev: ScoreResult, curr: ScoreResult) -> bool:
         """Check if score was reset (new match started)."""

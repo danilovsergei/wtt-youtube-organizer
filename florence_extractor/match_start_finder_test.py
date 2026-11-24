@@ -378,6 +378,29 @@ class TestMatchStartFinderHermetic(unittest.TestCase):
         self.assertEqual(matches[1].player2, "SIMON GAUZY")
         self.assertEqual(int(matches[1].timestamp_seconds), 1035)
 
+    def test_players_changed_and_duplicate_with_one_player_matching_and_ocr_noise(self):
+        from match_start_finder import MatchStartFinder, MatchStart
+        from score_extractor import ScoreResult
+
+        processor = TestWttVideoProcessor("fake.json")
+        finder = MatchStartFinder(video_path="dummy.mp4", output_dir=self.test_dir, processor=processor)
+
+        # Case 1: JIANG YIVI vs MAO TAKAMORI transitioning to JIANG YIYL vs MAO TAKAMORI
+        # Opponent MAO TAKAMORI is identical, score continues (1:0 sets, 4:2 -> 2:0 sets, 5:6)
+        prev = ScoreResult(success=True, player1="JIANG YIVI", player2="MAO TAKAMORI", set1=1, set2=0, game1=4, game2=2)
+        curr = ScoreResult(success=True, player1="JIANG YIYL", player2="MAO TAKAMORI", set1=2, set2=0, game1=5, game2=6)
+
+        # Should NOT be considered player change because MAO TAKAMORI matches and score is ongoing
+        self.assertFalse(finder._players_changed(prev, curr))
+
+        # Case 2: Same match duplicate detection
+        m1 = MatchStart(timestamp_seconds=6716, timestamp_formatted="01:51:56", player1="JIANG YIVI", player2="MAO TAKAMORI", image_path="p1.jpg")
+        finder.found_matches.append(m1)
+
+        m2 = MatchStart(timestamp_seconds=7920, timestamp_formatted="02:12:00", player1="JIANG YIYL", player2="MAO TAKAMORI", image_path="p2.jpg")
+        # Should be detected as duplicate within session because one player matches
+        self.assertTrue(finder._is_duplicate(m2))
+
 if __name__ == '__main__':
 
     unittest.main()

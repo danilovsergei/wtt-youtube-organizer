@@ -513,7 +513,7 @@ class ProdWttVideoProcessor(WttVideoProcessor):
             print(f'Video already downloaded: {video_path}')
             return video_path
         ydl_opts = {
-            'format': 'bv*[vcodec^=avc1][height<=480]/bv*[height<=480]/18/bv*/b',
+            'format': 'bv*[vcodec^=avc1][height=480]/bv*[height=480]/bv*[vcodec^=avc1][height=720][fps<=30]/bv*[height=720][fps<=30]/bv*[height=720]/bv*[height<=480]/18/b',
             'outtmpl': video_path,
             'quiet': False,
             'no_warnings': False,
